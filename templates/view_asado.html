@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+<!--
+    view_asado.html = the DETAIL PAGE for one specific asado.
+    Receives "asado" (a single row) and "participants" (a list of rows).
+-->
+
+{% block content %}
+<h1>{{ asado.nombre }}</h1>
+
+<table class="detail-table">
+    <tr><th>Fecha</th><td>{{ asado.date }}</td></tr>
+    <tr><th>Tipo de Carne</th><td>{{ asado.tipo_carne }}</td></tr>
+    <tr><th>Tipo de Cocción</th><td>{{ asado.coccion }}</td></tr>
+    <tr><th>Superficie</th><td>{{ asado.superficie }}</td></tr>
+    <tr><th>Local</th><td>{{ asado.local }}</td></tr>
+    {% if asado.location %}
+        <tr><th>Ubicación</th><td>{{ asado.location }}</td></tr>
+    {% endif %}
+    {% if asado.people %}
+        <tr><th>Cantidad de personas</th><td>{{ asado.people }}</td></tr>
+    {% endif %}
+    {% if asado.total_weight %}
+        <tr><th>Peso Total</th><td>{{ asado.total_weight }} kg</td></tr>
+    {% endif %}
+</table>
+
+{% if asado.description %}
+    <p class="asado-description">{{ asado.description }}</p>
+{% endif %}
+
+<h2>Participantes</h2>
+<table class="detail-table">
+    <tr><th>Username</th><th>Rol</th><th>Points</th></tr>
+    {% for p in participants %}
+        <tr>
+            <td>{{ p.username }}</td>
+            <td>{{ p.rol }}</td>
+            <td>{{ p.points }}</td>
+        </tr>
+    {% endfor %}
+</table>
+
+<p><a href="{{ url_for('index') }}">← Back to all asados</a></p>
+{% endblock %}

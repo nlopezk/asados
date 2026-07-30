@@ -1,0 +1,163 @@
+/* =====================================================================
+   style.css
+   Basic, clean styling. Kept intentionally simple for Phase 1 —
+   we can make it much nicer later once the app "works" end to end.
+   ===================================================================== */
+
+* {
+    box-sizing: border-box; /* makes width/padding math more intuitive */
+}
+
+body {
+    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    margin: 0;
+    background-color: #faf6f2;
+    color: #2b2b2b;
+}
+
+/* --- Navbar --- */
+.navbar {
+    background-color: #b5432b; /* asado-fire orange/red */
+    padding: 14px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.nav-title {
+    color: white;
+    font-size: 1.3em;
+    font-weight: bold;
+    text-decoration: none;
+}
+
+.nav-link {
+    color: white;
+    background-color: rgba(255, 255, 255, 0.2);
+    padding: 8px 14px;
+    border-radius: 6px;
+    text-decoration: none;
+}
+
+/* --- Layout container ---
+   max-width keeps lines readable on wide desktop screens,
+   while width: 100% lets it shrink fully on mobile. */
+.container {
+    max-width: 700px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* --- Asado cards on the home page --- */
+.asado-card {
+    background: white;
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.asado-card h2 {
+    margin: 0 0 6px 0;
+}
+
+.asado-card a {
+    color: #b5432b;
+    text-decoration: none;
+}
+
+.asado-meta {
+    color: #666;
+    font-size: 0.9em;
+}
+
+.participant-list {
+    margin: 6px 0 0 0;
+    padding-left: 20px;
+}
+
+.empty-state {
+    text-align: center;
+    color: #777;
+    margin-top: 40px;
+}
+
+/* --- Forms --- */
+.asado-form {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.asado-form label {
+    font-weight: bold;
+    margin-top: 10px;
+}
+
+.asado-form input,
+.asado-form select,
+.asado-form textarea {
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 1em;
+    width: 100%;
+}
+
+.participant-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.participant-row input {
+    flex: 2;
+}
+
+.participant-row select {
+    flex: 1;
+}
+
+button {
+    cursor: pointer;
+}
+
+.primary-button {
+    background-color: #b5432b;
+    color: white;
+    border: none;
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 1.05em;
+    margin-top: 16px;
+}
+
+/* --- Detail tables --- */
+.detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.detail-table th, .detail-table td {
+    text-align: left;
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.detail-table th {
+    width: 40%;
+    color: #555;
+}
+
+/* --- Mobile responsiveness ---
+   On small screens, stack the participant row inputs vertically
+   instead of side by side, so nothing gets cramped. */
+@media (max-width: 480px) {
+    .participant-row {
+        flex-direction: column;
+    }
+}

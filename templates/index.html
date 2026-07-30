@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+<!--
+    index.html = the HOME PAGE.
+    It receives a variable called "asados" from app.py's index() function.
+    Each item in "asados" is a dict: {"asado": <row>, "participants": <rows>}
+-->
+
+{% block content %}
+<h1>All Asados</h1>
+
+{% if asados|length == 0 %}
+    <!-- Jinja2 (Flask's templating language) lets us use if/for
+         directly inside HTML, using special curly-brace-percent tags. -->
+    <p class="empty-state">No asados yet. <a href="{{ url_for('new_asado') }}">Add the first one!</a></p>
+{% endif %}
+
+<div class="asado-list">
+    <!-- Loop over every asado entry -->
+    {% for item in asados %}
+        <div class="asado-card">
+            <h2><a href="{{ url_for('view_asado', asado_id=item.asado.id) }}">{{ item.asado.nombre }}</a></h2>
+            <p class="asado-meta">
+                📅 {{ item.asado.date }} &nbsp;|&nbsp;
+                🥩 {{ item.asado.tipo_carne }} &nbsp;|&nbsp;
+                🔥 {{ item.asado.coccion }} on {{ item.asado.superficie }} &nbsp;|&nbsp;
+                📍 {{ item.asado.local }}
+            </p>
+
+            {% if item.asado.description %}
+                <p class="asado-description">{{ item.asado.description }}</p>
+            {% endif %}
+
+            <p class="asado-participants-label">Participantes:</p>
+            <ul class="participant-list">
+                {% for p in item.participants %}
+                    <li>{{ p.username }} — {{ p.rol }} — <strong>{{ p.points }} pts</strong></li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}

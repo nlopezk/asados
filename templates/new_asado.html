@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+<!--
+    new_asado.html = the FORM to create a new asado.
+    It receives the *_options variables from app.py so the dropdowns
+    are built from config.py's dictionaries instead of being hardcoded
+    twice (once in Python, once in HTML).
+-->
+
+{% block content %}
+<h1>New Asado</h1>
+
+<!-- method="POST" means the form data is sent in the request body
+     (not visible in the URL), which is standard for creating data. -->
+<form method="POST" class="asado-form">
+
+    <label for="nombre">Nombre Asado</label>
+    <input type="text" id="nombre" name="nombre" required>
+
+    <label for="date">Fecha</label>
+    <input type="date" id="date" name="date" required>
+
+    <label for="description">Descripción (opcional)</label>
+    <textarea id="description" name="description"></textarea>
+
+    <label for="tipo_carne">Tipo de Carne</label>
+    <select id="tipo_carne" name="tipo_carne" required>
+        {% for option in tipo_carne_options %}
+            <option value="{{ option }}">{{ option }}</option>
+        {% endfor %}
+    </select>
+
+    <label for="coccion">Tipo de Cocción</label>
+    <select id="coccion" name="coccion" required>
+        {% for option in coccion_options %}
+            <option value="{{ option }}">{{ option }}</option>
+        {% endfor %}
+    </select>
+
+    <label for="superficie">Superficie</label>
+    <select id="superficie" name="superficie" required>
+        {% for option in superficie_options %}
+            <option value="{{ option }}">{{ option }}</option>
+        {% endfor %}
+    </select>
+
+    <label for="local">Local</label>
+    <select id="local" name="local" required>
+        {% for option in local_options %}
+            <option value="{{ option }}">{{ option }}</option>
+        {% endfor %}
+    </select>
+
+    <label for="location">Ubicación (opcional)</label>
+    <input type="text" id="location" name="location">
+
+    <label for="people">Cantidad de personas</label>
+    <input type="number" id="people" name="people" min="1">
+
+    <label for="total_weight">Peso Total (kg)</label>
+    <input type="number" step="0.1" id="total_weight" name="total_weight" min="0">
+
+    <hr>
+
+    <h3>Participantes</h3>
+    <!-- This div is where we'll dynamically add one row per participant.
+         It starts with ONE row already present. -->
+    <div id="participants-container">
+        <div class="participant-row">
+            <input type="text" name="participant_username" placeholder="Username" required>
+            <select name="participant_rol" required>
+                {% for option in rol_options %}
+                    <option value="{{ option }}">{{ option }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <!-- type="button" (not "submit") so clicking this does NOT submit
+         the form — it only runs our JS function below. -->
+    <button type="button" onclick="addParticipantRow()">+ Añadir otro participante</button>
+
+    <hr>
+
+    <button type="submit" class="primary-button">Save Asado</button>
+</form>
+
+<script>
+    // This function is called every time the user clicks
+    // "+ Add another participant". It clones the existing row's HTML
+    // structure and appends a fresh, empty copy.
+    function addParticipantRow() {
+        const container = document.getElementById("participants-container");
+        const firstRow = container.querySelector(".participant-row");
+
+        // cloneNode(true) copies the element AND its children (the input + select)
+        const newRow = firstRow.cloneNode(true);
+
+        // Reset the cloned inputs so they start empty instead of
+        // copying whatever the user already typed in the first row.
+        newRow.querySelector("input").value = "";
+        newRow.querySelector("select").selectedIndex = 0;
+
+        container.appendChild(newRow);
+    }
+</script>
+{% endblock %}
