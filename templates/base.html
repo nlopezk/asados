@@ -12,6 +12,18 @@
     <!-- This meta tag is what makes the page responsive on phones -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Asados App</title>
+    <!-- Google Fonts: EB Garamond (headings — a classic, restrained
+         serif in the Garamond tradition, chosen after studying "The
+         Designer's Dictionary of Color" for its own heading/body
+         typeface: a moderate-contrast transitional serif, not a
+         quirky display font) + Inter (body/UI text — clean and
+         highly legible, still needed for forms/tables at small
+         sizes). Loaded from Google's CDN like Leaflet already is
+         elsewhere in this app, so it just needs the visitor's own
+         internet connection. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>

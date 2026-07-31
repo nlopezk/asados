@@ -1,11 +1,69 @@
 /* =====================================================================
    style.css
-   Basic, clean styling. Kept intentionally simple for Phase 1 —
-   we can make it much nicer later once the app "works" end to end.
+
+   Color palette: "old money Texas classic" — informed by a study of
+   "The Designer's Dictionary of Color" (Sean Adams), specifically its
+   Brown chapter ("a palette of shades of brown... can read as
+   sophisticated and solid"), Scarlet chapter (other names: Burgundy,
+   Brick; cultural meanings: the color of Catholic cardinals' robes and
+   the benches of the British House of Lords — i.e. prestige, not fire)
+   and Metallic chapter ("gold... can add elegance and richness" — used
+   SPARINGLY, per the book's own caution against overuse). Walnut wood
+   browns and leather tones for the background/surfaces, a burgundy/
+   scarlet red as the accent, a muted brass/gold for occasional trim.
+   Defined once as CSS custom properties (variables) below, so every
+   component pulls from the same handful of colors instead of hex codes
+   scattered everywhere — and so this palette can be re-tuned in one
+   place if it needs to shift again.
+
+   Fonts: 'EB Garamond' for headings AND body-like prose text, 'Inter'
+   for compact UI chrome (buttons, table cells, form labels) — loaded
+   in base.html. The book itself sets both its headings and body copy
+   in a single classic, moderate-contrast serif (photographed and
+   compared directly — see CLAUDE.md); EB Garamond is the closest
+   Google Fonts match to that letterform. Falls back to system fonts if
+   Google Fonts can't load (no internet, blocked, etc.), so the app
+   never breaks over this.
+
+   Spacing: headings/paragraphs/lists get small, deliberate margins
+   near the top of this file instead of relying on the browser's
+   default (~1em top+bottom on every <h2>/<h3>/<p>) — that default was
+   the main reason things like the asado cards on the home page felt
+   too spaced out between the title/meta/description/"Participantes:".
    ===================================================================== */
 
 * {
     box-sizing: border-box; /* makes width/padding math more intuitive */
+}
+
+:root {
+    --color-bg: #33281c;          /* page background — walnut wood, not near-black */
+    --color-surface: #453524;     /* cards, tables, inputs, modals — saddle leather/oak */
+    --color-surface-alt: #55432e; /* stripes, hover states, filled secondary buttons */
+    --color-border: #6b5640;      /* wood-grain border */
+    --color-text: #f0e6d0;        /* primary text (parchment cream) */
+    --color-text-muted: #c4ac82;  /* secondary text: meta, labels, hints (tan/khaki) */
+    --color-accent: #6e2020;      /* burgundy/scarlet — FILLS: navbar, primary/secondary buttons */
+    --color-accent-hover: #8a2c2c;
+    --color-accent-soft: #46201c; /* subtle accent-tinted background */
+    /* Burgundy is deliberately dark so white/cream text reads clearly
+       ON TOP of it (navbar, filled buttons) — but that same darkness
+       makes it nearly illegible AS text against the walnut-brown
+       surfaces (card titles, links). These two are for TEXT instead:
+       a brighter brick-red (closer to the book's actual Scarlet
+       swatch) with enough contrast to actually read. */
+    --color-accent-text: #c15a3f;
+    --color-accent-text-hover: #d67256;
+    /* Brass/gold — used SPARINGLY (a rule, a border trim), never as a
+       body text color or large fill; matches the book's Metallic
+       chapter both in hue and in its explicit warning not to overdo it. */
+    --color-gold: #a3865c;
+    --color-error-bg: #4a231e;
+    --color-error-border: #7a3a2e;
+    --color-error-text: #ffb49a;
+    --color-success-bg: #2c3624;  /* muted olive-green, keeps the woody palette instead of a bright green */
+    --color-success-border: #465438;
+    --color-success-text: #c3d9a0;
 }
 
 /* Generic show/hide utility (JS toggles this class) — used for the
@@ -15,17 +73,74 @@
     display: none;
 }
 
+h1, h2, h3, h4 {
+    margin: 0 0 0.35em 0;
+    font-family: 'EB Garamond', Georgia, 'Times New Roman', serif;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1.25;
+    color: var(--color-text);
+}
+
+h2 {
+    font-size: 1.7em; /* EB Garamond is more delicate than a display face at the same size — sized up for presence */
+}
+
+p {
+    margin: 0 0 0.5em 0;
+}
+
+p:last-child {
+    margin-bottom: 0; /* a paragraph shouldn't leave trailing space before its container ends */
+}
+
+ul, ol {
+    margin: 0 0 0.5em 0;
+}
+
 body {
-    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    font-family: 'Inter', -apple-system, Segoe UI, Roboto, Arial, sans-serif;
     margin: 0;
-    background-color: #faf6f2;
-    color: #2b2b2b;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    line-height: 1.5;
+}
+
+/* Global link color — without this, any <a> that doesn't have one of
+   the more specific classes below (.asado-card a, .secondary-button,
+   .filter-clear, ...) falls back to the BROWSER's default blue/purple
+   link colors, which clash badly against this dark warm palette. */
+a {
+    color: var(--color-accent-text);
+}
+
+a:hover {
+    color: var(--color-accent-text-hover);
+}
+
+a:visited {
+    color: var(--color-accent-text);
+}
+
+/* The browser's default <hr> is a two-tone "groove" line meant for a
+   light background — on this dark theme it rendered as a nearly
+   invisible sliver/dot instead of a line. A plain 1px top border reads
+   as a clean, deliberate divider instead. */
+hr {
+    border: none;
+    border-top: 1px solid var(--color-border);
+    margin: 14px 0;
 }
 
 /* --- Navbar --- */
 .navbar {
-    background-color: #b5432b; /* asado-fire orange/red */
-    padding: 14px 20px;
+    background-color: var(--color-accent);
+    /* A thin brass-rail trim under the navbar — the one deliberately
+       sparing use of --color-gold in the whole app, per the book's own
+       warning that metallic accents lose their impact (and their
+       "elegance") when overused. */
+    border-bottom: 2px solid var(--color-gold);
+    padding: 12px 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -33,17 +148,24 @@ body {
 
 .nav-title {
     color: white;
-    font-size: 1.3em;
-    font-weight: bold;
+    font-family: 'EB Garamond', Georgia, serif;
+    font-size: 1.55em;
+    font-weight: 700;
+    letter-spacing: 0.02em;
     text-decoration: none;
 }
 
 .nav-link {
     color: white;
-    background-color: rgba(255, 255, 255, 0.2);
-    padding: 8px 14px;
+    background-color: rgba(255, 255, 255, 0.15);
+    padding: 7px 12px;
     border-radius: 6px;
     text-decoration: none;
+    font-size: 0.92em;
+}
+
+.nav-link:hover {
+    background-color: rgba(255, 255, 255, 0.25);
 }
 
 /* --- Layout container ---
@@ -58,64 +180,110 @@ body {
 
 /* --- Asado cards on the home page --- */
 .asado-card {
-    background: white;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: 10px;
-    padding: 16px;
-    margin-bottom: 16px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
-.asado-card h2 {
-    margin: 0 0 6px 0;
+/* NOTE: this targets h3 because that's what index.html's card actually
+   uses — a prior version of this rule said "h2" (a leftover from
+   before the card markup changed) and silently never matched
+   anything, which is why the title used to have the browser's full
+   default heading margin around it instead of this tighter one. */
+.asado-card h3 {
+    margin: 0 0 4px 0;
+    font-size: 1.15em;
 }
 
 .asado-card a {
-    color: #b5432b;
+    color: var(--color-accent-text);
     text-decoration: none;
 }
 
+.asado-card a:hover {
+    color: var(--color-accent-text-hover);
+}
+
 .asado-meta {
-    color: #666;
-    font-size: 0.9em;
+    color: var(--color-text-muted);
+    font-size: 0.88em;
+    margin: 0 0 6px 0;
+}
+
+.asado-description {
+    margin: 0 0 8px 0;
+}
+
+/* Small-caps, letter-spaced labels (here and below) — echoes how "The
+   Designer's Dictionary of Color" sets its own section labels
+   ("CULTURAL MEANINGS", "SUCCESSFUL APPLICATIONS"): uppercase, wide
+   tracking, small size, rather than plain bold text. */
+.asado-participants-label {
+    font-weight: 600;
+    color: var(--color-text-muted);
+    font-size: 0.78em;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 0 0 4px 0;
 }
 
 .participant-list {
-    margin: 6px 0 0 0;
-    padding-left: 20px;
+    margin: 0;
+    padding-left: 18px;
 }
 
 .empty-state {
     text-align: center;
-    color: #777;
-    margin-top: 40px;
+    color: var(--color-text-muted);
+    margin-top: 32px;
 }
 
 /* --- Forms --- */
 .asado-form {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
 }
 
 .asado-form label {
-    font-weight: bold;
-    margin-top: 10px;
+    font-weight: 600;
+    margin-top: 8px;
+    font-size: 0.78em;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--color-text-muted);
 }
 
 .asado-form input,
 .asado-form select,
 .asado-form textarea {
-    padding: 10px;
-    border: 1px solid #ccc;
+    padding: 9px 10px;
+    border: 1px solid var(--color-border);
     border-radius: 6px;
     font-size: 1em;
     width: 100%;
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    font-family: inherit;
+}
+
+.asado-form textarea {
+    min-height: 4em;
+}
+
+.asado-form input::placeholder,
+.asado-form textarea::placeholder {
+    color: var(--color-text-muted);
 }
 
 .participant-row {
     display: flex;
     gap: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
+    align-items: center;
 }
 
 .participant-row input {
@@ -127,9 +295,9 @@ body {
 }
 
 .remove-participant-btn {
-    background: none;
-    border: 1px solid #d99;
-    color: #a12c2c;
+    background-color: var(--color-error-bg);
+    border: 1px solid var(--color-error-border);
+    color: var(--color-error-text);
     border-radius: 6px;
     padding: 0 10px;
     font-size: 1em;
@@ -137,38 +305,78 @@ body {
     flex: 0 0 auto;
 }
 
+.remove-participant-btn:hover {
+    background-color: var(--color-error-border);
+}
+
+/* Baseline for any <button> that ISN'T .primary-button/.secondary-button
+   (e.g. "+ Añadir otro participante" in _asado_form.html) — without
+   this, an unstyled <button> falls back to the browser's native white
+   button chrome, which stands out badly against this dark theme. The
+   two classes above still win where used, since a class selector is
+   more specific than this bare element selector. */
 button {
     cursor: pointer;
+    font-family: inherit;
+    background-color: var(--color-surface-alt);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.95em;
+}
+
+button:hover {
+    background-color: var(--color-border);
 }
 
 .primary-button {
-    background-color: #b5432b;
+    background-color: var(--color-accent);
     color: white;
     border: none;
-    padding: 12px;
+    padding: 11px;
     border-radius: 6px;
-    font-size: 1.05em;
-    margin-top: 16px;
+    font-size: 1.02em;
+    font-weight: 600;
+    margin-top: 12px;
+    text-decoration: none; /* defensive: same reasoning as .secondary-button, in case this ever lands on an <a> */
+    display: inline-block;
+}
+
+.primary-button:hover {
+    background-color: var(--color-accent-hover);
 }
 
 /* --- Detail tables --- */
 .detail-table {
     width: 100%;
     border-collapse: collapse;
-    background: white;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: 8px;
     overflow: hidden;
+    margin-bottom: 10px;
 }
 
 .detail-table th, .detail-table td {
     text-align: left;
-    padding: 10px;
-    border-bottom: 1px solid #eee;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.95em;
+}
+
+.detail-table tr:last-child th,
+.detail-table tr:last-child td {
+    border-bottom: none;
 }
 
 .detail-table th {
     width: 40%;
-    color: #555;
+    color: var(--color-text-muted);
+    font-weight: 600;
+    font-size: 0.85em;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
 }
 
 /* --- view_asado.html: read-view action row (Editar / Eliminar) --- */
@@ -184,10 +392,10 @@ button {
 }
 
 /* .primary-button and .secondary-button normally differ in padding/
-   font-size (12px/1.05em vs 10px/0.95em), which is fine when they're
-   not sitting next to each other — but side by side here it made
-   "Editar" look noticeably wider than "Eliminar Asado" despite having
-   shorter text. Force both to the same padding/font-size in this row only. */
+   font-size, which is fine when they're not sitting next to each
+   other — but side by side here it made "Editar" look noticeably
+   wider than "Eliminar Asado" despite having shorter text. Force both
+   to the same padding/font-size in this row only. */
 .view-actions .primary-button,
 .view-actions .secondary-button {
     padding: 10px 16px;
@@ -208,41 +416,43 @@ button {
 }
 
 .error-message {
-    background: #fde8e8;
-    border: 1px solid #f5b5b5;
-    color: #a12c2c;
-    padding: 10px 14px;
+    background: var(--color-error-bg);
+    border: 1px solid var(--color-error-border);
+    color: var(--color-error-text);
+    padding: 9px 14px;
     border-radius: 8px;
+    margin: 0 0 10px 0;
 }
 
 .success-message {
-    background: #e8f5e9;
-    border: 1px solid #b5d5b8;
-    color: #2c6a30;
-    padding: 10px 14px;
+    background: var(--color-success-bg);
+    border: 1px solid var(--color-success-border);
+    color: var(--color-success-text);
+    padding: 9px 14px;
     border-radius: 8px;
+    margin: 0 0 10px 0;
 }
 
 /* --- Weight hints next to dropdowns --- */
 .weight-hint {
     font-weight: normal;
-    color: #b5432b;
+    color: var(--color-accent-text);
     font-size: 0.85em;
     margin-left: 6px;
 }
 
 /* --- Live points summary box --- */
 .points-summary {
-    background: #fff3ec;
-    border: 1px solid #f0d5c5;
+    background: var(--color-accent-soft);
+    border: 1px solid var(--color-border);
     border-radius: 8px;
-    padding: 10px 14px;
-    margin-top: 10px;
+    padding: 8px 14px;
+    margin-top: 8px;
 }
 
 .points-summary-line {
-    padding: 4px 0;
-    font-size: 0.95em;
+    padding: 3px 0;
+    font-size: 0.93em;
 }
 
 /* --- Location picker --- */
@@ -255,8 +465,8 @@ button {
     top: 100%;
     left: 0;
     right: 0;
-    background: white;
-    border: 1px solid #ccc;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-top: none;
     border-radius: 0 0 6px 6px;
     max-height: 200px;
@@ -265,24 +475,36 @@ button {
 }
 
 .address-suggestion-item {
-    padding: 8px 10px;
+    padding: 7px 10px;
     cursor: pointer;
     font-size: 0.9em;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid var(--color-border);
 }
 
 .address-suggestion-item:hover {
-    background-color: #fff3ec;
+    background-color: var(--color-accent-soft);
 }
 
+/* A solid, filled button rather than a bare outline — a transparent
+   background read as unfinished/broken against the wood-toned page,
+   especially for buttons sitting on their own (Exportar CSV, Anterior/
+   Siguiente, Eliminar Asado) rather than next to a filled primary-button
+   for contrast. */
 .secondary-button {
-    background-color: white;
-    color: #b5432b;
-    border: 1px solid #b5432b;
-    padding: 10px;
+    background-color: var(--color-surface-alt);
+    color: var(--color-text);
+    border: 1px solid var(--color-accent-text);
+    padding: 9px;
     border-radius: 6px;
     font-size: 0.95em;
-    margin-top: 8px;
+    margin-top: 6px;
+    text-decoration: none; /* this class is also used on <a> tags (Exportar CSV, Cancelar, pagination) — without this they kept the browser's default underline */
+    display: inline-block;
+}
+
+.secondary-button:hover {
+    background-color: var(--color-accent);
+    color: white;
 }
 
 /* --- Map modal (popup) --- */
@@ -292,7 +514,7 @@ button {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.6);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -304,7 +526,8 @@ button {
 }
 
 .map-modal-content {
-    background: white;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: 10px;
     padding: 16px;
     width: 90%;
@@ -326,7 +549,7 @@ button {
 
 .map-picked-address {
     font-size: 0.9em;
-    color: #555;
+    color: var(--color-text-muted);
 }
 
 /* --- Home page filters (date / user) --- */
@@ -334,12 +557,13 @@ button {
     display: flex;
     align-items: flex-end;
     flex-wrap: wrap;
-    gap: 16px;
-    background: white;
+    gap: 14px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: 10px;
-    padding: 14px 16px;
-    margin-bottom: 16px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 .filter-field {
@@ -349,21 +573,25 @@ button {
 }
 
 .filter-field label {
-    font-weight: bold;
-    font-size: 0.85em;
-    color: #555;
+    font-weight: 600;
+    font-size: 0.78em;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--color-text-muted);
 }
 
 .filter-field input,
 .filter-field select {
-    padding: 8px 10px;
-    border: 1px solid #ccc;
+    padding: 7px 10px;
+    border: 1px solid var(--color-border);
     border-radius: 6px;
     font-size: 0.95em;
+    background-color: var(--color-bg);
+    color: var(--color-text);
 }
 
 .filter-clear {
-    color: #b5432b;
+    color: var(--color-accent-text);
     font-size: 0.9em;
     text-decoration: none;
     align-self: center;
@@ -380,9 +608,10 @@ button {
        through a full page of rows, instead of just sitting there. */
     max-height: 70vh;
     overflow-y: auto;
-    background: white;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: 8px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 .spreadsheet-table {
@@ -394,19 +623,22 @@ button {
 
 .spreadsheet-table th,
 .spreadsheet-table td {
-    border: 1px solid #e0e0e0; /* grid lines on every cell, not just row dividers */
-    padding: 8px 10px;
+    border: 1px solid var(--color-border); /* grid lines on every cell, not just row dividers */
+    padding: 7px 10px;
     text-align: left;
 }
 
 .spreadsheet-table thead th {
-    background-color: #f5efe9;
+    background-color: var(--color-surface-alt);
     position: sticky; /* header stays visible while scrolling a long table */
     top: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.85em;
 }
 
 .spreadsheet-table tbody tr:nth-child(even) {
-    background-color: #faf8f6;
+    background-color: rgba(255, 255, 255, 0.03);
 }
 
 /* --- Pagination (home page + Base de Asados) --- */
@@ -415,11 +647,11 @@ button {
     align-items: center;
     justify-content: center;
     gap: 16px;
-    margin: 20px 0;
+    margin: 18px 0;
 }
 
 .pagination-status {
-    color: #666;
+    color: var(--color-text-muted);
     font-size: 0.9em;
 }
 
@@ -429,5 +661,19 @@ button {
 @media (max-width: 480px) {
     .participant-row {
         flex-direction: column;
+        align-items: stretch;
+    }
+
+    /* Without this, the 4 nav links + username + logout in
+       .navbar-right stayed on one line and overflowed the screen
+       width, pushing "Salir" off-screen entirely instead of wrapping. */
+    .navbar {
+        flex-wrap: wrap;
+        row-gap: 8px;
+    }
+
+    .navbar-right {
+        flex-wrap: wrap;
+        gap: 8px;
     }
 }

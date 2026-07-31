@@ -259,6 +259,92 @@ formula's math or shape in JavaScript.
 from this source file (edited by the developer), never from user
 input submitted through a web form.
 
+### Visual design: "old money Texas classic", informed by a real book
+`static/style.css` targets a specific look — walnut-wood browns and
+leather tones for backgrounds/surfaces, a burgundy/scarlet red as the
+accent, a muted brass/gold used sparingly for trim. This wasn't
+invented from a mood board: it was revised after actually studying
+`extras/The Designer's Dictionary of Color` (Sean Adams) — a real PDF
+in this repo, no text layer (image-only pages), opened by rendering
+pages to PNG with PyMuPDF and reading them directly. Specific pages
+that drove decisions, if this direction ever needs revisiting:
+- **Brown chapter** (p.209): "a palette of shades of brown... can read
+  as sophisticated and solid" — validated the wood-brown backgrounds.
+- **Scarlet chapter** (p.93): other names include Burgundy and Brick;
+  cultural meanings cite Catholic cardinals' robes and the benches of
+  the British House of Lords — i.e. prestige and power, not fire. This
+  is why the accent is a burgundy/scarlet, not the brighter orange-red
+  it started as.
+- **Metallic chapter** (p.245): "gold... can add elegance and
+  richness," but the book also warns overuse cheapens it — this is why
+  `--color-gold` appears in exactly ONE place (the navbar's
+  bottom-border "brass rail"), not scattered around as a general
+  accent.
+- **The book's own heading AND body text** (photographed and zoomed
+  into directly) turned out to be a single classic, moderate-contrast
+  serif in the Garamond/Caslon tradition — not the softer, quirkier
+  'Fraunces' this app used before. That's why headings now use 'EB
+  Garamond', the closest Google Fonts match.
+- The book's own section labels ("CULTURAL MEANINGS", "SUCCESSFUL
+  APPLICATIONS") are small, uppercase, and letter-spaced rather than
+  plain bold text — copied into this app's form labels, filter labels,
+  and table headers (`text-transform: uppercase; letter-spacing: ...`).
+
+CSS custom properties are still defined once at `:root` (`--color-bg`,
+`--color-surface`, `--color-accent`, etc.) — change the palette by
+editing those variables, not by hunting down individual hex codes.
+Headings (and prose-like text) use 'EB Garamond'; compact UI chrome
+(buttons, table cells, form inputs) stays on 'Inter' for small-size
+legibility — both loaded from Google Fonts in `base.html` (same CDN
+pattern as Leaflet), with system-font fallbacks if that CDN is
+unreachable.
+
+**Two different reds, on purpose**: `--color-accent` (deep burgundy)
+is for FILLS — navbar, primary/secondary button backgrounds — where
+white/cream text sits on top of it, so the fill itself can be dark.
+`--color-accent-text` (a brighter brick-red, closer to the book's
+actual Scarlet swatch) is for TEXT ON a wood-toned surface — links,
+card titles, `.weight-hint` — because the darker burgundy is nearly
+illegible as text against the similarly dark `--color-surface`/
+`--color-bg`. If you add a new red usage, pick whichever variable
+matches which side of that contrast pair you're on; don't just reach
+for `--color-accent` by habit.
+
+Buttons and button-like links (including `<a>` tags styled as
+buttons!) are filled, never bare outlines, and never keep the
+browser's default underline — `.secondary-button`/`.primary-button`
+both set `text-decoration: none` explicitly for exactly this reason
+(an `<a class="secondary-button">` like "Exportar CSV" or "Cancelar"
+kept an underline for a while before this was caught — the class
+alone doesn't remove link styling, you have to say so). A fully
+transparent button also read as unfinished/broken against the textured
+wood background, especially ones not sitting directly next to a filled
+`.primary-button` for contrast — keep new secondary actions filled the
+same way, with an explicit `text-decoration: none` if it's ever an `<a>`.
+
+`h1`–`h4`/`p`/`ul`/`ol` all get small explicit margins near the top of
+`style.css`, instead of relying on the browser's default UA-stylesheet
+margins (~1em top+bottom on every heading/paragraph) — that default
+was the actual cause of the home page's asado cards once looking too
+spaced out around the title/meta/description/"Participantes:". If a
+new component still looks loosely spaced, check whether it's an
+unstyled native element (a plain `<p>`/`<hr>`/`<button>` with no class)
+before adding margin overrides — `hr` and the bare `button` element
+both needed their own explicit dark-theme styling for the same reason
+(their browser defaults are designed for a light background and
+render badly, or invisibly, on a dark one). Similarly, `a` has an
+explicit global color — without it, any link missing a more specific
+class (like a couple were, before this pass) falls back to the
+browser's default blue and clashes with the whole palette.
+
+**Gotcha that caused real, live spacing bugs**: `.asado-card h2`
+existed in the CSS for a while but `index.html`'s card markup actually
+uses `<h3>` — the selector silently matched nothing, so that margin
+override never applied. If a CSS rule targeting a specific tag/class
+seems to have no effect, verify the selector actually matches the
+current template markup before assuming the value itself needs
+tweaking.
+
 ### Maps: OpenStreetMap + Leaflet, not Google Maps
 Chosen specifically to avoid requiring a Google Cloud billing account
 for a hobby project. Address autocomplete and reverse geocoding use
