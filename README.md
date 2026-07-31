@@ -50,3 +50,8 @@ asado_app/
 - Editing or deleting existing entries
 - Aggregated statistics / leaderboards
 - Deployment to a public URL
+
+## Push Git
+git add .
+git commit -m "describe what you changed, e.g. 'tweaked point weights'"
+git push
