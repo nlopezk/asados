@@ -13,7 +13,7 @@ import sqlite3                     # Python's built-in library to talk to SQLite
 from flask import Flask, render_template, request, redirect, url_for, g, jsonify
 from config import (
     calculate_points, TIPO_CARNE_WEIGHTS, COCCION_WEIGHTS, SUPERFICIE_WEIGHTS,
-    LOCAL_WEIGHTS, ROL_WEIGHTS, CARNE_COEF, COCCION_COEF,
+    LOCAL_WEIGHTS, ROL_WEIGHTS, FORMULA, VARIABLE_LABELS,
 )
 
 DATABASE = "asados.db"  # the SQLite database is just a single file on disk
@@ -212,7 +212,8 @@ def new_asado():
         "superficie": SUPERFICIE_WEIGHTS,
         "local": LOCAL_WEIGHTS,
         "rol": ROL_WEIGHTS,
-        "coefficients": {"carne": CARNE_COEF, "coccion": COCCION_COEF},
+        "formula": FORMULA,  # the literal formula text, read directly by the JS preview
+        "labels": VARIABLE_LABELS,  # human-readable names for the formula's variables
     }
 
     return render_template(

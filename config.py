@@ -4,21 +4,32 @@
 # Points, so you can edit them in ONE place instead of hunting through
 # the app's logic. Think of it as a settings panel for the formula.
 #
-# CURRENT FORMULA:
-#   Points = (CARNE_COEF * TipoCarne + COCCION_COEF * Coccion) * Superficie * Local * Rol
+# THE FORMULA IS WRITTEN BELOW AS ACTUAL TEXT (see FORMULA), using the
+# 5 variable names: carne, coccion, superficie, local, rol. You can
+# rewrite it into ANY algebraic shape you want — different groupings,
+# different coefficients, extra terms — and that single line is the
+# ONLY thing you ever need to change. Both the real calculation AND
+# the live on-screen preview read from this exact same string, so they
+# can never disagree with each other.
 #
-# Each variable on the right side is a CATEGORY (like "Vacío" or
-# "Parrilla"), not a number — so below we assign a numeric WEIGHT to
-# each possible category value. These are placeholder numbers you
-# should feel free to rename/replace with your real categories.
+# Example shapes you could paste in here later:
+#   "(0.6 * carne + 0.4 * coccion) * superficie * local * rol"
+#   "carne + (0.4 * coccion + 0.3 * superficie) * local * rol"
 # =====================================================================
 
-# --- The two coefficients in the formula, as their own named values.
-# Pulling these out (instead of leaving them as bare numbers inside the
-# formula below) means we can also SEND them to the browser as data, so
-# the live preview can label things without hardcoding numbers twice.
-CARNE_COEF = 0.6
-COCCION_COEF = 0.4
+FORMULA = "(0.6 * carne + 0.4 * coccion) * superficie * local * rol"
+
+# Human-readable label for each variable used in FORMULA. Used ONLY for
+# display (the live preview on the "New Asado" page shows the formula
+# using these names instead of the raw variable names above). Keeping
+# this here too means renaming a label is also a single, one-place edit.
+VARIABLE_LABELS = {
+    "carne": "Tipo Carne",
+    "coccion": "Tipo Cocción",
+    "superficie": "Superficie",
+    "local": "Local",
+    "rol": "Rol",
+}
 
 # --- Weights for "Tipo de Carne" (type of meat) -----------------------
 TIPO_CARNE_WEIGHTS = {
@@ -66,17 +77,18 @@ ROL_WEIGHTS = {
 
 def calculate_points(tipo_carne, coccion, superficie, local, rol):
     """
-    Calculates the Points for ONE participant of ONE asado.
+    Calculates the Points for ONE participant of ONE asado, by
+    EVALUATING the FORMULA string above as real math.
 
     THIS IS THE ONLY PLACE THE FORMULA IS CALCULATED. The browser asks
-    this function for the answer (via the /api/points route in app.py)
-    instead of re-implementing the math in JavaScript — so changing the
-    formula's weights, coefficients, OR STRUCTURE here is the ONLY edit
-    needed, anywhere in the project.
+    this function for the answer (via the /api/points route in app.py),
+    and it ALSO reads the same FORMULA string for the on-screen preview
+    text — so editing FORMULA above is the ONLY change ever needed,
+    anywhere in the project, no matter how you restructure the algebra.
 
     Parameters are the CATEGORY NAMES (strings, e.g. "Vacío"), and this
     function looks up their numeric weight from the dictionaries above
-    before doing the math.
+    before evaluating the formula.
 
     Returns a float (the calculated points).
     """
@@ -89,7 +101,24 @@ def calculate_points(tipo_carne, coccion, superficie, local, rol):
     local_w = LOCAL_WEIGHTS.get(local, 1)
     rol_w = ROL_WEIGHTS.get(rol, 1)
 
-    points = (CARNE_COEF * carne_w + COCCION_COEF * coccion_w) * superficie_w * local_w * rol_w
+    # eval() runs a STRING as if it were real Python code. We give it a
+    # small "variables" dictionary as its only vocabulary — it can ONLY
+    # see carne/coccion/superficie/local/rol and basic math operators
+    # (+, -, *, /, parentheses), nothing else. The empty "__builtins__"
+    # blocks access to anything dangerous (like file access) as an
+    # extra safety habit — though note this is safe here specifically
+    # because FORMULA is a line YOU write in your own source code, never
+    # something typed by a website visitor. eval() would be dangerous
+    # if it ran text submitted through a web form; it's not dangerous
+    # here because the text only ever comes from this file.
+    variables = {
+        "carne": carne_w,
+        "coccion": coccion_w,
+        "superficie": superficie_w,
+        "local": local_w,
+        "rol": rol_w,
+    }
+    points = eval(FORMULA, {"__builtins__": {}}, variables)
 
     # round() to 2 decimals just for a cleaner number to display/store.
     return round(points, 2)

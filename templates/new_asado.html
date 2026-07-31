@@ -184,30 +184,41 @@
         });
     }
 
-    // Recalculates and displays, for EVERY participant row, which
-    // weights are in play and the resulting points.
+    // Builds a human-readable version of the formula, using LABELS
+    // instead of numbers (e.g. "(0.6 * Tipo Carne + 0.4 * Tipo Cocción)
+    // * Superficie * Local * Rol"). This shows the SHAPE of the formula
+    // once, clearly, rather than a specific selection's numbers — the
+    // actual computed result for the current selection is shown
+    // separately at the end of the line (fetched from the server).
     //
-    // IMPORTANT: the POINTS NUMBER comes from the SERVER (/api/points),
-    // which runs the real calculate_points() from config.py — so it's
-    // always correct, no matter how the formula's weights, coefficients,
-    // or even overall STRUCTURE change later.
-    //
-    // We deliberately do NOT try to reconstruct the formula's algebraic
-    // shape here (which terms add, which multiply, parentheses, etc.) —
-    // that shape can change in config.py at any time, and hardcoding it
-    // here would just recreate the same "two places to edit" problem
-    // for the formula's STRUCTURE instead of its numbers. Instead we
-    // just list the weight used for each variable.
+    // Just like before, this is built directly from WEIGHTS.formula (the
+    // literal text from config.py), so rewriting the formula's shape
+    // there updates this automatically — no JS changes ever needed.
+    function buildFormulaDisplay() {
+        let text = WEIGHTS.formula;
+        const labels = WEIGHTS.labels;
+
+        // Replace each variable name with its label. Using \b (word
+        // boundary) ensures we only match whole variable names, not
+        // parts of other words.
+        Object.keys(labels).forEach(function (variableName) {
+            const pattern = new RegExp("\\b" + variableName + "\\b", "g");
+            text = text.replace(pattern, labels[variableName]);
+        });
+
+        return text;
+    }
+
     function updatePointsSummary() {
         const carne = document.getElementById("tipo_carne").value;
         const coccion = document.getElementById("coccion").value;
         const superficie = document.getElementById("superficie").value;
         const local = document.getElementById("local").value;
 
-        const carneW = WEIGHTS.tipo_carne[carne];
-        const coccionW = WEIGHTS.coccion[coccion];
-        const superficieW = WEIGHTS.superficie[superficie];
-        const localW = WEIGHTS.local[local];
+        // The readable formula text is the SAME for every participant
+        // row (it doesn't depend on which options are selected — only
+        // the final computed result does), so we can build it once.
+        const formulaWithLabels = buildFormulaDisplay();
 
         const rows = document.querySelectorAll(".participant-row");
         const summaryDiv = document.getElementById("points-summary");
@@ -223,18 +234,18 @@
 
             const name = usernameInput.value.trim() || ("Participante " + (index + 1));
 
-            // Show the weights in play immediately, with a "..."
-            // placeholder for the result while we wait for the server.
+            // Show the equation immediately, with a "..." placeholder
+            // for the result while we wait for the server's real answer.
             const line = document.createElement("div");
             line.className = "points-summary-line";
             line.innerHTML =
                 "<strong>" + name + "</strong> (" + rolSelect.value + "): " +
-                "carne=" + carneW + ", cocción=" + coccionW + ", superficie=" + superficieW +
-                ", local=" + localW + ", rol=" + rolWeight +
-                " → <strong>...</strong> pts";
+                formulaWithLabels +
+                " = <strong>...</strong> pts";
             summaryDiv.appendChild(line);
 
-            // Ask the SERVER for the real points value.
+            // Ask the SERVER for the real points value for THIS
+            // participant's specific selections (including their Rol).
             const url = "/api/points?tipo_carne=" + encodeURIComponent(carne) +
                 "&coccion=" + encodeURIComponent(coccion) +
                 "&superficie=" + encodeURIComponent(superficie) +
