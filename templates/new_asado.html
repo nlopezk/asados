@@ -184,9 +184,20 @@
         });
     }
 
-    // Recalculates and displays, for EVERY participant row, the full
-    // equation (with real numbers) and the resulting points — mirroring
-    // exactly the Python formula in config.py's calculate_points().
+    // Recalculates and displays, for EVERY participant row, which
+    // weights are in play and the resulting points.
+    //
+    // IMPORTANT: the POINTS NUMBER comes from the SERVER (/api/points),
+    // which runs the real calculate_points() from config.py — so it's
+    // always correct, no matter how the formula's weights, coefficients,
+    // or even overall STRUCTURE change later.
+    //
+    // We deliberately do NOT try to reconstruct the formula's algebraic
+    // shape here (which terms add, which multiply, parentheses, etc.) —
+    // that shape can change in config.py at any time, and hardcoding it
+    // here would just recreate the same "two places to edit" problem
+    // for the formula's STRUCTURE instead of its numbers. Instead we
+    // just list the weight used for each variable.
     function updatePointsSummary() {
         const carne = document.getElementById("tipo_carne").value;
         const coccion = document.getElementById("coccion").value;
@@ -208,24 +219,37 @@
             const rolWeight = WEIGHTS.rol[rolSelect.value];
             const hintSpan = row.querySelector(".participant-weight-hint");
 
-            // Update this row's own "(peso: X)" hint next to its Rol dropdown.
             hintSpan.textContent = "(peso: " + rolWeight + ")";
-
-            // Same formula as Python's calculate_points(), just written in JS:
-            //   Points = (0.6*carne + 0.4*coccion) * superficie * local * rol
-            const points = (0.6 * carneW + 0.4 * coccionW) * superficieW * localW * rolWeight;
-            const roundedPoints = Math.round(points * 100) / 100; // round to 2 decimals
 
             const name = usernameInput.value.trim() || ("Participante " + (index + 1));
 
+            // Show the weights in play immediately, with a "..."
+            // placeholder for the result while we wait for the server.
             const line = document.createElement("div");
             line.className = "points-summary-line";
             line.innerHTML =
                 "<strong>" + name + "</strong> (" + rolSelect.value + "): " +
-                "(0.6×" + carneW + " + 0.4×" + coccionW + ") × " +
-                superficieW + " × " + localW + " × " + rolWeight +
-                " = <strong>" + roundedPoints + " pts</strong>";
+                "carne=" + carneW + ", cocción=" + coccionW + ", superficie=" + superficieW +
+                ", local=" + localW + ", rol=" + rolWeight +
+                " → <strong>...</strong> pts";
             summaryDiv.appendChild(line);
+
+            // Ask the SERVER for the real points value.
+            const url = "/api/points?tipo_carne=" + encodeURIComponent(carne) +
+                "&coccion=" + encodeURIComponent(coccion) +
+                "&superficie=" + encodeURIComponent(superficie) +
+                "&local=" + encodeURIComponent(local) +
+                "&rol=" + encodeURIComponent(rolSelect.value);
+
+            fetch(url)
+                .then(function (response) { return response.json(); })
+                .then(function (data) {
+                    const strongTags = line.querySelectorAll("strong");
+                    strongTags[strongTags.length - 1].textContent = data.points;
+                })
+                .catch(function (error) {
+                    console.error("Points calculation failed:", error);
+                });
         });
     }
 

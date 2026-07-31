@@ -10,8 +10,11 @@
 # =====================================================================
 
 import sqlite3                     # Python's built-in library to talk to SQLite databases
-from flask import Flask, render_template, request, redirect, url_for, g
-from config import calculate_points, TIPO_CARNE_WEIGHTS, COCCION_WEIGHTS, SUPERFICIE_WEIGHTS, LOCAL_WEIGHTS, ROL_WEIGHTS
+from flask import Flask, render_template, request, redirect, url_for, g, jsonify
+from config import (
+    calculate_points, TIPO_CARNE_WEIGHTS, COCCION_WEIGHTS, SUPERFICIE_WEIGHTS,
+    LOCAL_WEIGHTS, ROL_WEIGHTS, CARNE_COEF, COCCION_COEF,
+)
 
 DATABASE = "asados.db"  # the SQLite database is just a single file on disk
 
@@ -89,6 +92,26 @@ def index():
         asados_with_participants.append({"asado": asado, "participants": participants})
 
     return render_template("index.html", asados=asados_with_participants)
+
+
+@app.route("/api/points")
+def api_points():
+    """
+    JSON API used ONLY by the live points preview in new_asado.html.
+    The browser sends the current form selections as URL query
+    parameters, and this route calls the EXACT SAME calculate_points()
+    function that saves real data — so the preview can never drift out
+    of sync, no matter how the formula changes later (new weights, new
+    coefficients, or a completely restructured equation).
+    """
+    tipo_carne = request.args.get("tipo_carne", "")
+    coccion = request.args.get("coccion", "")
+    superficie = request.args.get("superficie", "")
+    local = request.args.get("local", "")
+    rol = request.args.get("rol", "")
+
+    points = calculate_points(tipo_carne, coccion, superficie, local, rol)
+    return jsonify({"points": points})
 
 
 @app.route("/asado/new", methods=["GET", "POST"])
@@ -189,6 +212,7 @@ def new_asado():
         "superficie": SUPERFICIE_WEIGHTS,
         "local": LOCAL_WEIGHTS,
         "rol": ROL_WEIGHTS,
+        "coefficients": {"carne": CARNE_COEF, "coccion": COCCION_COEF},
     }
 
     return render_template(

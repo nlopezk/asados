@@ -4,14 +4,21 @@
 # Points, so you can edit them in ONE place instead of hunting through
 # the app's logic. Think of it as a settings panel for the formula.
 #
-# YOUR FORMULA (as given):
-#   Points = (0.45 * TipoCarne + 0.35 * Coccion) * Superficie * Local * Rol
+# CURRENT FORMULA:
+#   Points = (CARNE_COEF * TipoCarne + COCCION_COEF * Coccion) * Superficie * Local * Rol
 #
 # Each variable on the right side is a CATEGORY (like "Vacío" or
 # "Parrilla"), not a number — so below we assign a numeric WEIGHT to
 # each possible category value. These are placeholder numbers you
 # should feel free to rename/replace with your real categories.
 # =====================================================================
+
+# --- The two coefficients in the formula, as their own named values.
+# Pulling these out (instead of leaving them as bare numbers inside the
+# formula below) means we can also SEND them to the browser as data, so
+# the live preview can label things without hardcoding numbers twice.
+CARNE_COEF = 0.6
+COCCION_COEF = 0.4
 
 # --- Weights for "Tipo de Carne" (type of meat) -----------------------
 TIPO_CARNE_WEIGHTS = {
@@ -59,10 +66,13 @@ ROL_WEIGHTS = {
 
 def calculate_points(tipo_carne, coccion, superficie, local, rol):
     """
-    Calculates the Points for ONE participant of ONE asado, using the
-    formula you defined:
+    Calculates the Points for ONE participant of ONE asado.
 
-        Points = (0.6 * TipoCarne + 0.4 * Coccion) * Superficie * Local * Rol
+    THIS IS THE ONLY PLACE THE FORMULA IS CALCULATED. The browser asks
+    this function for the answer (via the /api/points route in app.py)
+    instead of re-implementing the math in JavaScript — so changing the
+    formula's weights, coefficients, OR STRUCTURE here is the ONLY edit
+    needed, anywhere in the project.
 
     Parameters are the CATEGORY NAMES (strings, e.g. "Vacío"), and this
     function looks up their numeric weight from the dictionaries above
@@ -79,7 +89,7 @@ def calculate_points(tipo_carne, coccion, superficie, local, rol):
     local_w = LOCAL_WEIGHTS.get(local, 1)
     rol_w = ROL_WEIGHTS.get(rol, 1)
 
-    points = (0.6 * carne_w + 0.4 * coccion_w) * superficie_w * local_w * rol_w
+    points = (CARNE_COEF * carne_w + COCCION_COEF * coccion_w) * superficie_w * local_w * rol_w
 
     # round() to 2 decimals just for a cleaner number to display/store.
     return round(points, 2)
