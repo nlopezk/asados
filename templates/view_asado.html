@@ -5,7 +5,7 @@
 -->
 
 {% block content %}
-<h1>{{ asado.nombre }}</h1>
+<h2>{{ asado.nombre }}</h2>
 
 <table class="detail-table">
     <tr><th>Fecha</th><td>{{ asado.date }}</td></tr>
@@ -41,7 +41,7 @@
     <p class="asado-description">{{ asado.description }}</p>
 {% endif %}
 
-<h2>Participantes</h2>
+<h3>Participantes</h3>
 <table class="detail-table">
     <tr><th>Username</th><th>Rol</th><th>Points</th></tr>
     {% for p in participants %}

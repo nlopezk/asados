@@ -1,6 +1,6 @@
-# Asados App — Phase 1
+# Asados App — Phase 2
 
-A simple Flask + SQLite web app to track "asado" events, participants, and points.
+A Flask + SQLite web app to track "asado" events, participants, and points — now with login.
 
 ## How to run it locally
 
@@ -10,48 +10,61 @@ A simple Flask + SQLite web app to track "asado" events, participants, and point
    ```
    pip install -r requirements.txt
    ```
-4. **Create the database** (only needs to be done once, or whenever you
-   want to wipe all data and start fresh):
+4. **Create the database** (wipes any existing data — only run this once,
+   or when you deliberately want a fresh start):
    ```
-   python3 -c "from app import init_db; init_db()"
+   python -c "from app import init_db; init_db()"
    ```
-5. **Run the app:**
+5. **Create at least one user account** (there's no public sign-up page —
+   you create accounts yourself with this script):
    ```
-   python3 app.py
+   python create_user.py nico "myPassword123"
    ```
-6. **Open your browser** to: http://127.0.0.1:5000
+   Run it again for each person in your group, with their own username/password.
+6. **Run the app:**
+   ```
+   python app.py
+   ```
+7. **Open your browser** to: http://127.0.0.1:5000 — you'll be sent to
+   a login page first. Log in with a username/password you created in step 5.
 
 ## Project structure
 
 ```
 asado_app/
-├── app.py            <- Flask routes and logic (the "brain")
-├── config.py         <- Point weights + points calculation formula (EDIT HERE to tweak scoring)
-├── schema.sql         <- Database table definitions
-├── requirements.txt   <- Python packages needed
-├── templates/          <- HTML pages (Jinja2 templates)
-│   ├── base.html        (shared layout: navbar, CSS link)
-│   ├── index.html        (home page: list of all asados)
-│   ├── new_asado.html     (form to add a new asado)
-│   └── view_asado.html     (detail page for one asado)
+├── app.py             <- Flask routes, login/session logic (the "brain")
+├── config.py          <- Point weights + points formula (EDIT HERE to tweak scoring)
+├── create_user.py      <- Run this from the terminal to create login accounts
+├── schema.sql          <- Database table definitions
+├── secret_key.txt       <- Auto-generated on first run. NEVER commit this (.gitignore already excludes it)
+├── requirements.txt     <- Python packages needed
+├── templates/            <- HTML pages (Jinja2 templates)
+│   ├── base.html           (shared layout: navbar, login status)
+│   ├── login.html           (login form)
+│   ├── index.html            (home page: list of all asados)
+│   ├── new_asado.html         (form to add a new asado)
+│   └── view_asado.html         (detail page for one asado)
 └── static/
-    └── style.css         (all the visual styling)
+    └── style.css              (all the visual styling)
 ```
 
-## What Phase 1 includes
-- Add a new asado (with its shared details: meat, cooking method, location, etc.)
-- Add multiple participants per asado, each with their own Rol
-- Automatic Points calculation per participant, using the formula in `config.py`
-- View a list of all asados, and a detail page for each one
-- Basic responsive styling (works on mobile browsers too)
+## What Phase 2 adds
+- Username/password login using Flask sessions (no OAuth/Google yet)
+- Accounts are created via `create_user.py` (terminal script), not a public sign-up page
+- The whole app now requires login — you're redirected to `/login` if you're not signed in
+- Participants in an asado are now chosen from a dropdown of **registered accounts only**
+  (no more free-typed guest names)
+- A "Salir" (logout) link and your username appear in the navbar once logged in
 
 ## What's NOT included yet (coming in later phases)
-- Login / authentication (right now, usernames are just typed in freely)
 - Editing or deleting existing entries
+- Restricting edits to "your own" entries specifically
 - Aggregated statistics / leaderboards
 - Deployment to a public URL
 
-## Push Git
+## Git workflow
+```
 git add .
-git commit -m "describe what you changed, e.g. 'tweaked point weights'"
+git commit -m "describe what you changed"
 git push
+```

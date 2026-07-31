@@ -11,7 +11,7 @@
 -->
 
 {% block content %}
-<h1>New Asado</h1>
+<h2>New Asado</h2>
 
 <!-- Leaflet is the mapping library we use for the location picker.
      It's loaded from a public CDN — this runs in the user's own
@@ -76,7 +76,15 @@
     <h3>Participantes</h3>
     <div id="participants-container">
         <div class="participant-row">
-            <input type="text" name="participant_username" placeholder="Username" required>
+            <!-- Participants are now chosen from REGISTERED accounts
+                 only (per your decision) — a dropdown of existing
+                 users, instead of a free-text name field. -->
+            <select name="participant_user_id" required>
+                <option value="" disabled selected>Elegir usuario...</option>
+                {% for user in registered_users %}
+                    <option value="{{ user.id }}">{{ user.username }}</option>
+                {% endfor %}
+            </select>
             <select name="participant_rol" required>
                 {% for option in rol_options %}
                     <option value="{{ option }}">{{ option }}</option>
@@ -155,8 +163,11 @@
         const firstRow = container.querySelector(".participant-row");
 
         const newRow = firstRow.cloneNode(true);
-        newRow.querySelector("input").value = "";
-        newRow.querySelector("select").selectedIndex = 0;
+        // Reset both dropdowns to their first option (each row starts
+        // with nothing selected, rather than copying whatever the
+        // previous row had chosen).
+        newRow.querySelector("select[name='participant_user_id']").selectedIndex = 0;
+        newRow.querySelector("select[name='participant_rol']").selectedIndex = 0;
 
         container.appendChild(newRow);
         wireParticipantRow(newRow);
@@ -164,9 +175,12 @@
     }
 
     // Attaches the "recalculate on change" listeners to one participant row.
+    // Each row now has TWO dropdowns (which user, and their Rol), so we
+    // select them individually by their "name" attribute rather than
+    // assuming there's only one <select> in the row.
     function wireParticipantRow(row) {
-        row.querySelector("select").addEventListener("change", updatePointsSummary);
-        row.querySelector("input").addEventListener("input", updatePointsSummary);
+        row.querySelector("select[name='participant_user_id']").addEventListener("change", updatePointsSummary);
+        row.querySelector("select[name='participant_rol']").addEventListener("change", updatePointsSummary);
     }
 
     // -----------------------------------------------------------------
@@ -225,14 +239,19 @@
         summaryDiv.innerHTML = ""; // clear previous content before rebuilding
 
         rows.forEach(function (row, index) {
-            const usernameInput = row.querySelector("input");
-            const rolSelect = row.querySelector("select");
+            const userSelect = row.querySelector("select[name='participant_user_id']");
+            const rolSelect = row.querySelector("select[name='participant_rol']");
             const rolWeight = WEIGHTS.rol[rolSelect.value];
             const hintSpan = row.querySelector(".participant-weight-hint");
 
             hintSpan.textContent = "(peso: " + rolWeight + ")";
 
-            const name = usernameInput.value.trim() || ("Participante " + (index + 1));
+            // The chosen username is now the TEXT of the selected
+            // <option> in the user dropdown (e.g. "nico"), rather than
+            // free-typed text. selectedIndex -1 (nothing picked yet)
+            // falls back to a placeholder label.
+            const selectedOption = userSelect.options[userSelect.selectedIndex];
+            const name = (selectedOption && selectedOption.value) ? selectedOption.textContent : ("Participante " + (index + 1));
 
             // Show the equation immediately, with a "..." placeholder
             // for the result while we wait for the server's real answer.

@@ -6,7 +6,7 @@
 -->
 
 {% block content %}
-<h1>All Asados</h1>
+<h2>Listado de Asados</h2>
 
 {% if asados|length == 0 %}
     <!-- Jinja2 (Flask's templating language) lets us use if/for
@@ -18,7 +18,7 @@
     <!-- Loop over every asado entry -->
     {% for item in asados %}
         <div class="asado-card">
-            <h2><a href="{{ url_for('view_asado', asado_id=item.asado.id) }}">{{ item.asado.nombre }}</a></h2>
+            <h3><a href="{{ url_for('view_asado', asado_id=item.asado.id) }}">{{ item.asado.nombre }}</a></h3>
             <p class="asado-meta">
                 📅 {{ item.asado.date }} &nbsp;|&nbsp;
                 🥩 {{ item.asado.tipo_carne }} &nbsp;|&nbsp;

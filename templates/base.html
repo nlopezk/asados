@@ -17,7 +17,17 @@
 <body>
     <nav class="navbar">
         <a href="{{ url_for('index') }}" class="nav-title">🔥 Asados</a>
-        <a href="{{ url_for('new_asado') }}" class="nav-link">+ New Asado</a>
+        <!-- g.username is set on every request by load_logged_in_user()
+             in app.py — None if nobody is logged in. Jinja templates can
+             read Flask's "g" object directly, no need to pass it manually
+             from every single route. -->
+        {% if g.username %}
+            <div class="navbar-right">
+                <a href="{{ url_for('new_asado') }}" class="nav-link">Añadir Asado</a>
+                <span class="nav-username">👤 {{ g.username }}</span>
+                <a href="{{ url_for('logout') }}" class="nav-link">Salir</a>
+            </div>
+        {% endif %}
     </nav>
 
     <main class="container">

@@ -153,6 +153,26 @@ button {
     color: #555;
 }
 
+.navbar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.nav-username {
+    color: white;
+    font-size: 0.9em;
+    opacity: 0.9;
+}
+
+.error-message {
+    background: #fde8e8;
+    border: 1px solid #f5b5b5;
+    color: #a12c2c;
+    padding: 10px 14px;
+    border-radius: 8px;
+}
+
 /* --- Weight hints next to dropdowns --- */
 .weight-hint {
     font-weight: normal;

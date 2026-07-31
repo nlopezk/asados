@@ -10,7 +10,10 @@
 # =====================================================================
 
 import sqlite3                     # Python's built-in library to talk to SQLite databases
-from flask import Flask, render_template, request, redirect, url_for, g, jsonify
+import os
+import functools
+from flask import Flask, render_template, request, redirect, url_for, g, jsonify, session
+from werkzeug.security import check_password_hash
 from config import (
     calculate_points, TIPO_CARNE_WEIGHTS, COCCION_WEIGHTS, SUPERFICIE_WEIGHTS,
     LOCAL_WEIGHTS, ROL_WEIGHTS, FORMULA, VARIABLE_LABELS,
@@ -19,6 +22,33 @@ from config import (
 DATABASE = "asados.db"  # the SQLite database is just a single file on disk
 
 app = Flask(__name__)  # __name__ tells Flask where this file lives, for finding templates/static
+
+# ---------------------------------------------------------------------
+# SECRET KEY (needed for login sessions)
+# ---------------------------------------------------------------------
+# Flask uses this key to cryptographically SIGN the session cookie it
+# gives each visitor's browser — this is what lets Flask trust that a
+# returning cookie hasn't been tampered with, which is how it knows
+# "this browser is still logged in as user X" on every later request.
+#
+# We generate a random key the FIRST time the app ever runs, and save
+# it to a local file (secret_key.txt, which is in .gitignore — it must
+# NEVER be committed to GitHub, since anyone with it could forge login
+# sessions). Every time the app starts after that, it reuses the same
+# saved key, so people don't get logged out every time you restart it.
+SECRET_KEY_FILE = "secret_key.txt"
+
+if os.path.exists(SECRET_KEY_FILE):
+    with open(SECRET_KEY_FILE, "r") as f:
+        app.secret_key = f.read().strip()
+else:
+    # os.urandom(24) generates 24 random bytes — cryptographically
+    # unpredictable, good for a secret key. .hex() turns it into a
+    # readable string of letters/numbers we can save to a text file.
+    new_key = os.urandom(24).hex()
+    with open(SECRET_KEY_FILE, "w") as f:
+        f.write(new_key)
+    app.secret_key = new_key
 
 
 # ---------------------------------------------------------------------
@@ -59,10 +89,102 @@ def init_db():
 
 
 # ---------------------------------------------------------------------
+# AUTHENTICATION HELPERS
+# ---------------------------------------------------------------------
+
+def login_required(view_function):
+    """
+    A DECORATOR: a function that wraps another function to add behavior
+    around it. Putting @login_required above a route means "run this
+    check before letting anyone reach the actual page."
+
+    functools.wraps() preserves the original function's name/metadata,
+    which Flask needs internally to tell routes apart — without it,
+    Flask would get confused if you used @login_required on more than
+    one route (a common gotcha worth knowing about).
+    """
+    @functools.wraps(view_function)
+    def wrapped_view(*args, **kwargs):
+        if session.get("user_id") is None:
+            # Not logged in — send them to the login page. We also
+            # remember where they were TRYING to go (request.path) as a
+            # "next" URL, so login() can send them back there afterward.
+            return redirect(url_for("login", next=request.path))
+        return view_function(*args, **kwargs)
+    return wrapped_view
+
+
+@app.before_request
+def load_logged_in_user():
+    """
+    Runs before EVERY request. If the session says someone is logged
+    in, we look up their username here once and stash it on Flask's 'g'
+    object — so every template can display "logged in as ___" without
+    each route having to re-fetch it individually.
+    """
+    user_id = session.get("user_id")
+    if user_id is None:
+        g.username = None
+    else:
+        db = get_db()
+        user = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+        g.username = user["username"] if user else None
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    """
+    LOGIN PAGE.
+    GET  -> show the login form.
+    POST -> check the submitted username/password against the database.
+    """
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+
+        db = get_db()
+        user = db.execute(
+            "SELECT id, password_hash FROM users WHERE username = ?", (username,)
+        ).fetchone()
+
+        # check_password_hash() re-hashes the SUBMITTED password using
+        # the same method, and compares it to the STORED hash. It
+        # returns True only if they match — we never decrypt or see
+        # the original stored password, because it was never stored.
+        if user is not None and check_password_hash(user["password_hash"], password):
+            # session is a special Flask dictionary that persists
+            # across requests for one browser, via a signed cookie.
+            # Storing just the user's id here (not their password!) is
+            # standard practice — it's like a coat-check ticket, not
+            # the coat itself.
+            session.clear()
+            session["user_id"] = user["id"]
+
+            # If login_required redirected them here with a "next"
+            # parameter, send them back to whatever page they wanted.
+            # Otherwise, default to the home page.
+            next_url = request.args.get("next") or url_for("index")
+            return redirect(next_url)
+
+        # Wrong username or password: show the form again with an error.
+        return render_template("login.html", error="Usuario o contraseña incorrectos.")
+
+    return render_template("login.html", error=None)
+
+
+@app.route("/logout")
+def logout():
+    """Clears the session (logs the user out) and returns to login."""
+    session.clear()
+    return redirect(url_for("login"))
+
+
+# ---------------------------------------------------------------------
 # ROUTES
 # ---------------------------------------------------------------------
 
 @app.route("/")
+@login_required
 def index():
     """
     HOME PAGE: lists every asado, most recent first, along with a quick
@@ -115,6 +237,7 @@ def api_points():
 
 
 @app.route("/asado/new", methods=["GET", "POST"])
+@login_required
 def new_asado():
     """
     ADD ASADO PAGE.
@@ -157,29 +280,25 @@ def new_asado():
         asado_id = cursor.lastrowid  # the id SQLite just assigned to this new row
 
         # --- Step 3: handle participants ---
-        # The form sends parallel lists: participant_username[] and participant_rol[]
-        # (multiple people can be added dynamically in the HTML form).
-        usernames = request.form.getlist("participant_username")
+        # The form now sends a REGISTERED user's id (from a dropdown,
+        # not free-typed text) alongside their Rol for this asado.
+        # This matches your decision: only registered accounts can be
+        # participants, no more auto-creating users on the fly.
+        user_ids = request.form.getlist("participant_user_id")
         roles = request.form.getlist("participant_rol")
 
-        for username, rol in zip(usernames, roles):
-            username = username.strip()
-            if not username:
-                continue  # skip empty rows
+        for user_id_str, rol in zip(user_ids, roles):
+            if not user_id_str:
+                continue  # skip any row where nothing was selected
 
-            # Find the user, or create them if they don't exist yet
-            # (keeps Phase 1 simple — no login required to "exist" as a user).
-            user_row = db.execute(
-                "SELECT id FROM users WHERE username = ?", (username,)
-            ).fetchone()
+            user_id = int(user_id_str)
 
+            # Safety check: confirm this id really matches an existing
+            # user, in case of any tampering with the submitted form
+            # (e.g. someone editing the HTML before submitting).
+            user_row = db.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
             if user_row is None:
-                user_cursor = db.execute(
-                    "INSERT INTO users (username) VALUES (?)", (username,)
-                )
-                user_id = user_cursor.lastrowid
-            else:
-                user_id = user_row["id"]
+                continue  # silently skip an invalid id rather than crashing
 
             # Calculate this participant's points using our formula from config.py.
             # Rol is per-participant, so points can differ between people
@@ -216,6 +335,10 @@ def new_asado():
         "labels": VARIABLE_LABELS,  # human-readable names for the formula's variables
     }
 
+    # All registered users, for the participant dropdowns — participants
+    # must now be existing accounts, selected by id, not free-typed names.
+    registered_users = db.execute("SELECT id, username FROM users ORDER BY username").fetchall()
+
     return render_template(
         "new_asado.html",
         tipo_carne_options=TIPO_CARNE_WEIGHTS.keys(),
@@ -224,10 +347,12 @@ def new_asado():
         local_options=LOCAL_WEIGHTS.keys(),
         rol_options=ROL_WEIGHTS.keys(),
         weights=weights,
+        registered_users=registered_users,
     )
 
 
 @app.route("/asado/<int:asado_id>")
+@login_required
 def view_asado(asado_id):
     """DETAIL PAGE for a single asado, showing all its info + participants."""
     db = get_db()

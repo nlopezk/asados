@@ -18,9 +18,13 @@ DROP TABLE IF EXISTS users;
 -- ---------------------------------------------------------------------
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,  -- unique numeric ID, auto-generated
-    username TEXT UNIQUE NOT NULL          -- must be unique, cannot be empty
-    -- NOTE: no password field yet — that comes in Phase 2 (login system).
-    -- For now we just need to be able to reference "who" participated.
+    username TEXT UNIQUE NOT NULL,         -- must be unique, cannot be empty
+    -- We NEVER store the actual password — only a "hash" of it (a
+    -- scrambled, one-way version). Even if someone read the database
+    -- directly, they couldn't recover the real password from this.
+    -- Accounts are created via the create_user.py script (see README),
+    -- not through a public sign-up page.
+    password_hash TEXT NOT NULL
 );
 
 -- ---------------------------------------------------------------------
