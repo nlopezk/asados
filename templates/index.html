@@ -8,10 +8,42 @@
 {% block content %}
 <h2>Listado de Asados</h2>
 
+<!-- FILTERS: a plain GET form so the filtered view is just a normal,
+     bookmarkable URL (?date=...&user_id=...) — app.py's index() route
+     reads those two query params to narrow the SQL query. Each field
+     auto-submits the form on change (onchange="this.form.submit()"),
+     so picking a filter updates the list immediately without needing
+     a separate "Filtrar" button. -->
+<form method="GET" action="{{ url_for('index') }}" class="filter-form">
+    <div class="filter-field">
+        <label for="filter_date">Fecha</label>
+        <input type="date" id="filter_date" name="date" value="{{ selected_date }}"
+               onchange="this.form.submit()">
+    </div>
+    <div class="filter-field">
+        <label for="filter_user">Usuario</label>
+        <select id="filter_user" name="user_id" onchange="this.form.submit()">
+            <option value="">Todos</option>
+            {% for user in registered_users %}
+                <option value="{{ user.id }}" {% if selected_user_id == user.id|string %}selected{% endif %}>
+                    {{ user.name }}
+                </option>
+            {% endfor %}
+        </select>
+    </div>
+    {% if selected_date or selected_user_id %}
+        <a href="{{ url_for('index') }}" class="filter-clear">Limpiar filtros ✕</a>
+    {% endif %}
+</form>
+
 {% if asados|length == 0 %}
     <!-- Jinja2 (Flask's templating language) lets us use if/for
          directly inside HTML, using special curly-brace-percent tags. -->
-    <p class="empty-state">No asados yet. <a href="{{ url_for('new_asado') }}">Add the first one!</a></p>
+    {% if selected_date or selected_user_id %}
+        <p class="empty-state">Ningún asado coincide con estos filtros.</p>
+    {% else %}
+        <p class="empty-state">No asados yet. <a href="{{ url_for('new_asado') }}">Add the first one!</a></p>
+    {% endif %}
 {% endif %}
 
 <div class="asado-list">

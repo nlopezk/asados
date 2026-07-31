@@ -69,12 +69,29 @@ yet, just one Flask app with a handful of routes:
 
 - `/login`, `/logout` — session-based auth (see below)
 - `/` (`index`) — lists all asados, newest first, with each one's
-  participants and points joined in
+  participants and points joined in. Accepts optional `?date=` and
+  `?user_id=` query params to filter the list (a plain GET form in
+  `index.html` auto-submits on change — no JS fetch needed)
 - `/asado/new` (`new_asado`) — GET shows the form, POST inserts an
   `asados` row plus one `participations` row per selected participant
 - `/asado/<id>` (`view_asado`) — detail page for one asado
 - `/api/points` — JSON endpoint used only by the live points preview
   in `new_asado.html`'s JavaScript
+- `/base-asados` (`base_asados`) — "Base de Asados": a flat,
+  spreadsheet-style view built from `BASE_ASADOS_QUERY` in `app.py`, a
+  `participations LEFT JOIN asados LEFT JOIN users`. **One row per
+  participation, not per asado** — an asado with 5 participants
+  produces 5 rows here, repeating that asado's shared columns each
+  time. This is the shape you want for a spreadsheet/CSV export (one
+  line per person-at-an-asado); don't confuse it with `index`'s
+  one-card-per-asado view or try to reuse one query for both. Includes
+  both IDs (`participation_id`, `asado_id`), the coordinates, and every
+  frozen weight alongside its category name — it's meant to be the
+  complete, auditable export of everything a participation's `points`
+  was derived from
+- `/base-asados/csv` (`base_asados_csv`) — same rows as above, streamed
+  back as a downloadable CSV (UTF-8 with a BOM prefix, so accented
+  characters open correctly in Excel on Windows)
 - `/config` (`config_page`) — "Configuración" page; every logged-in
   user can edit their own `name`/password here (`POST /config/profile`)
 - `/config/users/create`, `/config/users/<id>/delete` — admin-only
@@ -89,6 +106,19 @@ column (display name, e.g. "Don Nicola") separate from the login
 and frozen — it is never recalculated if weights/formula change later,
 so historical entries keep whatever points they were awarded under the
 rules at the time.
+
+**The individual weights that fed into `points` are frozen too, not
+just the final number.** `asados.tipo_carne_weight`/`coccion_weight`/
+`superficie_weight`/`local_weight` (shared by every participant of that
+asado) and `participations.rol_weight` (per participant) are looked up
+from `config.py` and stored at creation time via `get_shared_weights()`
+and `get_rol_weight()` — two small helpers `calculate_points()` itself
+also calls internally, so the lookup logic exists in exactly one place.
+Without this, a later edit to a weight in `config.py` would leave old
+entries' stored `points` correct but with no record of *what weight*
+produced them (the category names stored on `asados`/`participations`
+alone aren't enough once `config.py` has moved on). If you add a new
+scored variable to the formula, freeze its weight the same way.
 
 Deleting a user from `/config` is blocked if they have any
 `participations` rows — `schema.sql` has no `ON DELETE CASCADE`, so an

@@ -11,15 +11,64 @@
 
 import sqlite3                     # Python's built-in library to talk to SQLite databases
 import os
+import csv
+import io
 import functools
-from flask import Flask, render_template, request, redirect, url_for, g, jsonify, session
+from flask import Flask, render_template, request, redirect, url_for, g, jsonify, session, Response
 from werkzeug.security import check_password_hash, generate_password_hash
 from config import (
-    calculate_points, TIPO_CARNE_WEIGHTS, COCCION_WEIGHTS, SUPERFICIE_WEIGHTS,
+    calculate_points, get_shared_weights, get_rol_weight,
+    TIPO_CARNE_WEIGHTS, COCCION_WEIGHTS, SUPERFICIE_WEIGHTS,
     LOCAL_WEIGHTS, ROL_WEIGHTS, FORMULA, VARIABLE_LABELS,
 )
 
 DATABASE = "asados.db"  # the SQLite database is just a single file on disk
+
+# ---------------------------------------------------------------------
+# "BASE DE ASADOS" QUERY (spreadsheet-style export)
+# ---------------------------------------------------------------------
+# ONE ROW PER PARTICIPATION, with that participation's asado/user info
+# joined in — NOT one row per asado. An asado with 5 participants
+# produces 5 rows here, each repeating that asado's date/nombre/etc.
+# This is intentional: it's the flat, "spreadsheet" shape you'd want
+# for a CSV export (one line per person-at-an-asado), as opposed to
+# index.html's one-card-per-asado view.
+#
+# LEFT JOIN (not JOIN) in both directions from participations, so a
+# participation is never silently dropped even in the edge case its
+# linked asado or user row is missing (schema.sql has no ON DELETE
+# CASCADE, so this can't currently happen through the app's own UI, but
+# a LEFT JOIN costs nothing and is the safer default for an "export
+# everything" view).
+BASE_ASADOS_QUERY = """
+    SELECT
+        participations.id AS participation_id,
+        participations.asado_id AS asado_id,
+        asados.date AS date,
+        asados.nombre AS nombre,
+        asados.tipo_carne AS tipo_carne,
+        asados.tipo_carne_weight AS tipo_carne_weight,
+        asados.coccion AS coccion,
+        asados.coccion_weight AS coccion_weight,
+        asados.superficie AS superficie,
+        asados.superficie_weight AS superficie_weight,
+        asados.local AS local,
+        asados.local_weight AS local_weight,
+        asados.location AS location,
+        asados.latitude AS latitude,
+        asados.longitude AS longitude,
+        asados.people AS people,
+        asados.total_weight AS total_weight,
+        users.username AS username,
+        users.name AS name,
+        participations.rol AS rol,
+        participations.rol_weight AS rol_weight,
+        participations.points AS points
+    FROM participations
+    LEFT JOIN asados ON participations.asado_id = asados.id
+    LEFT JOIN users ON participations.user_id = users.id
+    ORDER BY asados.date DESC, participations.id
+"""
 
 app = Flask(__name__)  # __name__ tells Flask where this file lives, for finding templates/static
 
@@ -332,13 +381,41 @@ def index():
     """
     HOME PAGE: lists every asado, most recent first, along with a quick
     summary (who participated and how many points they got).
+
+    Supports two OPTIONAL filters, read from the URL's query string
+    (?date=YYYY-MM-DD&user_id=3) rather than form-submitted POST data —
+    this keeps the filtered view a normal, bookmarkable/shareable GET
+    URL, and lets the <select>/<input> below auto-submit their own form
+    on change (see index.html) without any JavaScript fetch() calls.
     """
     db = get_db()
 
-    # Fetch all asados, newest date first.
-    asados = db.execute(
-        "SELECT * FROM asados ORDER BY date DESC"
-    ).fetchall()
+    date_filter = request.args.get("date", "").strip()
+    user_filter = request.args.get("user_id", "").strip()
+
+    # Built up conditionally: a plain "SELECT * FROM asados" when no
+    # filters are set, or narrowed down as needed. Filtering by
+    # participant requires joining through participations — DISTINCT
+    # avoids listing the same asado twice if it somehow matched more
+    # than once.
+    query = "SELECT DISTINCT asados.* FROM asados"
+    conditions = []
+    params = []
+
+    if user_filter:
+        query += " JOIN participations ON participations.asado_id = asados.id"
+        conditions.append("participations.user_id = ?")
+        params.append(user_filter)
+
+    if date_filter:
+        conditions.append("asados.date = ?")
+        params.append(date_filter)
+
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY asados.date DESC"
+
+    asados = db.execute(query, params).fetchall()
 
     # For each asado, also fetch its participants (a small extra query
     # per asado — totally fine for Phase 1's scale; we can optimize
@@ -356,7 +433,16 @@ def index():
         ).fetchall()
         asados_with_participants.append({"asado": asado, "participants": participants})
 
-    return render_template("index.html", asados=asados_with_participants)
+    # For the "Usuario" filter dropdown.
+    registered_users = db.execute("SELECT id, username, name FROM users ORDER BY name").fetchall()
+
+    return render_template(
+        "index.html",
+        asados=asados_with_participants,
+        registered_users=registered_users,
+        selected_date=date_filter,
+        selected_user_id=user_filter,
+    )
 
 
 @app.route("/api/points")
@@ -410,15 +496,23 @@ def new_asado():
         total_weight = request.form.get("total_weight", type=float)
 
         # --- Step 2: insert the asado row and get its new auto-generated id ---
+        # Look up (and freeze) the 4 shared weights NOW, at creation
+        # time — see the comment on these columns in schema.sql for why
+        # this matters (config.py's weights could change later).
+        shared_weights = get_shared_weights(tipo_carne, coccion, superficie, local)
+
         cursor = db.execute(
             """
             INSERT INTO asados
                 (date, nombre, description, tipo_carne, coccion,
-                 superficie, local, location, latitude, longitude, people, total_weight)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 superficie, local, location, latitude, longitude, people, total_weight,
+                 tipo_carne_weight, coccion_weight, superficie_weight, local_weight)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (date, nombre, description, tipo_carne, coccion,
-             superficie, local, location, latitude, longitude, people, total_weight),
+             superficie, local, location, latitude, longitude, people, total_weight,
+             shared_weights["carne"], shared_weights["coccion"],
+             shared_weights["superficie"], shared_weights["local"]),
         )
         asado_id = cursor.lastrowid  # the id SQLite just assigned to this new row
 
@@ -444,16 +538,19 @@ def new_asado():
                 continue  # silently skip an invalid id rather than crashing
 
             # Calculate this participant's points using our formula from config.py.
-            # Rol is per-participant, so points can differ between people
-            # even though they were at the SAME asado.
+            # Rol is per-participant, so points (and its weight) can
+            # differ between people even though they were at the SAME
+            # asado — freeze rol_weight here for the same reason as
+            # shared_weights above.
             points = calculate_points(tipo_carne, coccion, superficie, local, rol)
+            rol_weight = get_rol_weight(rol)
 
             db.execute(
                 """
-                INSERT INTO participations (asado_id, user_id, rol, points)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO participations (asado_id, user_id, rol, rol_weight, points)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (asado_id, user_id, rol, points),
+                (asado_id, user_id, rol, rol_weight, points),
             )
 
         db.commit()  # save everything permanently to the database file
@@ -515,6 +612,60 @@ def view_asado(asado_id):
     ).fetchall()
 
     return render_template("view_asado.html", asado=asado, participants=participants)
+
+
+@app.route("/base-asados")
+@login_required
+def base_asados():
+    """
+    "Base de Asados": a flat, spreadsheet-style table — one row per
+    PARTICIPATION rather than per asado (see BASE_ASADOS_QUERY above).
+    Meant for scanning/sorting like a spreadsheet, and for the CSV
+    export below.
+    """
+    db = get_db()
+    rows = db.execute(BASE_ASADOS_QUERY).fetchall()
+    return render_template("base_asados.html", rows=rows)
+
+
+@app.route("/base-asados/csv")
+@login_required
+def base_asados_csv():
+    """Exports the exact same rows as /base-asados as a downloadable CSV file."""
+    db = get_db()
+    rows = db.execute(BASE_ASADOS_QUERY).fetchall()
+
+    # csv.writer wants a file-like object to write into; io.StringIO
+    # gives us an in-memory "file" so we never touch the disk for this.
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Participation ID", "Asado ID", "Fecha", "Nombre Asado",
+        "Tipo Carne", "Peso Tipo Carne", "Cocción", "Peso Cocción",
+        "Superficie", "Peso Superficie", "Local", "Peso Local",
+        "Ubicación", "Latitud", "Longitud", "Personas", "Peso Total (kg)",
+        "Usuario", "Nombre", "Rol", "Peso Rol", "Puntos",
+    ])
+    for row in rows:
+        writer.writerow([
+            row["participation_id"], row["asado_id"], row["date"], row["nombre"],
+            row["tipo_carne"], row["tipo_carne_weight"], row["coccion"], row["coccion_weight"],
+            row["superficie"], row["superficie_weight"], row["local"], row["local_weight"],
+            row["location"], row["latitude"], row["longitude"], row["people"], row["total_weight"],
+            row["username"], row["name"], row["rol"], row["rol_weight"], row["points"],
+        ])
+
+    # "﻿" is a UTF-8 BOM (byte-order mark). Excel on Windows needs
+    # it to correctly detect UTF-8 and render accented characters
+    # (ñ, ó, í, etc.) instead of garbling them — invisible in every
+    # other program that opens this file.
+    csv_data = "﻿" + output.getvalue()
+
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=base_asados.csv"},
+    )
 
 
 # ---------------------------------------------------------------------

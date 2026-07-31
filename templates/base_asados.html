@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+<!--
+    base_asados.html = "Base de Asados": a flat, spreadsheet-style
+    table — one row per PARTICIPATION (not per asado, like index.html
+    is). Built from BASE_ASADOS_QUERY in app.py, a
+    "participations LEFT JOIN asados LEFT JOIN users" — so an asado
+    with 5 participants shows up as 5 rows here, each repeating that
+    asado's shared details (date, nombre, etc.) alongside the one
+    participant's own rol/points. This shape is what makes it exportable
+    as a normal CSV: one line per person-at-an-asado.
+-->
+
+{% block content %}
+<h2>Base de Asados</h2>
+
+<p><a href="{{ url_for('base_asados_csv') }}" class="secondary-button">⬇ Exportar CSV</a></p>
+
+{% if rows|length == 0 %}
+    <p class="empty-state">Todavía no hay participaciones registradas.</p>
+{% else %}
+    <!-- overflow-x:auto lets this wide table scroll horizontally on
+         narrow screens instead of squeezing every column unreadably
+         small or breaking the page layout. -->
+    <div class="spreadsheet-wrapper">
+        <table class="spreadsheet-table">
+            <thead>
+                <tr>
+                    <th>Participation ID</th>
+                    <th>Asado ID</th>
+                    <th>Fecha</th>
+                    <th>Nombre Asado</th>
+                    <th>Tipo Carne</th>
+                    <th>Peso Tipo Carne</th>
+                    <th>Cocción</th>
+                    <th>Peso Cocción</th>
+                    <th>Superficie</th>
+                    <th>Peso Superficie</th>
+                    <th>Local</th>
+                    <th>Peso Local</th>
+                    <th>Ubicación</th>
+                    <th>Latitud</th>
+                    <th>Longitud</th>
+                    <th>Personas</th>
+                    <th>Peso Total (kg)</th>
+                    <th>Usuario</th>
+                    <th>Nombre</th>
+                    <th>Rol</th>
+                    <th>Peso Rol</th>
+                    <th>Puntos</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                    <tr>
+                        <td>{{ row.participation_id }}</td>
+                        <td>{{ row.asado_id }}</td>
+                        <td>{{ row.date }}</td>
+                        <td>{{ row.nombre }}</td>
+                        <td>{{ row.tipo_carne }}</td>
+                        <td>{{ row.tipo_carne_weight }}</td>
+                        <td>{{ row.coccion }}</td>
+                        <td>{{ row.coccion_weight }}</td>
+                        <td>{{ row.superficie }}</td>
+                        <td>{{ row.superficie_weight }}</td>
+                        <td>{{ row.local }}</td>
+                        <td>{{ row.local_weight }}</td>
+                        <td>{{ row.location }}</td>
+                        <td>{{ row.latitude }}</td>
+                        <td>{{ row.longitude }}</td>
+                        <td>{{ row.people }}</td>
+                        <td>{{ row.total_weight }}</td>
+                        <td>{{ row.username }}</td>
+                        <td>{{ row.name }}</td>
+                        <td>{{ row.rol }}</td>
+                        <td>{{ row.rol_weight }}</td>
+                        <td>{{ row.points }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endif %}
+{% endblock %}

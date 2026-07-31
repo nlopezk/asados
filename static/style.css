@@ -287,6 +287,80 @@ button {
     color: #555;
 }
 
+/* --- Home page filters (date / user) --- */
+.filter-form {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 16px;
+    background: white;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.filter-field label {
+    font-weight: bold;
+    font-size: 0.85em;
+    color: #555;
+}
+
+.filter-field input,
+.filter-field select {
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 0.95em;
+}
+
+.filter-clear {
+    color: #b5432b;
+    font-size: 0.9em;
+    text-decoration: none;
+    align-self: center;
+}
+
+/* --- "Base de Asados" spreadsheet-style table ---
+   One row per participation, deliberately dense/gridded like a
+   spreadsheet rather than styled like the rest of the app. */
+.spreadsheet-wrapper {
+    overflow-x: auto; /* lets the wide table scroll instead of squeezing columns */
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.spreadsheet-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+    white-space: nowrap; /* keep each cell on one line, like a real spreadsheet */
+}
+
+.spreadsheet-table th,
+.spreadsheet-table td {
+    border: 1px solid #e0e0e0; /* grid lines on every cell, not just row dividers */
+    padding: 8px 10px;
+    text-align: left;
+}
+
+.spreadsheet-table thead th {
+    background-color: #f5efe9;
+    position: sticky; /* header stays visible while scrolling a long table */
+    top: 0;
+}
+
+.spreadsheet-table tbody tr:nth-child(even) {
+    background-color: #faf8f6;
+}
+
 /* --- Mobile responsiveness ---
    On small screens, stack the participant row inputs vertically
    instead of side by side, so nothing gets cramped. */

@@ -24,6 +24,7 @@
         {% if g.username %}
             <div class="navbar-right">
                 <a href="{{ url_for('new_asado') }}" class="nav-link">Añadir Asado</a>
+                <a href="{{ url_for('base_asados') }}" class="nav-link">📋 Base de Asados</a>
                 <a href="{{ url_for('config_page') }}" class="nav-link">⚙️ Config</a>
                 <span class="nav-username">👤 {{ g.name }}</span>
                 <a href="{{ url_for('logout') }}" class="nav-link">Salir</a>

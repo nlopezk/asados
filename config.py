@@ -75,6 +75,38 @@ ROL_WEIGHTS = {
 }
 
 
+def get_shared_weights(tipo_carne, coccion, superficie, local):
+    """
+    Looks up the 4 weights that are shared by every participant of the
+    SAME asado (everything except Rol, which is per-participant — see
+    get_rol_weight() below). Split out from calculate_points() so both
+    it AND app.py can use the exact same lookups: app.py needs these
+    numbers on their own to FREEZE them onto the asados row at creation
+    time (see schema.sql's tipo_carne_weight/coccion_weight/etc.
+    columns) — otherwise, if a weight in this file changes later,
+    there'd be no record of what weight actually produced an old
+    entry's stored points, even though the points themselves stay
+    frozen.
+
+    .get(key, default) looks up the weight; if the category isn't found
+    in our dictionary (e.g. a typo), it falls back to 1 instead of
+    crashing the whole app. This is a safety net for Phase 1.
+    """
+    return {
+        "carne": TIPO_CARNE_WEIGHTS.get(tipo_carne, 1),
+        "coccion": COCCION_WEIGHTS.get(coccion, 1),
+        "superficie": SUPERFICIE_WEIGHTS.get(superficie, 1),
+        "local": LOCAL_WEIGHTS.get(local, 1),
+    }
+
+
+def get_rol_weight(rol):
+    """The one weight that's per-participant rather than per-asado (see
+    get_shared_weights() above) — frozen onto participations.rol_weight
+    at creation time for the same reason."""
+    return ROL_WEIGHTS.get(rol, 1)
+
+
 def calculate_points(tipo_carne, coccion, superficie, local, rol):
     """
     Calculates the Points for ONE participant of ONE asado, by
@@ -92,14 +124,8 @@ def calculate_points(tipo_carne, coccion, superficie, local, rol):
 
     Returns a float (the calculated points).
     """
-    # .get(key, default) looks up the weight; if the category isn't found
-    # in our dictionary (e.g. a typo), it falls back to 1 instead of
-    # crashing the whole app. This is a safety net for Phase 1.
-    carne_w = TIPO_CARNE_WEIGHTS.get(tipo_carne, 1)
-    coccion_w = COCCION_WEIGHTS.get(coccion, 1)
-    superficie_w = SUPERFICIE_WEIGHTS.get(superficie, 1)
-    local_w = LOCAL_WEIGHTS.get(local, 1)
-    rol_w = ROL_WEIGHTS.get(rol, 1)
+    variables = get_shared_weights(tipo_carne, coccion, superficie, local)
+    variables["rol"] = get_rol_weight(rol)
 
     # eval() runs a STRING as if it were real Python code. We give it a
     # small "variables" dictionary as its only vocabulary — it can ONLY
@@ -111,13 +137,6 @@ def calculate_points(tipo_carne, coccion, superficie, local, rol):
     # something typed by a website visitor. eval() would be dangerous
     # if it ran text submitted through a web form; it's not dangerous
     # here because the text only ever comes from this file.
-    variables = {
-        "carne": carne_w,
-        "coccion": coccion_w,
-        "superficie": superficie_w,
-        "local": local_w,
-        "rol": rol_w,
-    }
     points = eval(FORMULA, {"__builtins__": {}}, variables)
 
     # round() to 2 decimals just for a cleaner number to display/store.

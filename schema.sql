@@ -50,7 +50,19 @@ CREATE TABLE asados (
     latitude REAL,                     -- geographic coordinate from the map picker (optional)
     longitude REAL,                    -- geographic coordinate from the map picker (optional)
     people INTEGER,                    -- total headcount at the asado
-    total_weight REAL                  -- total kg of meat (REAL = decimal number in SQLite)
+    total_weight REAL,                 -- total kg of meat (REAL = decimal number in SQLite)
+
+    -- The 4 numeric weights (from config.py's TIPO_CARNE_WEIGHTS etc.)
+    -- that fed into every participant's points calculation for THIS
+    -- asado, looked up and FROZEN here at creation time — same
+    -- reasoning as participations.points below: if config.py's weights
+    -- change later, old entries keep a record of what weight actually
+    -- produced their points, instead of only being reconstructable by
+    -- re-looking-up the (possibly since-changed) current weights.
+    tipo_carne_weight REAL,
+    coccion_weight REAL,
+    superficie_weight REAL,
+    local_weight REAL
 );
 
 -- ---------------------------------------------------------------------
@@ -65,6 +77,7 @@ CREATE TABLE participations (
     asado_id INTEGER NOT NULL,     -- which asado this participation belongs to
     user_id INTEGER NOT NULL,      -- which user this participation belongs to
     rol TEXT NOT NULL,             -- e.g. "Asador", "Ayudante", "Invitado", "Anfitrión"
+    rol_weight REAL NOT NULL,      -- this participant's Rol weight (config.py's ROL_WEIGHTS), FROZEN like points below
     points REAL NOT NULL,          -- calculated at creation time and FROZEN (never recalculated later)
 
     -- FOREIGN KEY = tells the database "this column must match an id that
