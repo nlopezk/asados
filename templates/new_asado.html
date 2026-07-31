@@ -97,7 +97,7 @@
 
     <!-- --- Optional, non-scoring fields, intentionally placed LAST --- -->
 
-    <label for="location">Ubicación (opcional)</label>
+    <label for="location">Ubicación</label>
     <div class="location-picker">
         <!-- autocomplete="off" stops the BROWSER's own address
              suggestions from covering up our custom dropdown below. -->
@@ -113,15 +113,15 @@
     <input type="hidden" id="latitude" name="latitude">
     <input type="hidden" id="longitude" name="longitude">
 
-    <label for="people">Cantidad de personas (opcional)</label>
+    <label for="people">Cantidad de personas</label>
     <input type="number" id="people" name="people" min="1">
 
-    <label for="total_weight">Peso Total en kg (opcional)</label>
+    <label for="total_weight">Peso Total en kg</label>
     <input type="number" step="0.1" id="total_weight" name="total_weight" min="0">
 
     <hr>
 
-    <button type="submit" class="primary-button">Save Asado</button>
+    <button type="submit" class="primary-button">Añadir Asado</button>
 </form>
 
 <!-- The map modal: hidden by default (class "hidden" sets display:none
@@ -212,8 +212,8 @@
             hintSpan.textContent = "(peso: " + rolWeight + ")";
 
             // Same formula as Python's calculate_points(), just written in JS:
-            //   Points = (0.45*carne + 0.35*coccion) * superficie * local * rol
-            const points = (0.45 * carneW + 0.35 * coccionW) * superficieW * localW * rolWeight;
+            //   Points = (0.6*carne + 0.4*coccion) * superficie * local * rol
+            const points = (0.6 * carneW + 0.4 * coccionW) * superficieW * localW * rolWeight;
             const roundedPoints = Math.round(points * 100) / 100; // round to 2 decimals
 
             const name = usernameInput.value.trim() || ("Participante " + (index + 1));
@@ -222,7 +222,7 @@
             line.className = "points-summary-line";
             line.innerHTML =
                 "<strong>" + name + "</strong> (" + rolSelect.value + "): " +
-                "(0.45×" + carneW + " + 0.35×" + coccionW + ") × " +
+                "(0.6×" + carneW + " + 0.4×" + coccionW + ") × " +
                 superficieW + " × " + localW + " × " + rolWeight +
                 " = <strong>" + roundedPoints + " pts</strong>";
             summaryDiv.appendChild(line);

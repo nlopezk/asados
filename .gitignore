@@ -1,6 +1,6 @@
-   asados.db
-   __pycache__/
-   *.pyc
-   venv/
-   env/
-   .vscode/
+asados.db
+__pycache__/
+*.pyc
+venv/
+env/
+.vscode/
