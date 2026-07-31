@@ -62,7 +62,7 @@ def calculate_points(tipo_carne, coccion, superficie, local, rol):
     Calculates the Points for ONE participant of ONE asado, using the
     formula you defined:
 
-        Points = (0.45 * TipoCarne + 0.35 * Coccion) * Superficie * Local * Rol
+        Points = (0.6 * TipoCarne + 0.4 * Coccion) * Superficie * Local * Rol
 
     Parameters are the CATEGORY NAMES (strings, e.g. "Vacío"), and this
     function looks up their numeric weight from the dictionaries above
@@ -79,7 +79,7 @@ def calculate_points(tipo_carne, coccion, superficie, local, rol):
     local_w = LOCAL_WEIGHTS.get(local, 1)
     rol_w = ROL_WEIGHTS.get(rol, 1)
 
-    points = (0.45 * carne_w + 0.35 * coccion_w) * superficie_w * local_w * rol_w
+    points = (0.6 * carne_w + 0.4 * coccion_w) * superficie_w * local_w * rol_w
 
     # round() to 2 decimals just for a cleaner number to display/store.
     return round(points, 2)

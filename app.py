@@ -112,6 +112,11 @@ def new_asado():
         superficie = request.form["superficie"]
         local = request.form["local"]
         location = request.form.get("location", "")
+        # These are hidden inputs, filled in by the map-picker JavaScript
+        # (see new_asado.html). type=float means Flask converts the text
+        # to a Python float automatically; if empty, it becomes None.
+        latitude = request.form.get("latitude", type=float)
+        longitude = request.form.get("longitude", type=float)
         people = request.form.get("people", type=int)
         total_weight = request.form.get("total_weight", type=float)
 
@@ -120,11 +125,11 @@ def new_asado():
             """
             INSERT INTO asados
                 (date, nombre, description, tipo_carne, coccion,
-                 superficie, local, location, people, total_weight)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 superficie, local, location, latitude, longitude, people, total_weight)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (date, nombre, description, tipo_carne, coccion,
-             superficie, local, location, people, total_weight),
+             superficie, local, location, latitude, longitude, people, total_weight),
         )
         asado_id = cursor.lastrowid  # the id SQLite just assigned to this new row
 
@@ -172,6 +177,20 @@ def new_asado():
     # GET request: just show the blank form.
     # We pass the category dictionaries so the HTML can build dropdowns
     # from them, instead of hardcoding options in the template too.
+    #
+    # We ALSO pass the full weight dictionaries as a single "weights"
+    # object. The template will convert this to JSON with Jinja's
+    # |tojson filter, so JavaScript in the browser can read the exact
+    # same numbers Python uses — letting us show a LIVE points preview
+    # without needing to contact the server on every dropdown change.
+    weights = {
+        "tipo_carne": TIPO_CARNE_WEIGHTS,
+        "coccion": COCCION_WEIGHTS,
+        "superficie": SUPERFICIE_WEIGHTS,
+        "local": LOCAL_WEIGHTS,
+        "rol": ROL_WEIGHTS,
+    }
+
     return render_template(
         "new_asado.html",
         tipo_carne_options=TIPO_CARNE_WEIGHTS.keys(),
@@ -179,6 +198,7 @@ def new_asado():
         superficie_options=SUPERFICIE_WEIGHTS.keys(),
         local_options=LOCAL_WEIGHTS.keys(),
         rol_options=ROL_WEIGHTS.keys(),
+        weights=weights,
     )
 
 

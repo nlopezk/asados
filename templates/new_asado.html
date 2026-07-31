@@ -4,14 +4,22 @@
     It receives the *_options variables from app.py so the dropdowns
     are built from config.py's dictionaries instead of being hardcoded
     twice (once in Python, once in HTML).
+
+    It ALSO receives "weights" (all the point-weight dictionaries as
+    one object) so JavaScript can calculate a LIVE points preview as
+    the user picks options, without contacting the server.
 -->
 
 {% block content %}
 <h1>New Asado</h1>
 
-<!-- method="POST" means the form data is sent in the request body
-     (not visible in the URL), which is standard for creating data. -->
-<form method="POST" class="asado-form">
+<!-- Leaflet is the mapping library we use for the location picker.
+     It's loaded from a public CDN — this runs in the user's own
+     browser, so it just needs their internet connection, not ours. -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<form method="POST" class="asado-form" id="asado-form">
 
     <label for="nombre">Nombre Asado</label>
     <input type="text" id="nombre" name="nombre" required>
@@ -22,48 +30,50 @@
     <label for="description">Descripción (opcional)</label>
     <textarea id="description" name="description"></textarea>
 
-    <label for="tipo_carne">Tipo de Carne</label>
+    <!-- Each "pointed" dropdown below has a <span class="weight-hint">
+         next to it. JS fills this in with the weight of whatever
+         option is currently selected, so the user sees the impact of
+         their choice immediately. -->
+
+    <label for="tipo_carne">Tipo de Carne
+        <span class="weight-hint" id="hint-tipo_carne"></span>
+    </label>
     <select id="tipo_carne" name="tipo_carne" required>
         {% for option in tipo_carne_options %}
             <option value="{{ option }}">{{ option }}</option>
         {% endfor %}
     </select>
 
-    <label for="coccion">Tipo de Cocción</label>
+    <label for="coccion">Tipo de Cocción
+        <span class="weight-hint" id="hint-coccion"></span>
+    </label>
     <select id="coccion" name="coccion" required>
         {% for option in coccion_options %}
             <option value="{{ option }}">{{ option }}</option>
         {% endfor %}
     </select>
 
-    <label for="superficie">Superficie</label>
+    <label for="superficie">Superficie
+        <span class="weight-hint" id="hint-superficie"></span>
+    </label>
     <select id="superficie" name="superficie" required>
         {% for option in superficie_options %}
             <option value="{{ option }}">{{ option }}</option>
         {% endfor %}
     </select>
 
-    <label for="local">Local</label>
+    <label for="local">Local
+        <span class="weight-hint" id="hint-local"></span>
+    </label>
     <select id="local" name="local" required>
         {% for option in local_options %}
             <option value="{{ option }}">{{ option }}</option>
         {% endfor %}
     </select>
 
-    <label for="location">Ubicación (opcional)</label>
-    <input type="text" id="location" name="location">
-
-    <label for="people">Cantidad de personas</label>
-    <input type="number" id="people" name="people" min="1">
-
-    <label for="total_weight">Peso Total (kg)</label>
-    <input type="number" step="0.1" id="total_weight" name="total_weight" min="0">
-
     <hr>
 
     <h3>Participantes</h3>
-    <!-- This div is where we'll dynamically add one row per participant.
-         It starts with ONE row already present. -->
     <div id="participants-container">
         <div class="participant-row">
             <input type="text" name="participant_username" placeholder="Username" required>
@@ -72,35 +82,327 @@
                     <option value="{{ option }}">{{ option }}</option>
                 {% endfor %}
             </select>
+            <span class="weight-hint participant-weight-hint"></span>
         </div>
     </div>
 
-    <!-- type="button" (not "submit") so clicking this does NOT submit
-         the form — it only runs our JS function below. -->
     <button type="button" onclick="addParticipantRow()">+ Añadir otro participante</button>
+
+    <!-- This box is filled in live by JS: for every participant, it
+         shows the actual formula with real numbers plugged in, plus
+         the resulting points — updated on every relevant change. -->
+    <div id="points-summary" class="points-summary"></div>
+
+    <hr>
+
+    <!-- --- Optional, non-scoring fields, intentionally placed LAST --- -->
+
+    <label for="location">Ubicación (opcional)</label>
+    <div class="location-picker">
+        <!-- autocomplete="off" stops the BROWSER's own address
+             suggestions from covering up our custom dropdown below. -->
+        <input type="text" id="location" name="location" autocomplete="off"
+               placeholder="Escribe una dirección...">
+        <!-- This div holds the live search-suggestion list, positioned
+             right under the text input via CSS. -->
+        <div id="address-suggestions" class="address-suggestions"></div>
+        <button type="button" id="open-map-btn" class="secondary-button">📍 Elegir en el mapa</button>
+    </div>
+    <!-- Hidden inputs: not visible to the user, but submitted with the
+         form so app.py can save the coordinates. -->
+    <input type="hidden" id="latitude" name="latitude">
+    <input type="hidden" id="longitude" name="longitude">
+
+    <label for="people">Cantidad de personas (opcional)</label>
+    <input type="number" id="people" name="people" min="1">
+
+    <label for="total_weight">Peso Total en kg (opcional)</label>
+    <input type="number" step="0.1" id="total_weight" name="total_weight" min="0">
 
     <hr>
 
     <button type="submit" class="primary-button">Save Asado</button>
 </form>
 
+<!-- The map modal: hidden by default (class "hidden" sets display:none
+     in our CSS), shown when the user clicks "Elegir en el mapa". -->
+<div id="map-modal" class="map-modal hidden">
+    <div class="map-modal-content">
+        <div id="map-picker" class="map-picker"></div>
+        <div class="map-modal-actions">
+            <span id="map-picked-address" class="map-picked-address"></span>
+            <button type="button" id="map-confirm-btn" class="primary-button">Confirmar ubicación</button>
+            <button type="button" id="map-cancel-btn" class="secondary-button">Cancelar</button>
+        </div>
+    </div>
+</div>
+
 <script>
-    // This function is called every time the user clicks
-    // "+ Add another participant". It clones the existing row's HTML
-    // structure and appends a fresh, empty copy.
+    // =================================================================
+    // WEIGHTS: injected directly from Flask/Python via the |tojson
+    // filter. This turns our Python dictionaries into a real
+    // JavaScript object, so both languages always agree on the numbers
+    // — no need to duplicate the weights by hand in JS.
+    // =================================================================
+    const WEIGHTS = {{ weights|tojson }};
+
+    // -----------------------------------------------------------------
+    // PARTICIPANT ROWS (unchanged logic from before, plus we now also
+    // wire up the new row's weight-hint + live-summary listeners)
+    // -----------------------------------------------------------------
     function addParticipantRow() {
         const container = document.getElementById("participants-container");
         const firstRow = container.querySelector(".participant-row");
 
-        // cloneNode(true) copies the element AND its children (the input + select)
         const newRow = firstRow.cloneNode(true);
-
-        // Reset the cloned inputs so they start empty instead of
-        // copying whatever the user already typed in the first row.
         newRow.querySelector("input").value = "";
         newRow.querySelector("select").selectedIndex = 0;
 
         container.appendChild(newRow);
+        wireParticipantRow(newRow);
+        updatePointsSummary();
     }
+
+    // Attaches the "recalculate on change" listeners to one participant row.
+    function wireParticipantRow(row) {
+        row.querySelector("select").addEventListener("change", updatePointsSummary);
+        row.querySelector("input").addEventListener("input", updatePointsSummary);
+    }
+
+    // -----------------------------------------------------------------
+    // LIVE POINTS PREVIEW
+    // -----------------------------------------------------------------
+
+    // Updates the small "(weight: X)" text next to each of the 4
+    // shared dropdowns (tipo_carne, coccion, superficie, local).
+    function updateWeightHints() {
+        ["tipo_carne", "coccion", "superficie", "local"].forEach(function (field) {
+            const select = document.getElementById(field);
+            const hint = document.getElementById("hint-" + field);
+            const weight = WEIGHTS[field][select.value];
+            hint.textContent = "(peso: " + weight + ")";
+        });
+    }
+
+    // Recalculates and displays, for EVERY participant row, the full
+    // equation (with real numbers) and the resulting points — mirroring
+    // exactly the Python formula in config.py's calculate_points().
+    function updatePointsSummary() {
+        const carne = document.getElementById("tipo_carne").value;
+        const coccion = document.getElementById("coccion").value;
+        const superficie = document.getElementById("superficie").value;
+        const local = document.getElementById("local").value;
+
+        const carneW = WEIGHTS.tipo_carne[carne];
+        const coccionW = WEIGHTS.coccion[coccion];
+        const superficieW = WEIGHTS.superficie[superficie];
+        const localW = WEIGHTS.local[local];
+
+        const rows = document.querySelectorAll(".participant-row");
+        const summaryDiv = document.getElementById("points-summary");
+        summaryDiv.innerHTML = ""; // clear previous content before rebuilding
+
+        rows.forEach(function (row, index) {
+            const usernameInput = row.querySelector("input");
+            const rolSelect = row.querySelector("select");
+            const rolWeight = WEIGHTS.rol[rolSelect.value];
+            const hintSpan = row.querySelector(".participant-weight-hint");
+
+            // Update this row's own "(peso: X)" hint next to its Rol dropdown.
+            hintSpan.textContent = "(peso: " + rolWeight + ")";
+
+            // Same formula as Python's calculate_points(), just written in JS:
+            //   Points = (0.45*carne + 0.35*coccion) * superficie * local * rol
+            const points = (0.45 * carneW + 0.35 * coccionW) * superficieW * localW * rolWeight;
+            const roundedPoints = Math.round(points * 100) / 100; // round to 2 decimals
+
+            const name = usernameInput.value.trim() || ("Participante " + (index + 1));
+
+            const line = document.createElement("div");
+            line.className = "points-summary-line";
+            line.innerHTML =
+                "<strong>" + name + "</strong> (" + rolSelect.value + "): " +
+                "(0.45×" + carneW + " + 0.35×" + coccionW + ") × " +
+                superficieW + " × " + localW + " × " + rolWeight +
+                " = <strong>" + roundedPoints + " pts</strong>";
+            summaryDiv.appendChild(line);
+        });
+    }
+
+    // Recalculate everything whenever a shared dropdown changes.
+    ["tipo_carne", "coccion", "superficie", "local"].forEach(function (field) {
+        document.getElementById(field).addEventListener("change", function () {
+            updateWeightHints();
+            updatePointsSummary();
+        });
+    });
+
+    // Wire up the first (already-present) participant row.
+    wireParticipantRow(document.querySelector(".participant-row"));
+
+    // Run once on page load so the hints/summary aren't blank before
+    // the user touches anything.
+    updateWeightHints();
+    updatePointsSummary();
+
+    // =================================================================
+    // LOCATION PICKER: address autocomplete + map, using OpenStreetMap's
+    // free Nominatim search service (no API key needed).
+    // =================================================================
+
+    const locationInput = document.getElementById("location");
+    const suggestionsBox = document.getElementById("address-suggestions");
+    const latInput = document.getElementById("latitude");
+    const lonInput = document.getElementById("longitude");
+
+    // "Debounce" = wait until the user pauses typing before searching,
+    // instead of firing a request on every single keystroke. This is
+    // both faster for the user and respectful of Nominatim's free
+    // service (which asks that we avoid hammering it with requests).
+    let debounceTimer = null;
+
+    locationInput.addEventListener("input", function () {
+        clearTimeout(debounceTimer);
+        const query = locationInput.value.trim();
+
+        if (query.length < 3) {
+            suggestionsBox.innerHTML = "";
+            return;
+        }
+
+        debounceTimer = setTimeout(function () {
+            searchAddress(query);
+        }, 400); // wait 400ms after the last keystroke
+    });
+
+    // Calls Nominatim's search endpoint and renders the results as a
+    // clickable list under the text input.
+    function searchAddress(query) {
+        const url = "https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&q=" + encodeURIComponent(query);
+
+        fetch(url, { headers: { "Accept-Language": "es" } })
+            .then(function (response) { return response.json(); })
+            .then(function (results) {
+                suggestionsBox.innerHTML = "";
+                results.forEach(function (result) {
+                    const item = document.createElement("div");
+                    item.className = "address-suggestion-item";
+                    item.textContent = result.display_name;
+                    item.addEventListener("click", function () {
+                        selectAddress(result.display_name, result.lat, result.lon);
+                    });
+                    suggestionsBox.appendChild(item);
+                });
+            })
+            .catch(function (error) {
+                console.error("Address search failed:", error);
+            });
+    }
+
+    // Fills the form fields once an address is chosen (either from the
+    // autocomplete list or from clicking the map).
+    function selectAddress(displayName, lat, lon) {
+        locationInput.value = displayName;
+        latInput.value = lat;
+        lonInput.value = lon;
+        suggestionsBox.innerHTML = "";
+    }
+
+    // Hide the suggestions list if the user clicks anywhere else on the page.
+    document.addEventListener("click", function (event) {
+        if (event.target !== locationInput) {
+            suggestionsBox.innerHTML = "";
+        }
+    });
+
+    // -----------------------------------------------------------------
+    // MAP MODAL (click-to-pick-a-point)
+    // -----------------------------------------------------------------
+    const mapModal = document.getElementById("map-modal");
+    const openMapBtn = document.getElementById("open-map-btn");
+    const cancelMapBtn = document.getElementById("map-cancel-btn");
+    const confirmMapBtn = document.getElementById("map-confirm-btn");
+    const pickedAddressLabel = document.getElementById("map-picked-address");
+
+    let leafletMap = null;    // will hold the Leaflet map instance
+    let mapMarker = null;     // will hold the draggable marker
+    let pickedLat = null;
+    let pickedLon = null;
+    let pickedDisplayName = "";
+
+    openMapBtn.addEventListener("click", function () {
+        mapModal.classList.remove("hidden");
+
+        // Leaflet needs the container to be VISIBLE before it
+        // initializes correctly, so we create the map only the first
+        // time the modal is opened (and refresh its size afterward).
+        if (leafletMap === null) {
+            // Default view: centered on Santiago, Chile.
+            leafletMap = L.map("map-picker").setView([-33.4489, -70.6693], 12);
+
+            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                attribution: "&copy; OpenStreetMap contributors"
+            }).addTo(leafletMap);
+
+            // Clicking anywhere on the map drops/moves the marker and
+            // reverse-geocodes that point into a human-readable address.
+            leafletMap.on("click", function (event) {
+                placeMarker(event.latlng.lat, event.latlng.lng);
+                reverseGeocode(event.latlng.lat, event.latlng.lng);
+            });
+        }
+
+        // Fixes a common Leaflet quirk where the map renders wrong if
+        // it was initialized while its container was hidden.
+        setTimeout(function () { leafletMap.invalidateSize(); }, 100);
+    });
+
+    function placeMarker(lat, lon) {
+        pickedLat = lat;
+        pickedLon = lon;
+
+        if (mapMarker === null) {
+            mapMarker = L.marker([lat, lon], { draggable: true }).addTo(leafletMap);
+            // If the user drags the marker after placing it, re-run
+            // reverse geocoding for the new position.
+            mapMarker.on("dragend", function () {
+                const pos = mapMarker.getLatLng();
+                placeMarker(pos.lat, pos.lng);
+                reverseGeocode(pos.lat, pos.lng);
+            });
+        } else {
+            mapMarker.setLatLng([lat, lon]);
+        }
+    }
+
+    // Converts coordinates back into a readable address using
+    // Nominatim's "reverse" endpoint (the opposite of search).
+    function reverseGeocode(lat, lon) {
+        const url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lon;
+
+        pickedAddressLabel.textContent = "Buscando dirección...";
+
+        fetch(url, { headers: { "Accept-Language": "es" } })
+            .then(function (response) { return response.json(); })
+            .then(function (result) {
+                pickedDisplayName = result.display_name || (lat + ", " + lon);
+                pickedAddressLabel.textContent = pickedDisplayName;
+            })
+            .catch(function () {
+                pickedDisplayName = lat + ", " + lon;
+                pickedAddressLabel.textContent = pickedDisplayName;
+            });
+    }
+
+    confirmMapBtn.addEventListener("click", function () {
+        if (pickedLat !== null && pickedLon !== null) {
+            selectAddress(pickedDisplayName, pickedLat, pickedLon);
+        }
+        mapModal.classList.add("hidden");
+    });
+
+    cancelMapBtn.addEventListener("click", function () {
+        mapModal.classList.add("hidden");
+    });
 </script>
 {% endblock %}

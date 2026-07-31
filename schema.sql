@@ -39,6 +39,8 @@ CREATE TABLE asados (
     superficie TEXT NOT NULL,          -- e.g. "Parrilla", "Plancha", "Disco"
     local TEXT NOT NULL,               -- e.g. "Casa", "Restaurante", "Quincho"
     location TEXT,                     -- free text: address / place name (optional)
+    latitude REAL,                     -- geographic coordinate from the map picker (optional)
+    longitude REAL,                    -- geographic coordinate from the map picker (optional)
     people INTEGER,                    -- total headcount at the asado
     total_weight REAL                  -- total kg of meat (REAL = decimal number in SQLite)
 );

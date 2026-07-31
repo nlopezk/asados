@@ -14,7 +14,20 @@
     <tr><th>Superficie</th><td>{{ asado.superficie }}</td></tr>
     <tr><th>Local</th><td>{{ asado.local }}</td></tr>
     {% if asado.location %}
-        <tr><th>Ubicación</th><td>{{ asado.location }}</td></tr>
+        <tr>
+            <th>Ubicación</th>
+            <td>
+                {{ asado.location }}
+                {% if asado.latitude and asado.longitude %}
+                    <br>
+                    <!-- Links out to OpenStreetMap's own viewer, centered
+                         on the saved coordinates. Just a link, so no
+                         mapping library needs to be loaded on this page. -->
+                    <a href="https://www.openstreetmap.org/?mlat={{ asado.latitude }}&mlon={{ asado.longitude }}#map=16/{{ asado.latitude }}/{{ asado.longitude }}"
+                       target="_blank" rel="noopener">📍 Ver en el mapa</a>
+                {% endif %}
+            </td>
+        </tr>
     {% endif %}
     {% if asado.people %}
         <tr><th>Cantidad de personas</th><td>{{ asado.people }}</td></tr>
