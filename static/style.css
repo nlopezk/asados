@@ -173,6 +173,14 @@ button {
     border-radius: 8px;
 }
 
+.success-message {
+    background: #e8f5e9;
+    border: 1px solid #b5d5b8;
+    color: #2c6a30;
+    padding: 10px 14px;
+    border-radius: 8px;
+}
+
 /* --- Weight hints next to dropdowns --- */
 .weight-hint {
     font-weight: normal;

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+<!--
+    config.html = the "Configuración" page.
+    Every logged-in user sees the "Mi Perfil" form (change their own
+    name/password). Admin users (g.role == "admin") ALSO see the user
+    list + create-user form below it — "users" is None for normal
+    users, which is how this template knows whether to show that part.
+-->
+
+{% block content %}
+<h2>Configuración</h2>
+
+{% if success %}
+    <p class="success-message">{{ success }}</p>
+{% endif %}
+{% if error %}
+    <p class="error-message">{{ error }}</p>
+{% endif %}
+
+<h3>Mi Perfil</h3>
+<form method="POST" action="{{ url_for('update_profile') }}" class="asado-form">
+    <label for="name">Nombre</label>
+    <input type="text" id="name" name="name" value="{{ g.name }}" required>
+
+    <label for="new_password">Nueva Contraseña</label>
+    <input type="password" id="new_password" name="new_password" placeholder="Dejar en blanco para no cambiarla">
+
+    <button type="submit" class="primary-button">Guardar Cambios</button>
+</form>
+
+{% if users is not none %}
+    <hr>
+    <h3>Administración de Usuarios</h3>
+
+    <table class="detail-table">
+        <thead>
+            <tr>
+                <th>Usuario</th>
+                <th>Nombre</th>
+                <th>Rol</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+                <tr>
+                    <td>{{ user.username }}</td>
+                    <td>{{ user.name }}</td>
+                    <td>{{ user.role }}</td>
+                    <td>
+                        {% if user.id != session.user_id %}
+                            <!-- confirm() gives one last chance to back out,
+                                 since deletion has no undo in this app. -->
+                            <form method="POST" action="{{ url_for('delete_user_route', user_id=user.id) }}"
+                                  onsubmit="return confirm('¿Eliminar al usuario {{ user.username }}?');">
+                                <button type="submit" class="secondary-button">Eliminar</button>
+                            </form>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h3>Crear Nuevo Usuario</h3>
+    <form method="POST" action="{{ url_for('create_user_route') }}" class="asado-form">
+        <label for="new_username">Usuario</label>
+        <input type="text" id="new_username" name="username" required>
+
+        <label for="new_name">Nombre</label>
+        <input type="text" id="new_name" name="name" required>
+
+        <label for="new_user_password">Contraseña</label>
+        <input type="password" id="new_user_password" name="password" required>
+
+        <label for="new_role">Rol</label>
+        <select id="new_role" name="role">
+            <option value="normal" selected>Normal</option>
+            <option value="admin">Admin</option>
+        </select>
+
+        <button type="submit" class="primary-button">Crear Usuario</button>
+    </form>
+{% endif %}
+{% endblock %}

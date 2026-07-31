@@ -24,7 +24,11 @@ CREATE TABLE users (
     -- directly, they couldn't recover the real password from this.
     -- Accounts are created via the create_user.py script (see README),
     -- not through a public sign-up page.
-    password_hash TEXT NOT NULL
+    password_hash TEXT NOT NULL,
+    name TEXT NOT NULL,                    -- display name, e.g. "Don Nicola" (separate from the login username)
+    -- "admin" can create/delete accounts from the Configuración page;
+    -- "normal" can only edit their own name/password there.
+    role TEXT NOT NULL DEFAULT 'normal' CHECK (role IN ('admin', 'normal'))
 );
 
 -- ---------------------------------------------------------------------

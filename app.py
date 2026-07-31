@@ -13,7 +13,7 @@ import sqlite3                     # Python's built-in library to talk to SQLite
 import os
 import functools
 from flask import Flask, render_template, request, redirect, url_for, g, jsonify, session
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 from config import (
     calculate_points, TIPO_CARNE_WEIGHTS, COCCION_WEIGHTS, SUPERFICIE_WEIGHTS,
     LOCAL_WEIGHTS, ROL_WEIGHTS, FORMULA, VARIABLE_LABELS,
@@ -114,21 +114,46 @@ def login_required(view_function):
     return wrapped_view
 
 
+def admin_required(view_function):
+    """
+    Like @login_required, but ALSO requires the logged-in user's role
+    to be "admin" (see the users.role column in schema.sql). Used for
+    the account-management actions on the Configuración page (creating
+    and deleting other users) — normal users can only reach their own
+    profile fields there.
+    """
+    @functools.wraps(view_function)
+    def wrapped_view(*args, **kwargs):
+        if session.get("user_id") is None:
+            return redirect(url_for("login", next=request.path))
+        if g.role != "admin":
+            return "Acceso denegado: se requieren permisos de administrador.", 403
+        return view_function(*args, **kwargs)
+    return wrapped_view
+
+
 @app.before_request
 def load_logged_in_user():
     """
     Runs before EVERY request. If the session says someone is logged
-    in, we look up their username here once and stash it on Flask's 'g'
-    object — so every template can display "logged in as ___" without
-    each route having to re-fetch it individually.
+    in, we look up their username/name/role here once and stash it on
+    Flask's 'g' object — so every template can display "logged in as
+    ___" (and check admin-only UI) without each route having to
+    re-fetch it individually.
     """
     user_id = session.get("user_id")
     if user_id is None:
         g.username = None
+        g.name = None
+        g.role = None
     else:
         db = get_db()
-        user = db.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+        user = db.execute(
+            "SELECT username, name, role FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
         g.username = user["username"] if user else None
+        g.name = user["name"] if user else None
+        g.role = user["role"] if user else None
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -177,6 +202,124 @@ def logout():
     """Clears the session (logs the user out) and returns to login."""
     session.clear()
     return redirect(url_for("login"))
+
+
+# ---------------------------------------------------------------------
+# CONFIGURACIÓN (profile settings + admin user management)
+# ---------------------------------------------------------------------
+# Every logged-in user can change their own name/password here. Admins
+# (users.role == "admin") additionally see a user-management panel to
+# create or delete accounts, replacing the terminal-only create_user.py
+# script for day-to-day use (that script remains the way to create the
+# very first admin account, since this page requires being logged in
+# already).
+#
+# "Success"/"error" feedback is passed back as query-string params after
+# a redirect (?success=...&error=...), the same lightweight pattern used
+# by login.html's error message — no flash-message system needed yet.
+
+@app.route("/config")
+@login_required
+def config_page():
+    db = get_db()
+    users = None
+    if g.role == "admin":
+        # Only fetch the full user list when it'll actually be shown —
+        # normal users only ever see their own profile fields.
+        users = db.execute(
+            "SELECT id, username, name, role FROM users ORDER BY username"
+        ).fetchall()
+
+    return render_template(
+        "config.html",
+        users=users,
+        success=request.args.get("success"),
+        error=request.args.get("error"),
+    )
+
+
+@app.route("/config/profile", methods=["POST"])
+@login_required
+def update_profile():
+    """Lets ANY logged-in user change their own display name and,
+    optionally, their password (leaving the password field blank keeps
+    the current one)."""
+    db = get_db()
+    name = request.form.get("name", "").strip()
+    new_password = request.form.get("new_password", "")
+
+    if not name:
+        return redirect(url_for("config_page", error="El nombre no puede estar vacío."))
+
+    if new_password:
+        password_hash = generate_password_hash(new_password)
+        db.execute(
+            "UPDATE users SET name = ?, password_hash = ? WHERE id = ?",
+            (name, password_hash, session["user_id"]),
+        )
+    else:
+        db.execute("UPDATE users SET name = ? WHERE id = ?", (name, session["user_id"]))
+    db.commit()
+
+    return redirect(url_for("config_page", success="Perfil actualizado."))
+
+
+@app.route("/config/users/create", methods=["POST"])
+@admin_required
+def create_user_route():
+    """Admin-only: create a new account without needing terminal access
+    to create_user.py."""
+    db = get_db()
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "")
+    name = request.form.get("name", "").strip()
+    role = request.form.get("role", "normal")
+
+    if not username or not password or not name:
+        return redirect(url_for("config_page", error="Usuario, contraseña y nombre son obligatorios."))
+    if role not in ("admin", "normal"):
+        role = "normal"
+
+    password_hash = generate_password_hash(password)
+    try:
+        db.execute(
+            "INSERT INTO users (username, password_hash, name, role) VALUES (?, ?, ?, ?)",
+            (username, password_hash, name, role),
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        # users.username is UNIQUE — this fires if that name is taken.
+        return redirect(url_for("config_page", error=f"El usuario '{username}' ya existe."))
+
+    return redirect(url_for("config_page", success=f"Usuario '{username}' creado."))
+
+
+@app.route("/config/users/<int:user_id>/delete", methods=["POST"])
+@admin_required
+def delete_user_route(user_id):
+    """Admin-only: remove an account. Blocked in two cases to avoid
+    footguns: deleting yourself (would lock you out with no other admin
+    action possible from the UI), and deleting someone who already has
+    asado participations recorded (schema.sql has no ON DELETE CASCADE,
+    so those rows would silently become orphaned and vanish from that
+    asado's participant list instead of erroring)."""
+    db = get_db()
+
+    if user_id == session["user_id"]:
+        return redirect(url_for("config_page", error="No puedes eliminar tu propia cuenta."))
+
+    has_participations = db.execute(
+        "SELECT 1 FROM participations WHERE user_id = ? LIMIT 1", (user_id,)
+    ).fetchone()
+    if has_participations:
+        return redirect(url_for(
+            "config_page",
+            error="No se puede eliminar: este usuario tiene asados registrados.",
+        ))
+
+    db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    db.commit()
+    return redirect(url_for("config_page", success="Usuario eliminado."))
 
 
 # ---------------------------------------------------------------------
