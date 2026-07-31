@@ -8,6 +8,13 @@
 {% block content %}
 <h2>Listado de Asados</h2>
 
+{% if success %}
+    <p class="success-message">{{ success }}</p>
+{% endif %}
+{% if error %}
+    <p class="error-message">{{ error }}</p>
+{% endif %}
+
 <!-- FILTERS: a plain GET form so the filtered view is just a normal,
      bookmarkable URL (?date=...&user_id=...) — app.py's index() route
      reads those two query params to narrow the SQL query. Each field
@@ -65,10 +72,28 @@
             <p class="asado-participants-label">Participantes:</p>
             <ul class="participant-list">
                 {% for p in item.participants %}
-                    <li>{{ p.username }} — {{ p.rol }} — <strong>{{ p.points }} pts</strong></li>
+                    <li>{{ p.name }} — {{ p.rol }} — <strong>{{ p.points }} pts</strong></li>
                 {% endfor %}
             </ul>
         </div>
     {% endfor %}
 </div>
+
+{% if total_pages > 1 %}
+    <!-- PAGINATION: preserves the current filters in each link (page
+         only changes date/user_id stays put) via url_for's kwargs —
+         Flask/Werkzeug drops any kwarg whose value is none from the
+         resulting URL, so an unset filter just doesn't appear in it. -->
+    <nav class="pagination">
+        {% if page > 1 %}
+            <a href="{{ url_for('index', page=page-1, date=selected_date or none, user_id=selected_user_id or none) }}"
+               class="secondary-button">← Anterior</a>
+        {% endif %}
+        <span class="pagination-status">Página {{ page }} de {{ total_pages }}</span>
+        {% if page < total_pages %}
+            <a href="{{ url_for('index', page=page+1, date=selected_date or none, user_id=selected_user_id or none) }}"
+               class="secondary-button">Siguiente →</a>
+        {% endif %}
+    </nav>
+{% endif %}
 {% endblock %}

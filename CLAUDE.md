@@ -34,6 +34,11 @@ python -c "from app import init_db; init_db()"
 # You need at least one admin to manage further accounts from /config.
 python create_user.py <username> <password> <name> [role]
 
+# Fill the DB with <count> randomly-generated asados/participations, for
+# trying out filters/Base de Asados/CSV export without typing real data.
+# Uses your EXISTING users as participants; adds on top, doesn't wipe.
+python seed_random_asados.py <count>
+
 # Run the dev server (debug=True: auto-reloads, verbose error pages)
 python app.py
 # -> http://127.0.0.1:5000
@@ -59,8 +64,11 @@ Phase 5 – Make it responsive. Improve CSS/layout so it works well on phones, s
 Phase 6 – Deploy. Put it online (e.g. Render, Railway, Fly.io — all have free tiers) so others can actually use it from their phones.
 Phase 7+ – Advanced. Photo uploads, notifications, a proper mobile app wrapper (e.g. Capacitor) or React Native, richer stats/dashboards, etc.
 
-**Currently at the end of Phase 2** (login exists; no edit/delete, no
-stats, not deployed yet).
+**Currently at the end of Phase 3** (login + edit/delete exist; no
+stats, not deployed yet). Phase 3 deliberately deviated from its own
+description above: editing is open to **every** logged-in user (not
+"only your own entries"), while deleting is **admin-only** — see the
+"Edit/delete permissions" note below.
 
 ## Architecture
 
@@ -71,10 +79,19 @@ yet, just one Flask app with a handful of routes:
 - `/` (`index`) — lists all asados, newest first, with each one's
   participants and points joined in. Accepts optional `?date=` and
   `?user_id=` query params to filter the list (a plain GET form in
-  `index.html` auto-submits on change — no JS fetch needed)
+  `index.html` auto-submits on change — no JS fetch needed), and
+  `?page=` to paginate (`INDEX_PAGE_SIZE` = 30/page, filters and page
+  compose together — page count is computed AFTER filtering)
 - `/asado/new` (`new_asado`) — GET shows the form, POST inserts an
   `asados` row plus one `participations` row per selected participant
-- `/asado/<id>` (`view_asado`) — detail page for one asado
+- `/asado/<id>` (`view_asado`) — read-only detail page by default, with
+  a hidden copy of the edit form revealed in place by an "Editar"
+  button (pure client-side toggle, no reload/route) — see "Edit/delete
+  permissions" below
+- `/asado/<id>/edit` (`edit_asado`, POST) — saves changes; any
+  logged-in user
+- `/asado/<id>/delete` (`delete_asado`, POST) — deletes the asado and
+  all its participations; admin-only
 - `/api/points` — JSON endpoint used only by the live points preview
   in `new_asado.html`'s JavaScript
 - `/base-asados` (`base_asados`) — "Base de Asados": a flat,
@@ -88,7 +105,11 @@ yet, just one Flask app with a handful of routes:
   both IDs (`participation_id`, `asado_id`), the coordinates, and every
   frozen weight alongside its category name — it's meant to be the
   complete, auditable export of everything a participation's `points`
-  was derived from
+  was derived from. Paginated on-screen (`?page=`, `BASE_ASADOS_PAGE_SIZE`
+  = 100/page) — but `/base-asados/csv` deliberately ignores pagination
+  and always exports every row; if you ever add filters to this page,
+  remember to decide explicitly whether the CSV should respect them or
+  keep exporting everything
 - `/base-asados/csv` (`base_asados_csv`) — same rows as above, streamed
   back as a downloadable CSV (UTF-8 with a BOM prefix, so accented
   characters open correctly in Excel on Windows)
@@ -125,7 +146,96 @@ Deleting a user from `/config` is blocked if they have any
 allowed delete would silently orphan those rows (they'd just vanish
 from that asado's participant list via the `INNER JOIN`, not error).
 An admin is also blocked from deleting their own account, to avoid a
-UI-only lockout.
+UI-only lockout. `get_db()` also runs `PRAGMA foreign_keys = ON` on
+every connection (SQLite doesn't enforce declared `FOREIGN KEY`
+constraints unless told to) as a backstop behind that manual check —
+don't remove this pragma, it's the only thing making the `FOREIGN KEY`
+lines in `schema.sql` do anything at all.
+
+**Display name vs. login username**: every user-facing view (home page
+participant list, `view_asado.html`, the participant picker in
+`new_asado.html`, the navbar) shows `users.name` (e.g. "Don Nicola"),
+never `users.username` (e.g. "nico") — `username` is only shown on the
+admin user-management table in `/config`, where the login handle
+itself is the relevant piece of information. Keep this split when
+adding new views: `name` for anything a group member reads, `username`
+only where you're specifically talking about the login credential.
+
+### Edit/delete permissions, and the shared create/edit form
+Any logged-in user can edit any asado (not just their own) — this was
+an explicit product decision for a small trusted friend group, not an
+oversight; don't add an "only your own entries" restriction to
+`edit_asado()` without checking first. **Deleting is admin-only**
+(`delete_asado()` is `@admin_required`), since it's destructive
+(removes the asado AND every participant's points for it) and
+irreversible — the asymmetry (open edit, gated delete) is deliberate.
+
+`view_asado.html` shows a **read-only summary by default**, not the
+edit form directly — an "Editar" button reveals the (already rendered,
+just `.hidden`-classed) edit form in place via plain JS, no separate
+route or page reload. This was a deliberate revision after first
+building "the whole page is always an editable form": since editing is
+open to every user, landing straight in an editable form on every
+click-through risked turning a casual "let me check this asado" visit
+into an accidental change. "Cancelar" inside the edit form is a plain
+link back to the same `view_asado` URL (not a JS "hide" toggle) —
+reloading is the simplest way to guarantee any unsaved, un-submitted
+edits are discarded rather than lingering in the hidden DOM.
+
+`templates/_asado_form.html` is the ONE place the create/edit form's
+fields and live-points-preview JS exist — `new_asado.html` and
+`view_asado.html` both `{% include %}` it, passing `asado`
+(`None` for create, the existing row for edit) and
+`existing_participants` (a list of `{user_id, rol}` dicts, empty for
+create) to control prefilling. `app.py`'s `asado_form_context(db)`
+builds the rest of the shared context (dropdown options, the `weights`
+dict, `registered_users`) so both routes can't drift apart on that
+either. **If you add a field to the asado form, add it to this one
+partial** — don't hand-copy it into both templates.
+
+**Editing recalculates and re-freezes weights/points from CURRENT
+config.py values**, exactly like creating a new asado does — an edit
+is treated as a new "freezing moment" (see the frozen-weights note
+above). This means editing an old asado whose category text hasn't
+changed can still change its stored points, if `config.py`'s weights
+were tweaked since it was created — that's intentional: the numbers
+shown right after a save should always match what the form says now.
+
+**Participants are replaced wholesale on every edit**: `edit_asado()`
+deletes ALL of that asado's `participations` rows, then re-inserts
+fresh ones from the submitted form, rather than diffing which rows
+changed. `participation_id` is therefore NOT a stable reference across
+edits of the same asado's participant list — don't build a feature
+(e.g. a permalink, or a comment thread) that assumes a `participation_id`
+survives an edit.
+
+### CSRF protection
+Every POST route (`login`, `/config/profile`, `/config/users/create`,
+`/config/users/<id>/delete`, `/asado/new`, `/asado/<id>/edit`,
+`/asado/<id>/delete`) is protected by a
+hand-rolled token check in `app.py`, not a library like Flask-WTF —
+kept dependency-free like the rest of the project (`requirements.txt`
+is just `Flask`). The mechanism: `ensure_csrf_token()` (a
+`before_request` hook) puts one random token in `session["csrf_token"]`
+the first time a browser shows up; `csrf_token()` is injected into
+every template via `@app.context_processor` so forms can embed it as
+`<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">`;
+`validate_csrf_token()` (another `before_request` hook, checked on
+every POST regardless of route) rejects the request with 400 if the
+submitted token doesn't match the session's. **Any new POST form must
+include that hidden input, or it will always 400.**
+
+### CSV export sanitizes formula-injection payloads
+`sanitize_csv_cell()` in `app.py` prefixes any exported string starting
+with `=`, `+`, `-`, or `@` with a `'`, so a value like `=HYPERLINK(...)`
+placed in an asado's `nombre`/`location` or a user's own `name` (both
+editable by any logged-in user) can't turn into a live formula when
+someone opens `base_asados.csv` in Excel/Sheets. Applied generically by
+type (only `str` values are touched — numeric columns pass through
+untouched), so new columns added to `BASE_ASADOS_QUERY` are covered
+automatically as long as they're written out via the same
+`sanitize_csv_cell(value) for value in (...)` pattern in
+`base_asados_csv()`.
 
 ### The points formula is literal, evaluable text — not code
 `config.py`'s `FORMULA` variable (e.g.

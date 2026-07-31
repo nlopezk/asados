@@ -1,57 +1,106 @@
 {% extends "base.html" %}
 <!--
-    view_asado.html = the DETAIL PAGE for one specific asado.
-    Receives "asado" (a single row) and "participants" (a list of rows).
+    view_asado.html = the DETAIL page for one asado.
+    Shows a READ-ONLY summary by default, with an "Editar" button that
+    reveals the (already-rendered, just hidden) edit form in place —
+    no page reload, no separate route. This is deliberate: since ANY
+    logged-in user can edit ANY asado (see CLAUDE.md), landing straight
+    in an editable form on every click-through risked turning an
+    idle "let me check this asado" visit into an accidental change.
+
+    The edit form itself is the shared _asado_form.html, prefilled with
+    this asado's current values via the "asado"/"existing_participants"
+    context app.py's view_asado() route passes in — same partial
+    new_asado.html uses for creating one, so the two can never drift.
+
+    Deleting is admin-only (see the "Eliminar Asado" button below),
+    kept separate from the edit form's own submit button on purpose —
+    one save button that always means "update", one distinct, confirmed
+    button for the destructive action.
 -->
 
 {% block content %}
 <h2>{{ asado.nombre }}</h2>
 
-<table class="detail-table">
-    <tr><th>Fecha</th><td>{{ asado.date }}</td></tr>
-    <tr><th>Tipo de Carne</th><td>{{ asado.tipo_carne }}</td></tr>
-    <tr><th>Tipo de Cocción</th><td>{{ asado.coccion }}</td></tr>
-    <tr><th>Superficie</th><td>{{ asado.superficie }}</td></tr>
-    <tr><th>Local</th><td>{{ asado.local }}</td></tr>
-    {% if asado.location %}
-        <tr>
-            <th>Ubicación</th>
-            <td>
-                {{ asado.location }}
-                {% if asado.latitude and asado.longitude %}
-                    <br>
-                    <!-- Links out to OpenStreetMap's own viewer, centered
-                         on the saved coordinates. Just a link, so no
-                         mapping library needs to be loaded on this page. -->
-                    <a href="https://www.openstreetmap.org/?mlat={{ asado.latitude }}&mlon={{ asado.longitude }}#map=16/{{ asado.latitude }}/{{ asado.longitude }}"
-                       target="_blank" rel="noopener">📍 Ver en el mapa</a>
-                {% endif %}
-            </td>
-        </tr>
-    {% endif %}
-    {% if asado.people %}
-        <tr><th>Cantidad de personas</th><td>{{ asado.people }}</td></tr>
-    {% endif %}
-    {% if asado.total_weight %}
-        <tr><th>Peso Total</th><td>{{ asado.total_weight }} kg</td></tr>
-    {% endif %}
-</table>
-
-{% if asado.description %}
-    <p class="asado-description">{{ asado.description }}</p>
+{% if success %}
+    <p class="success-message">{{ success }}</p>
+{% endif %}
+{% if error %}
+    <p class="error-message">{{ error }}</p>
 {% endif %}
 
-<h3>Participantes</h3>
-<table class="detail-table">
-    <tr><th>Username</th><th>Rol</th><th>Points</th></tr>
-    {% for p in participants %}
-        <tr>
-            <td>{{ p.username }}</td>
-            <td>{{ p.rol }}</td>
-            <td>{{ p.points }}</td>
-        </tr>
-    {% endfor %}
-</table>
+<div id="asado-view">
+    <table class="detail-table">
+        <tr><th>Fecha</th><td>{{ asado.date }}</td></tr>
+        <tr><th>Tipo de Carne</th><td>{{ asado.tipo_carne }}</td></tr>
+        <tr><th>Tipo de Cocción</th><td>{{ asado.coccion }}</td></tr>
+        <tr><th>Superficie</th><td>{{ asado.superficie }}</td></tr>
+        <tr><th>Local</th><td>{{ asado.local }}</td></tr>
+        {% if asado.location %}
+            <tr>
+                <th>Ubicación</th>
+                <td>
+                    {{ asado.location }}
+                    {% if asado.latitude and asado.longitude %}
+                        <br>
+                        <a href="https://www.openstreetmap.org/?mlat={{ asado.latitude }}&mlon={{ asado.longitude }}#map=16/{{ asado.latitude }}/{{ asado.longitude }}"
+                           target="_blank" rel="noopener">📍 Ver en el mapa</a>
+                    {% endif %}
+                </td>
+            </tr>
+        {% endif %}
+        {% if asado.people %}
+            <tr><th>Cantidad de personas</th><td>{{ asado.people }}</td></tr>
+        {% endif %}
+        {% if asado.total_weight %}
+            <tr><th>Peso Total</th><td>{{ asado.total_weight }} kg</td></tr>
+        {% endif %}
+    </table>
 
-<p><a href="{{ url_for('index') }}">← Back to all asados</a></p>
+    {% if asado.description %}
+        <p class="asado-description">{{ asado.description }}</p>
+    {% endif %}
+
+    <h3>Participantes</h3>
+    <table class="detail-table">
+        <tr><th>Nombre</th><th>Rol</th><th>Puntos</th></tr>
+        {% for p in participants %}
+            <tr>
+                <td>{{ p.name }}</td>
+                <td>{{ p.rol }}</td>
+                <td>{{ p.points }}</td>
+            </tr>
+        {% endfor %}
+    </table>
+
+    <div class="view-actions">
+        <button type="button" class="primary-button" onclick="showEditForm()">✏️ Editar</button>
+        {% if g.role == "admin" %}
+            <form method="POST" action="{{ url_for('delete_asado', asado_id=asado.id) }}"
+                  onsubmit="return confirm('¿Eliminar este asado? Se borrarán también los puntos de todos sus participantes. Esta acción no se puede deshacer.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="secondary-button">🗑 Eliminar Asado</button>
+            </form>
+        {% endif %}
+    </div>
+
+    <p><a href="{{ url_for('index') }}">← Volver al listado</a></p>
+</div>
+
+<div id="asado-edit" class="hidden">
+    <h3>Editar Asado</h3>
+    {% include "_asado_form.html" %}
+    <!-- A plain link (not a JS "hide" toggle) so canceling always
+         discards any unsaved changes and shows the form fresh next
+         time, rather than leaving stale typed values sitting in the
+         hidden DOM. -->
+    <a href="{{ url_for('view_asado', asado_id=asado.id) }}" class="secondary-button">Cancelar</a>
+</div>
+
+<script>
+    function showEditForm() {
+        document.getElementById("asado-view").classList.add("hidden");
+        document.getElementById("asado-edit").classList.remove("hidden");
+    }
+</script>
 {% endblock %}

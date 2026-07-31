@@ -14,6 +14,7 @@ import os
 import csv
 import io
 import functools
+import secrets                     # for generating unguessable CSRF tokens
 from flask import Flask, render_template, request, redirect, url_for, g, jsonify, session, Response
 from werkzeug.security import check_password_hash, generate_password_hash
 from config import (
@@ -23,6 +24,29 @@ from config import (
 )
 
 DATABASE = "asados.db"  # the SQLite database is just a single file on disk
+
+# How many rows to show per page before showing a "next" arrow, on the
+# home page and on Base de Asados respectively. Base de Asados can show
+# more per page since each row is much narrower (a spreadsheet line)
+# than a full asado card.
+INDEX_PAGE_SIZE = 30
+BASE_ASADOS_PAGE_SIZE = 100
+
+
+def parse_page_number(value):
+    """
+    Reads a ?page= query param into a valid page number (an integer,
+    at least 1). Falls back to 1 for anything invalid — a missing page
+    param, non-numeric text, or a negative/zero number — rather than
+    raising an error, since this only affects which page you land on,
+    never whether the page loads at all.
+    """
+    try:
+        page = int(value)
+    except (TypeError, ValueError):
+        return 1
+    return page if page >= 1 else 1
+
 
 # ---------------------------------------------------------------------
 # "BASE DE ASADOS" QUERY (spreadsheet-style export)
@@ -115,6 +139,15 @@ def get_db():
         # This makes query results behave like dictionaries (row["date"])
         # instead of plain tuples (row[1]) — much easier to read in code.
         g.db.row_factory = sqlite3.Row
+        # SQLite does NOT enforce FOREIGN KEY constraints by default,
+        # even though schema.sql declares them (e.g.
+        # participations.user_id REFERENCES users(id)) — that PRAGMA
+        # has to be set on every connection, or the constraints are
+        # purely decorative. Turning it on here means SQLite itself
+        # will now refuse an INSERT/DELETE that would orphan a row,
+        # as a backstop alongside the explicit checks the app's own
+        # routes already do (like delete_user_route's participation check).
+        g.db.execute("PRAGMA foreign_keys = ON")
     return g.db
 
 
@@ -179,6 +212,57 @@ def admin_required(view_function):
             return "Acceso denegado: se requieren permisos de administrador.", 403
         return view_function(*args, **kwargs)
     return wrapped_view
+
+
+# ---------------------------------------------------------------------
+# CSRF PROTECTION (Cross-Site Request Forgery)
+# ---------------------------------------------------------------------
+# Without this, some OTHER website could embed a hidden form pointing at
+# one of our POST routes (e.g. "delete this user", "change my password")
+# and auto-submit it — the browser would still attach our session
+# cookie, since cookies are sent to whatever domain they belong to
+# regardless of which page triggered the request. This app's session
+# cookie is Flask's default SameSite=Lax, which already blocks most of
+# that on modern browsers, but a real, checked token is the actual fix
+# rather than relying only on a cookie default — especially once this
+# app is reachable from the open internet (see the Phase 6 deploy goal).
+#
+# The approach: every session gets ONE random token, stored server-side
+# in the session itself. Every template embeds that same token as a
+# hidden form field (via the csrf_token() function below). Every POST
+# request must send that exact token back — a page from another site
+# has no way to read OUR session's token to include it, so its
+# auto-submitted form gets rejected.
+def ensure_csrf_token():
+    """Makes sure the current session has a token, generating one the
+    first time a browser shows up. Runs on EVERY request (not just
+    form pages) so the token already exists by the time any page with
+    a form gets rendered."""
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_hex(16)
+
+
+def validate_csrf_token():
+    """Rejects any POST whose submitted csrf_token doesn't match the
+    one stored in this browser's session. Runs for every route — POST
+    is the only method any of our forms use, so this alone covers
+    login, profile updates, user create/delete, and new-asado."""
+    if request.method == "POST":
+        submitted = request.form.get("csrf_token")
+        if not submitted or submitted != session.get("csrf_token"):
+            return "Token de seguridad inválido o expirado. Recarga la página e intenta de nuevo.", 400
+
+
+app.before_request(ensure_csrf_token)
+app.before_request(validate_csrf_token)
+
+
+@app.context_processor
+def inject_csrf_token():
+    """Makes csrf_token() callable from inside any Jinja template
+    (e.g. {{ csrf_token() }}) without every render_template() call
+    needing to pass it explicitly."""
+    return {"csrf_token": lambda: session.get("csrf_token", "")}
 
 
 @app.before_request
@@ -371,6 +455,38 @@ def delete_user_route(user_id):
     return redirect(url_for("config_page", success="Usuario eliminado."))
 
 
+def asado_form_context(db):
+    """
+    The dropdown options + weights (for the live points preview) +
+    registered users needed to render templates/_asado_form.html — the
+    shared create/edit form used by both new_asado() and view_asado().
+    Built in exactly one place so the two routes can never end up
+    offering different dropdown options or a different WEIGHTS object
+    to their JavaScript.
+    """
+    return {
+        "tipo_carne_options": TIPO_CARNE_WEIGHTS.keys(),
+        "coccion_options": COCCION_WEIGHTS.keys(),
+        "superficie_options": SUPERFICIE_WEIGHTS.keys(),
+        "local_options": LOCAL_WEIGHTS.keys(),
+        "rol_options": ROL_WEIGHTS.keys(),
+        "weights": {
+            "tipo_carne": TIPO_CARNE_WEIGHTS,
+            "coccion": COCCION_WEIGHTS,
+            "superficie": SUPERFICIE_WEIGHTS,
+            "local": LOCAL_WEIGHTS,
+            "rol": ROL_WEIGHTS,
+            "formula": FORMULA,  # the literal formula text, read directly by the JS preview
+            "labels": VARIABLE_LABELS,  # human-readable names for the formula's variables
+        },
+        # All registered users, for the participant dropdowns —
+        # participants must be existing accounts, selected by id, not
+        # free-typed names. Ordered/displayed by "name" (the friendly
+        # display name), matching how every other page identifies a user.
+        "registered_users": db.execute("SELECT id, username, name FROM users ORDER BY name").fetchall(),
+    }
+
+
 # ---------------------------------------------------------------------
 # ROUTES
 # ---------------------------------------------------------------------
@@ -387,23 +503,28 @@ def index():
     this keeps the filtered view a normal, bookmarkable/shareable GET
     URL, and lets the <select>/<input> below auto-submit their own form
     on change (see index.html) without any JavaScript fetch() calls.
+
+    Also PAGINATED (?page=2), INDEX_PAGE_SIZE asados at a time, so a
+    group with years of history doesn't render hundreds of cards on one
+    page. Pagination is computed AFTER filtering, so "page 2" always
+    means "the second page of whatever the current filters matched."
     """
     db = get_db()
 
     date_filter = request.args.get("date", "").strip()
     user_filter = request.args.get("user_id", "").strip()
+    page = parse_page_number(request.args.get("page"))
 
-    # Built up conditionally: a plain "SELECT * FROM asados" when no
-    # filters are set, or narrowed down as needed. Filtering by
-    # participant requires joining through participations — DISTINCT
-    # avoids listing the same asado twice if it somehow matched more
-    # than once.
-    query = "SELECT DISTINCT asados.* FROM asados"
+    # Built up conditionally: a plain "FROM asados" when no filters are
+    # set, or narrowed down as needed. Filtering by participant requires
+    # joining through participations — DISTINCT (below) avoids listing
+    # the same asado twice if it somehow matched more than once.
+    from_clause = "FROM asados"
     conditions = []
     params = []
 
     if user_filter:
-        query += " JOIN participations ON participations.asado_id = asados.id"
+        from_clause += " JOIN participations ON participations.asado_id = asados.id"
         conditions.append("participations.user_id = ?")
         params.append(user_filter)
 
@@ -411,11 +532,23 @@ def index():
         conditions.append("asados.date = ?")
         params.append(date_filter)
 
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
-    query += " ORDER BY asados.date DESC"
+    where_clause = (" WHERE " + " AND ".join(conditions)) if conditions else ""
 
-    asados = db.execute(query, params).fetchall()
+    # Count how many asados match the filters BEFORE paginating, so we
+    # know how many pages there are (and can clamp an out-of-range
+    # ?page= back onto the last real page instead of showing a blank one).
+    total_count = db.execute(
+        f"SELECT COUNT(DISTINCT asados.id) {from_clause}{where_clause}", params
+    ).fetchone()[0]
+    total_pages = max(1, -(-total_count // INDEX_PAGE_SIZE))  # ceiling division
+    page = min(page, total_pages)
+    offset = (page - 1) * INDEX_PAGE_SIZE
+
+    asados = db.execute(
+        f"SELECT DISTINCT asados.* {from_clause}{where_clause} "
+        "ORDER BY asados.date DESC LIMIT ? OFFSET ?",
+        params + [INDEX_PAGE_SIZE, offset],
+    ).fetchall()
 
     # For each asado, also fetch its participants (a small extra query
     # per asado — totally fine for Phase 1's scale; we can optimize
@@ -424,7 +557,7 @@ def index():
     for asado in asados:
         participants = db.execute(
             """
-            SELECT users.username, participations.rol, participations.points
+            SELECT users.name, participations.rol, participations.points
             FROM participations
             JOIN users ON participations.user_id = users.id
             WHERE participations.asado_id = ?
@@ -442,6 +575,13 @@ def index():
         registered_users=registered_users,
         selected_date=date_filter,
         selected_user_id=user_filter,
+        page=page,
+        total_pages=total_pages,
+        # Only actually populated when redirected here after deleting
+        # an asado (see delete_asado) — same lightweight ?success=/
+        # ?error= pattern used by config.html and base_asados.html.
+        success=request.args.get("success"),
+        error=request.args.get("error"),
     )
 
 
@@ -556,62 +696,192 @@ def new_asado():
         db.commit()  # save everything permanently to the database file
         return redirect(url_for("index"))  # redirect back to the home page
 
-    # GET request: just show the blank form.
-    # We pass the category dictionaries so the HTML can build dropdowns
-    # from them, instead of hardcoding options in the template too.
-    #
-    # We ALSO pass the full weight dictionaries as a single "weights"
-    # object. The template will convert this to JSON with Jinja's
-    # |tojson filter, so JavaScript in the browser can read the exact
-    # same numbers Python uses — letting us show a LIVE points preview
-    # without needing to contact the server on every dropdown change.
-    weights = {
-        "tipo_carne": TIPO_CARNE_WEIGHTS,
-        "coccion": COCCION_WEIGHTS,
-        "superficie": SUPERFICIE_WEIGHTS,
-        "local": LOCAL_WEIGHTS,
-        "rol": ROL_WEIGHTS,
-        "formula": FORMULA,  # the literal formula text, read directly by the JS preview
-        "labels": VARIABLE_LABELS,  # human-readable names for the formula's variables
-    }
-
-    # All registered users, for the participant dropdowns — participants
-    # must now be existing accounts, selected by id, not free-typed names.
-    registered_users = db.execute("SELECT id, username FROM users ORDER BY username").fetchall()
-
+    # GET request: just show the blank form — same shared partial
+    # (_asado_form.html) that view_asado()'s edit form uses below,
+    # here in "create mode": asado=None and no existing_participants
+    # means it renders one blank participant row instead of prefilling.
     return render_template(
         "new_asado.html",
-        tipo_carne_options=TIPO_CARNE_WEIGHTS.keys(),
-        coccion_options=COCCION_WEIGHTS.keys(),
-        superficie_options=SUPERFICIE_WEIGHTS.keys(),
-        local_options=LOCAL_WEIGHTS.keys(),
-        rol_options=ROL_WEIGHTS.keys(),
-        weights=weights,
-        registered_users=registered_users,
+        asado=None,
+        existing_participants=[],
+        form_action=url_for("new_asado"),
+        submit_label="Añadir Asado",
+        **asado_form_context(db),
     )
 
 
 @app.route("/asado/<int:asado_id>")
 @login_required
 def view_asado(asado_id):
-    """DETAIL PAGE for a single asado, showing all its info + participants."""
+    """
+    DETAIL PAGE for one asado: a read-only summary by default, with a
+    hidden (until "Editar" is clicked) copy of the shared create/edit
+    form (_asado_form.html), prefilled with the asado's current values
+    — ANY logged-in user can edit ANY asado here and save (see
+    edit_asado() below); only an admin sees the delete button (see
+    delete_asado() below and view_asado.html).
+    """
     db = get_db()
 
     asado = db.execute(
         "SELECT * FROM asados WHERE id = ?", (asado_id,)
     ).fetchone()
 
+    if asado is None:
+        # No asado has this id (bad/old link, or it was deleted) —
+        # without this check, asado would be None and the template's
+        # {{ asado.nombre }} would crash the whole page with a 500
+        # error instead of a normal "not found" response.
+        return "Asado no encontrado.", 404
+
+    # ONE query serves both halves of the page: the read-only view
+    # needs name/rol/points to display, and the (hidden) edit form
+    # needs user_id/rol to prefill its participant rows.
     participants = db.execute(
         """
-        SELECT users.username, participations.rol, participations.points
+        SELECT participations.user_id, users.name, participations.rol, participations.points
         FROM participations
         JOIN users ON participations.user_id = users.id
         WHERE participations.asado_id = ?
+        ORDER BY participations.id
         """,
         (asado_id,),
     ).fetchall()
+    existing_participants = [{"user_id": p["user_id"], "rol": p["rol"]} for p in participants]
 
-    return render_template("view_asado.html", asado=asado, participants=participants)
+    return render_template(
+        "view_asado.html",
+        asado=asado,
+        participants=participants,
+        existing_participants=existing_participants,
+        form_action=url_for("edit_asado", asado_id=asado_id),
+        submit_label="Guardar Cambios",
+        success=request.args.get("success"),
+        error=request.args.get("error"),
+        **asado_form_context(db),
+    )
+
+
+@app.route("/asado/<int:asado_id>/edit", methods=["POST"])
+@login_required
+def edit_asado(asado_id):
+    """
+    Saves changes to an existing asado. ANY logged-in user may edit ANY
+    asado — unlike deleting (admin-only, see delete_asado below), Phase
+    3 deliberately does NOT restrict editing to "your own" entries.
+
+    Recalculates and re-freezes the shared weights AND every
+    participant's rol_weight/points from config.py's CURRENT values,
+    exactly like new_asado()'s POST branch does for a brand new asado.
+    An edit counts as a new "freezing moment" — see CLAUDE.md for the
+    full reasoning on why weights/points are frozen at all; the same
+    logic means the numbers shown after a save should always match
+    what's actually on the form, not whatever was frozen back when the
+    asado was first created (which may have used different config.py
+    weights, if they've since changed).
+
+    Participants are replaced WHOLESALE: every existing participation
+    for this asado is deleted, then fresh rows are inserted from
+    whatever the form submitted — simpler and correct for a small edit
+    form, rather than diffing which rows are new/removed/changed. The
+    cost: participation ids change on every edit of that asado's
+    participants, but nothing in this app treats participation id as a
+    stable reference across edits.
+    """
+    db = get_db()
+
+    asado = db.execute("SELECT id FROM asados WHERE id = ?", (asado_id,)).fetchone()
+    if asado is None:
+        return "Asado no encontrado.", 404
+
+    date = request.form["date"]
+    nombre = request.form["nombre"]
+    description = request.form.get("description", "")
+    tipo_carne = request.form["tipo_carne"]
+    coccion = request.form["coccion"]
+    superficie = request.form["superficie"]
+    local = request.form["local"]
+    location = request.form.get("location", "")
+    latitude = request.form.get("latitude", type=float)
+    longitude = request.form.get("longitude", type=float)
+    people = request.form.get("people", type=int)
+    total_weight = request.form.get("total_weight", type=float)
+
+    shared_weights = get_shared_weights(tipo_carne, coccion, superficie, local)
+
+    db.execute(
+        """
+        UPDATE asados
+        SET date = ?, nombre = ?, description = ?, tipo_carne = ?, coccion = ?,
+            superficie = ?, local = ?, location = ?, latitude = ?, longitude = ?,
+            people = ?, total_weight = ?,
+            tipo_carne_weight = ?, coccion_weight = ?, superficie_weight = ?, local_weight = ?
+        WHERE id = ?
+        """,
+        (date, nombre, description, tipo_carne, coccion, superficie, local,
+         location, latitude, longitude, people, total_weight,
+         shared_weights["carne"], shared_weights["coccion"],
+         shared_weights["superficie"], shared_weights["local"],
+         asado_id),
+    )
+
+    # Replace participants wholesale (see docstring above).
+    db.execute("DELETE FROM participations WHERE asado_id = ?", (asado_id,))
+
+    user_ids = request.form.getlist("participant_user_id")
+    roles = request.form.getlist("participant_rol")
+
+    for user_id_str, rol in zip(user_ids, roles):
+        if not user_id_str:
+            continue  # skip any row where nothing was selected
+
+        user_id = int(user_id_str)
+
+        # Safety check: confirm this id really matches an existing
+        # user, in case of any tampering with the submitted form.
+        user_row = db.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+        if user_row is None:
+            continue
+
+        points = calculate_points(tipo_carne, coccion, superficie, local, rol)
+        rol_weight = get_rol_weight(rol)
+
+        db.execute(
+            """
+            INSERT INTO participations (asado_id, user_id, rol, rol_weight, points)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (asado_id, user_id, rol, rol_weight, points),
+        )
+
+    db.commit()
+    return redirect(url_for("view_asado", asado_id=asado_id, success="Asado actualizado."))
+
+
+@app.route("/asado/<int:asado_id>/delete", methods=["POST"])
+@admin_required
+def delete_asado(asado_id):
+    """
+    Admin-only: permanently deletes an asado and ALL its participations
+    (i.e. every participant's points for that event too). No server-side
+    "are you sure" step — view_asado.html's delete button has a JS
+    confirm() instead, the same pattern delete_user_route already uses.
+    """
+    db = get_db()
+
+    asado = db.execute("SELECT id FROM asados WHERE id = ?", (asado_id,)).fetchone()
+    if asado is None:
+        return "Asado no encontrado.", 404
+
+    # Participations FIRST — schema.sql declares participations.asado_id
+    # as a FOREIGN KEY, and get_db() enforces that (PRAGMA foreign_keys
+    # = ON), so deleting the asado row first would fail with an
+    # IntegrityError while participations still reference it.
+    db.execute("DELETE FROM participations WHERE asado_id = ?", (asado_id,))
+    db.execute("DELETE FROM asados WHERE id = ?", (asado_id,))
+    db.commit()
+
+    return redirect(url_for("index", success="Asado eliminado."))
 
 
 @app.route("/base-asados")
@@ -622,16 +892,59 @@ def base_asados():
     PARTICIPATION rather than per asado (see BASE_ASADOS_QUERY above).
     Meant for scanning/sorting like a spreadsheet, and for the CSV
     export below.
+
+    PAGINATED (?page=2), BASE_ASADOS_PAGE_SIZE rows at a time — the CSV
+    export below intentionally does NOT paginate (it's a "give me
+    everything" download, not a page you're scrolling through), so the
+    LIMIT/OFFSET here is added on top of BASE_ASADOS_QUERY only in this
+    route, never touching BASE_ASADOS_QUERY itself.
     """
     db = get_db()
-    rows = db.execute(BASE_ASADOS_QUERY).fetchall()
-    return render_template("base_asados.html", rows=rows)
+    page = parse_page_number(request.args.get("page"))
+
+    total_count = db.execute("SELECT COUNT(*) FROM participations").fetchone()[0]
+    total_pages = max(1, -(-total_count // BASE_ASADOS_PAGE_SIZE))  # ceiling division
+    page = min(page, total_pages)
+    offset = (page - 1) * BASE_ASADOS_PAGE_SIZE
+
+    rows = db.execute(
+        BASE_ASADOS_QUERY + " LIMIT ? OFFSET ?", (BASE_ASADOS_PAGE_SIZE, offset)
+    ).fetchall()
+
+    return render_template(
+        "base_asados.html", rows=rows, page=page, total_pages=total_pages
+    )
+
+
+def sanitize_csv_cell(value):
+    """
+    Defends against "CSV/Excel formula injection": if a cell's text
+    STARTS WITH =, +, -, or @, spreadsheet programs (Excel, Google
+    Sheets, LibreOffice) may interpret it as a FORMULA instead of plain
+    text when the file is opened, rather than showing it as literal
+    text. Several fields exported here are free text a group member
+    controls themselves — an asado's nombre/location, or their own
+    display name via the Configuración page — so without this, someone
+    could plant something like "=HYPERLINK(...)" in their own name and
+    have it execute in whoever's spreadsheet program opens this export.
+
+    Prefixing with a single quote/apostrophe forces spreadsheet programs
+    to treat the cell as literal text; it's invisible in every other
+    program that reads CSV files (including re-importing this same file).
+    Only touches actual strings — numeric columns (points, weights,
+    coordinates, ids) come back from sqlite3 as int/float, never str,
+    so they pass through untouched.
+    """
+    if isinstance(value, str) and value.startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
 
 
 @app.route("/base-asados/csv")
 @login_required
 def base_asados_csv():
-    """Exports the exact same rows as /base-asados as a downloadable CSV file."""
+    """Exports ALL rows (ignoring pagination — this is a full download,
+    not a scrolled-through page) as a downloadable CSV file."""
     db = get_db()
     rows = db.execute(BASE_ASADOS_QUERY).fetchall()
 
@@ -648,11 +961,13 @@ def base_asados_csv():
     ])
     for row in rows:
         writer.writerow([
-            row["participation_id"], row["asado_id"], row["date"], row["nombre"],
-            row["tipo_carne"], row["tipo_carne_weight"], row["coccion"], row["coccion_weight"],
-            row["superficie"], row["superficie_weight"], row["local"], row["local_weight"],
-            row["location"], row["latitude"], row["longitude"], row["people"], row["total_weight"],
-            row["username"], row["name"], row["rol"], row["rol_weight"], row["points"],
+            sanitize_csv_cell(value) for value in (
+                row["participation_id"], row["asado_id"], row["date"], row["nombre"],
+                row["tipo_carne"], row["tipo_carne_weight"], row["coccion"], row["coccion_weight"],
+                row["superficie"], row["superficie_weight"], row["local"], row["local_weight"],
+                row["location"], row["latitude"], row["longitude"], row["people"], row["total_weight"],
+                row["username"], row["name"], row["rol"], row["rol_weight"], row["points"],
+            )
         ])
 
     # "﻿" is a UTF-8 BOM (byte-order mark). Excel on Windows needs

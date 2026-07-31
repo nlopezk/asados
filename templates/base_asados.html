@@ -79,5 +79,20 @@
             </tbody>
         </table>
     </div>
+
+    {% if total_pages > 1 %}
+        <!-- The CSV export link above always exports EVERY row
+             regardless of which page is showing here — pagination is
+             purely a display convenience for this on-screen table. -->
+        <nav class="pagination">
+            {% if page > 1 %}
+                <a href="{{ url_for('base_asados', page=page-1) }}" class="secondary-button">← Anterior</a>
+            {% endif %}
+            <span class="pagination-status">Página {{ page }} de {{ total_pages }}</span>
+            {% if page < total_pages %}
+                <a href="{{ url_for('base_asados', page=page+1) }}" class="secondary-button">Siguiente →</a>
+            {% endif %}
+        </nav>
+    {% endif %}
 {% endif %}
 {% endblock %}

@@ -1,4 +1,4 @@
-# Asados App — Phase 2
+# Asados App — Phase 3
 
 A Flask + SQLite web app to track "asado" events, participants, and points — now with login.
 
@@ -23,17 +23,22 @@ A Flask + SQLite web app to track "asado" events, participants, and points — n
 5. **Create at least one user account** (there's no public sign-up page —
    you create the first account, an admin, yourself with this script):
    ```
-   python create_user.py nico "myPassword123" "Don Nicola" admin
+   python create_user.py nico "nico" "Don Nicola" admin
    ```
    `role` (`admin` or `normal`) is optional and defaults to `normal` if
    omitted. Once you have an admin account, you can create the rest of
    the group's accounts either by running this script again or from the
    app's **Configuración** page after logging in as that admin.
-6. **Run the app:**
+6. *(Optional)* **Fill it with random test data** instead of typing entries
+   by hand, so you have something to click around and filter/export:
+   ```
+   python seed_random_asados.py 15
+   ```
+7. **Run the app:**
    ```
    python app.py
    ```
-7. **Open your browser** to: http://127.0.0.1:5000 — you'll be sent to
+8. **Open your browser** to: http://127.0.0.1:5000 — you'll be sent to
    a login page first. Log in with a username/password you created in step 5.
 
 ## Project structure
@@ -43,6 +48,7 @@ asado_app/
 ├── app.py             <- Flask routes, login/session logic (the "brain")
 ├── config.py          <- Point weights + points formula (EDIT HERE to tweak scoring)
 ├── create_user.py      <- Run this from the terminal to create login accounts
+├── seed_random_asados.py <- Run this to fill the DB with random test data
 ├── schema.sql          <- Database table definitions
 ├── CLAUDE.md            <- Context/decisions notes for AI assistants (see above)
 ├── secret_key.txt       <- Auto-generated on first run. NEVER commit this (.gitignore already excludes it)
@@ -50,14 +56,17 @@ asado_app/
 ├── templates/            <- HTML pages (Jinja2 templates)
 │   ├── base.html           (shared layout: navbar, login status)
 │   ├── login.html           (login form)
-│   ├── index.html            (home page: list of all asados)
-│   ├── new_asado.html         (form to add a new asado)
-│   └── view_asado.html         (detail page for one asado)
+│   ├── index.html            (home page: list of all asados, with filters)
+│   ├── new_asado.html         (create-asado page)
+│   ├── view_asado.html         (edit-asado page; admin sees a delete button)
+│   ├── _asado_form.html         (the shared form fields used by both of the above)
+│   ├── config.html             (profile settings + admin user management)
+│   └── base_asados.html         (flat spreadsheet view + CSV export)
 └── static/
     └── style.css              (all the visual styling)
 ```
 
-## What Phase 2 adds
+## What Phase 2 added
 - Username/password login using Flask sessions (no OAuth/Google yet)
 - Accounts have a `name` (display name) and `role` (`admin`/`normal`) alongside username/password
 - Accounts are created via `create_user.py` (terminal script) or, once an admin
@@ -69,9 +78,16 @@ asado_app/
 - **Configuración page** (`/config`): any user can change their own name/password;
   admins can additionally create or delete accounts
 
+## What Phase 3 adds
+- Clicking into an asado now opens an **editable form**, prefilled with its
+  current values — any logged-in user can change any asado's details or
+  participant list and save
+- Editing recalculates that asado's points/weights from the current formula
+  in `config.py`, the same way creating a new one does
+- **Deleting an asado is admin-only**, with a confirmation prompt (removes the
+  asado and all its participants' points for that event — no undo)
+
 ## What's NOT included yet (coming in later phases)
-- Editing or deleting existing entries
-- Restricting edits to "your own" entries specifically
 - Aggregated statistics / leaderboards
 - Deployment to a public URL
 

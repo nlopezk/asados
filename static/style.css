@@ -8,6 +8,13 @@
     box-sizing: border-box; /* makes width/padding math more intuitive */
 }
 
+/* Generic show/hide utility (JS toggles this class) — used for the
+   read-view/edit-form swap on view_asado.html, and reused below by
+   .map-modal.hidden for the same purpose. */
+.hidden {
+    display: none;
+}
+
 body {
     font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
     margin: 0;
@@ -119,6 +126,17 @@ body {
     flex: 1;
 }
 
+.remove-participant-btn {
+    background: none;
+    border: 1px solid #d99;
+    color: #a12c2c;
+    border-radius: 6px;
+    padding: 0 10px;
+    font-size: 1em;
+    line-height: 1.8;
+    flex: 0 0 auto;
+}
+
 button {
     cursor: pointer;
 }
@@ -151,6 +169,30 @@ button {
 .detail-table th {
     width: 40%;
     color: #555;
+}
+
+/* --- view_asado.html: read-view action row (Editar / Eliminar) --- */
+.view-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.view-actions form {
+    margin: 0; /* the delete form shouldn't add its own extra spacing in this row */
+}
+
+/* .primary-button and .secondary-button normally differ in padding/
+   font-size (12px/1.05em vs 10px/0.95em), which is fine when they're
+   not sitting next to each other — but side by side here it made
+   "Editar" look noticeably wider than "Eliminar Asado" despite having
+   shorter text. Force both to the same padding/font-size in this row only. */
+.view-actions .primary-button,
+.view-actions .secondary-button {
+    padding: 10px 16px;
+    font-size: 0.95em;
+    margin-top: 0;
 }
 
 .navbar-right {
@@ -331,7 +373,13 @@ button {
    One row per participation, deliberately dense/gridded like a
    spreadsheet rather than styled like the rest of the app. */
 .spreadsheet-wrapper {
-    overflow-x: auto; /* lets the wide table scroll instead of squeezing columns */
+    overflow-x: auto;  /* lets the wide table scroll instead of squeezing columns */
+    /* max-height + overflow-y makes THIS element (not the whole page)
+       the scrolling container — required for "thead th { position:
+       sticky; top: 0 }" below to actually stick while scrolling
+       through a full page of rows, instead of just sitting there. */
+    max-height: 70vh;
+    overflow-y: auto;
     background: white;
     border-radius: 8px;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
@@ -359,6 +407,20 @@ button {
 
 .spreadsheet-table tbody tr:nth-child(even) {
     background-color: #faf8f6;
+}
+
+/* --- Pagination (home page + Base de Asados) --- */
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin: 20px 0;
+}
+
+.pagination-status {
+    color: #666;
+    font-size: 0.9em;
 }
 
 /* --- Mobile responsiveness ---

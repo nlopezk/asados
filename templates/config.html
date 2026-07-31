@@ -19,6 +19,7 @@
 
 <h3>Mi Perfil</h3>
 <form method="POST" action="{{ url_for('update_profile') }}" class="asado-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="name">Nombre</label>
     <input type="text" id="name" name="name" value="{{ g.name }}" required>
 
@@ -53,6 +54,7 @@
                                  since deletion has no undo in this app. -->
                             <form method="POST" action="{{ url_for('delete_user_route', user_id=user.id) }}"
                                   onsubmit="return confirm('¿Eliminar al usuario {{ user.username }}?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="secondary-button">Eliminar</button>
                             </form>
                         {% endif %}
@@ -64,6 +66,7 @@
 
     <h3>Crear Nuevo Usuario</h3>
     <form method="POST" action="{{ url_for('create_user_route') }}" class="asado-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label for="new_username">Usuario</label>
         <input type="text" id="new_username" name="username" required>
 
