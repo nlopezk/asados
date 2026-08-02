@@ -22,6 +22,7 @@ from config import (
     TIPO_CARNE_WEIGHTS, COCCION_WEIGHTS, SUPERFICIE_WEIGHTS,
     LOCAL_WEIGHTS, ROL_WEIGHTS, FORMULA, VARIABLE_LABELS,
 )
+from backup_db import backup_database
 
 DATABASE = "asados.db"  # the SQLite database is just a single file on disk
 
@@ -694,6 +695,22 @@ def new_asado():
             )
 
         db.commit()  # save everything permanently to the database file
+
+        # Automatic backup, every time a new asado is added — see
+        # backup_db.py for why this is a safe SQLite-level backup and
+        # not just a file copy. Wrapped in try/except so that if the
+        # backup itself ever fails (disk full, permissions, etc.), the
+        # user's asado is still saved and the page still loads
+        # normally — a failed backup should never look like a failed
+        # save. DATABASE (not backup_db's own default) is passed
+        # explicitly so this always backs up whichever database file
+        # this app instance is actually using, including test runs
+        # that point DATABASE at a throwaway file.
+        try:
+            backup_database(database=DATABASE)
+        except Exception as e:
+            print(f"Warning: automatic backup failed: {e}")
+
         return redirect(url_for("index"))  # redirect back to the home page
 
     # GET request: just show the blank form — same shared partial

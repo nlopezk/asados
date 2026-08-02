@@ -39,6 +39,10 @@ python create_user.py <username> <password> <name> [role]
 # Uses your EXISTING users as participants; adds on top, doesn't wipe.
 python seed_random_asados.py <count>
 
+# Make an on-demand backup of asados.db right now (also happens
+# automatically on every new asado — see "Automatic backups" below).
+python backup_db.py [retention_days]
+
 # Run the dev server (debug=True: auto-reloads, verbose error pages)
 python app.py
 # -> http://127.0.0.1:5000
@@ -64,11 +68,54 @@ Phase 5 – Make it responsive. Improve CSS/layout so it works well on phones, s
 Phase 6 – Deploy. Put it online (e.g. Render, Railway, Fly.io — all have free tiers) so others can actually use it from their phones.
 Phase 7+ – Advanced. Photo uploads, notifications, a proper mobile app wrapper (e.g. Capacitor) or React Native, richer stats/dashboards, etc.
 
-**Currently at the end of Phase 3** (login + edit/delete exist; no
-stats, not deployed yet). Phase 3 deliberately deviated from its own
-description above: editing is open to **every** logged-in user (not
-"only your own entries"), while deleting is **admin-only** — see the
-"Edit/delete permissions" note below.
+**Currently at the end of Phase 3 + Phase 5** (login + edit/delete +
+mobile responsiveness exist; Phase 4's stats/leaderboard is still
+outstanding, not deployed yet — Phase 5 was deliberately done out of
+order, before Phase 4, at the user's request). Phase 3 deliberately
+deviated from its own description above: editing is open to **every**
+logged-in user (not "only your own entries"), while deleting is
+**admin-only** — see the "Edit/delete permissions" note below.
+
+**Phase 5 (mobile responsiveness) turned out to need very little new
+work** — the app was already close to fully responsive as a side
+effect of earlier passes (flexbox layouts with `flex-wrap`,
+percentage-based widths, the dedicated `.spreadsheet-wrapper` scroll
+container for Base de Asados). Verified at 375px and a stress-test
+320px viewport with Playwright screenshots + a horizontal-overflow
+check script; found and fixed two real issues rather than a broad
+rewrite:
+- `.nav-link` tap targets measured ~36px tall — under the ~44px
+  minimum recommended for touch. Bumped padding, but ONLY inside the
+  existing `@media (max-width: 480px)` block — the desktop navbar
+  didn't need the extra height.
+- The Leaflet map picker in the location modal (`.map-modal-content`/
+  `.map-picker`) was cramped on a phone screen (previously ~300px of
+  usable map width) — now widens the modal and uses `60vh` for the map
+  height on small screens, giving real room to tap a precise spot.
+
+If you add a new page or component, check it at both breakpoints
+before considering it done — this app's whole layout language (flex +
+`flex-wrap` + percentage widths, no fixed pixel widths on containers)
+is what made the rest of the app responsive almost for free; keep
+
+**Phase 6 (deploy) hosting decision: PythonAnywhere free tier, not
+Render/Railway/Fly.io.** The deciding factor was SQLite: this app
+stores its whole database as a single `asados.db` file, and Render's
+and Railway's free tiers wipe their filesystem on every redeploy —
+that would silently delete the database the first time you pushed a
+code update. PythonAnywhere's free tier has genuine persistent
+storage (SQLite just works, no volume/mount config needed) and stays
+always-on (no Render-style cold-start sleep). Trade-off accepted
+knowingly: the URL is `yourname.pythonanywhere.com`, not a custom
+domain — a non-issue for sharing a link with 5-10 friends. A Synology
+NAS (self-hosted via Docker + a volume mount + Cloudflare Tunnel) was
+seriously considered and would also work well, but was set aside for
+now in favor of PythonAnywhere's lower setup effort; revisit if full
+data ownership or avoiding a third-party platform ever becomes a
+priority. Deployment itself (turning off `debug=True`, the actual
+PythonAnywhere WSGI config, etc.) hasn't been done yet as of this
+writing — only the backup story above has been built in preparation.
+using that pattern rather than fixed widths.
 
 ## Architecture
 
@@ -208,6 +255,43 @@ changed. `participation_id` is therefore NOT a stable reference across
 edits of the same asado's participant list — don't build a feature
 (e.g. a permalink, or a comment thread) that assumes a `participation_id`
 survives an edit.
+
+### Automatic backups — currently only on new_asado(), not edit/delete
+`backup_db.py`'s `backup_database()` is called from `new_asado()`
+right after `db.commit()`, so every new asado triggers a fresh, safe
+copy of the whole database into `backups/` (gitignored, next to
+`app.py`, never served by Flask since it isn't under `static/`). This
+was a deliberate choice to mirror "autosaves whenever something
+changes" (the user's own framing: "like Google Sheets") rather than a
+scheduled/cron backup — cheaper in practice too, since it never backs
+up when nothing changed.
+
+**It uses `sqlite3.Connection.backup()`, not a plain file copy.** A
+naive `shutil.copy()` of a SQLite file has no way to know if it's
+mid-write; `backup()` is SQLite's own mechanism for taking a
+consistent snapshot of a *live* database safely. Don't swap this for a
+plain file copy to "simplify" it — that would reintroduce exactly the
+corruption risk this was built to avoid.
+
+**The backup call is wrapped in try/except** — a failed backup (full
+disk, permissions, ...) must never prevent the user's asado from
+saving or make the request look like it failed when it didn't. If you
+add backup calls elsewhere, keep them non-fatal the same way.
+
+**Scope gap, on purpose for now**: `edit_asado()` and `delete_asado()`
+do NOT trigger a backup, only `new_asado()` does — the user's request
+was specifically "every time a new asado is added." If this ever
+matters (e.g. someone wants a backup right before a risky edit), the
+same `try: backup_database(database=DATABASE) except Exception: ...`
+snippet can be dropped into those routes' `db.commit()` too.
+
+**What this does and doesn't protect against**: rolling local backups
+guard against bad data — an accidental edit, a bug, wanting to roll
+back a day. They do NOT protect against losing the whole hosting
+account/server, since backups live on the same disk as the live
+database. Offsite copies (e.g. periodically pulling `backups/` down to
+the user's Synology NAS) were discussed and intentionally deferred —
+a manual step for now, not automated.
 
 ### CSRF protection
 Every POST route (`login`, `/config/profile`, `/config/users/create`,

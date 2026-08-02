@@ -1,4 +1,5 @@
 asados.db
+backups/
 secret_key.txt
 __pycache__/
 *.pyc

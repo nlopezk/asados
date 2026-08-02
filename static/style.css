@@ -676,4 +676,25 @@ button:hover {
         flex-wrap: wrap;
         gap: 8px;
     }
+
+    /* .nav-link's normal padding (7px 12px) measures out to a ~36px
+       tap target — under the ~44px minimum recommended for touch.
+       Only bumped on small screens; the desktop navbar doesn't need
+       the extra height. */
+    .nav-link {
+        padding: 10px 14px;
+        font-size: 0.95em;
+    }
+
+    /* The map picker's normal size (90% width, 350px fixed height,
+       16px padding) leaves very little room to tap a precise spot on
+       a phone screen. Use most of the viewport instead. */
+    .map-modal-content {
+        width: 96%;
+        padding: 12px;
+    }
+
+    .map-picker {
+        height: 60vh;
+    }
 }
