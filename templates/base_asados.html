@@ -20,28 +20,42 @@
 {% else %}
     <!-- overflow-x:auto lets this wide table scroll horizontally on
          narrow screens instead of squeezing every column unreadably
-         small or breaking the page layout. -->
+         small or breaking the page layout. With 21 columns some
+         sideways scroll is unavoidable, but a few things below shrink
+         how MUCH: header labels here are shortened from their original
+         wording (e.g. "Peso Tipo Carne" -> "Peso T.Carne") — safe to
+         do since these are just this table's own <th> text, completely
+         independent from the CSV export's own header row in
+         base_asados_csv() (that one keeps the full, unabbreviated
+         names); and Tipo Carne/Ubicación (the two columns that can
+         genuinely run long — multiple selected meat types, or a full
+         Nominatim address) get truncated with an ellipsis via
+         truncate-cell/truncate-cell-wide (see style.css) rather than
+         wrapping — wrapping was tried first but made whichever row had
+         a long value noticeably TALLER than every other row, breaking
+         the "one row = one line" spreadsheet look. The full value is
+         still available via each cell's own title="" tooltip on hover. -->
     <div class="spreadsheet-wrapper">
         <table class="spreadsheet-table">
             <thead>
                 <tr>
-                    <th>Participation ID</th>
-                    <th>Asado ID</th>
+                    <th>ID Part.</th>
+                    <th>ID Asado</th>
                     <th>Fecha</th>
                     <th>Nombre Asado</th>
                     <th>Tipo Carne</th>
-                    <th>Peso Tipo Carne</th>
+                    <th>Peso T.Carne</th>
                     <th>Cocción</th>
-                    <th>Peso Cocción</th>
+                    <th>Peso Cocc.</th>
                     <th>Superficie</th>
-                    <th>Peso Superficie</th>
+                    <th>Peso Superf.</th>
                     <th>Local</th>
                     <th>Peso Local</th>
                     <th>Ubicación</th>
-                    <th>Latitud</th>
-                    <th>Longitud</th>
+                    <th>Lat.</th>
+                    <th>Long.</th>
                     <th>Personas</th>
-                    <th>Peso Total (kg)</th>
+                    <th>Peso Total</th>
                     <th>Usuario</th>
                     <th>Nombre</th>
                     <th>Rol</th>
@@ -56,7 +70,7 @@
                         <td>{{ row.asado_id }}</td>
                         <td>{{ row.date }}</td>
                         <td>{{ row.nombre }}</td>
-                        <td>{{ row.tipo_carne }}</td>
+                        <td><span class="truncate-cell" title="{{ row.tipo_carne }}">{{ row.tipo_carne }}</span></td>
                         <td>{{ row.tipo_carne_weight }}</td>
                         <td>{{ row.coccion }}</td>
                         <td>{{ row.coccion_weight }}</td>
@@ -64,7 +78,7 @@
                         <td>{{ row.superficie_weight }}</td>
                         <td>{{ row.local }}</td>
                         <td>{{ row.local_weight }}</td>
-                        <td>{{ row.location }}</td>
+                        <td><span class="truncate-cell-wide" title="{{ row.location }}">{{ row.location }}</span></td>
                         <td>{{ row.latitude }}</td>
                         <td>{{ row.longitude }}</td>
                         <td>{{ row.people }}</td>

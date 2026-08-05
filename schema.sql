@@ -8,9 +8,12 @@
 -- Drop tables first if they already exist, so we can re-run this file
 -- safely during development without errors. (In production you would NOT
 -- do this, since it deletes all existing data!)
+DROP TABLE IF EXISTS activity_log_changes;
+DROP TABLE IF EXISTS activity_log;
 DROP TABLE IF EXISTS asado_tipo_carne;
 DROP TABLE IF EXISTS participations;
 DROP TABLE IF EXISTS asados;
+DROP TABLE IF EXISTS locations;
 DROP TABLE IF EXISTS users;
 
 -- ---------------------------------------------------------------------
@@ -116,4 +119,108 @@ CREATE TABLE participations (
     -- a participation pointing to an asado that doesn't exist.
     FOREIGN KEY (asado_id) REFERENCES asados (id),
     FOREIGN KEY (user_id) REFERENCES users (id)
+);
+
+-- ---------------------------------------------------------------------
+-- ACTIVITY_LOG TABLE
+-- One row per create/edit/delete action taken on an asado — "who did
+-- what, and when" (see CLAUDE.md's "Next Features" note this
+-- implements). Every user-facing route that changes an asado
+-- (new_asado, edit_asado, delete_asado) writes one row here, in the
+-- SAME database transaction as the change itself (see activity_log.py)
+-- — so a log entry and the change it describes always succeed or fail
+-- together, never one without the other.
+--
+-- user_id/asado_id are kept as REAL foreign keys (so the row stays
+-- accurate while the user/asado it points to still exists), but with
+-- ON DELETE SET NULL rather than a hard block — deleting a user account
+-- or an asado should NEVER be prevented just because old log entries
+-- reference it (unlike participations, which DO block a user delete —
+-- see delete_user_route in app.py). actor_name/asado_nombre/asado_date
+-- are FROZEN copies of that info at the moment the action happened,
+-- same "freeze it so history survives later changes" pattern already
+-- used for weights/points elsewhere in this app — so even after a user
+-- or asado is deleted, the log entry stays fully readable ("Nico
+-- eliminó el asado 'Épico Junte'") instead of showing a blank/broken
+-- reference.
+-- ---------------------------------------------------------------------
+CREATE TABLE activity_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,           -- 'YYYY-MM-DD HH:MM:SS', same plain-text-date approach as asados.date
+    user_id INTEGER,                   -- who performed the action (NULL if that account was later deleted)
+    actor_name TEXT NOT NULL,          -- FROZEN display name at the time of the action
+    asado_id INTEGER,                  -- which asado (NULL if that asado was later deleted, or IS the delete this row records)
+    asado_nombre TEXT NOT NULL,        -- FROZEN asado name at the time of the action
+    asado_date TEXT NOT NULL,          -- FROZEN asado date at the time of the action
+    action TEXT NOT NULL CHECK (action IN ('create', 'edit', 'delete')),
+
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL,
+    FOREIGN KEY (asado_id) REFERENCES asados (id) ON DELETE SET NULL
+);
+
+-- ---------------------------------------------------------------------
+-- ACTIVITY_LOG_CHANGES TABLE
+-- One row per individual FIELD that changed in an 'edit' action (e.g.
+-- one row for "Fecha: 2026-07-10 → 2026-07-12", another for
+-- "Participantes: ..."), linked back to its activity_log row. A real
+-- relational table rather than one JSON/string blob column, matching
+-- this app's existing preference (see asado_tipo_carne) for keeping
+-- multi-value data queryable/auditable instead of concatenated text.
+-- Only 'edit' actions ever populate this — 'create'/'delete' actions
+-- are fully described by the single activity_log row alone (diffing
+-- "nothing" against a brand-new asado, or vice versa, isn't useful).
+-- ON DELETE CASCADE: if an activity_log row is ever removed, its
+-- changes should go with it (nothing in the app currently deletes log
+-- rows, but this keeps the schema correct regardless).
+-- ---------------------------------------------------------------------
+CREATE TABLE activity_log_changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    log_id INTEGER NOT NULL,
+    field_label TEXT NOT NULL,         -- human-readable Spanish label, e.g. "Fecha", "Participantes"
+    old_value TEXT,                    -- NULL means the field was previously empty
+    new_value TEXT,                    -- NULL means the field is now empty
+
+    FOREIGN KEY (log_id) REFERENCES activity_log (id) ON DELETE CASCADE
+);
+
+-- ---------------------------------------------------------------------
+-- LOCATIONS TABLE
+-- A reusable, user-curated pool of saved places ("Casa de Nico",
+-- "Quincho El Bosque", ...) — see CLAUDE.md's "Recurring locations"
+-- section. This is DELIBERATELY NOT linked to `asados` via a foreign
+-- key: picking a saved location on the asado form just PREFILLS the
+-- normal asados.location/latitude/longitude columns (a one-time
+-- quick-fill), exactly as if you'd typed/map-picked it yourself. That
+-- means later renaming or deleting a saved location here never
+-- retroactively changes any asado that already used it — same
+-- "frozen at the moment it was used" philosophy as weights/points
+-- elsewhere in this app, just applied to convenience data instead of
+-- scoring data.
+--
+-- Any logged-in user can add or edit a row here (same open-editing
+-- philosophy as asados themselves); only an admin can delete one (see
+-- admin_required on delete_location in app.py) — the same asymmetry
+-- delete_asado already uses, for the same reason (removing a shared
+-- resource is the one genuinely destructive action here).
+-- ---------------------------------------------------------------------
+CREATE TABLE locations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,                -- short label shown in the dropdown, e.g. "Casa de Nico"
+    -- address/latitude/longitude are NOT NULL here — unlike
+    -- asados.location (which stays free/optional, see schema.sql's own
+    -- comment on that column), a SAVED location genuinely needs a real
+    -- address AND coordinates to be useful when picked from the
+    -- dropdown later; a name-only entry with no location data would be
+    -- useless as a map quick-fill. Enforced at the form level too (see
+    -- create_location()/edit_location() in app.py and
+    -- _location_picker.html's location_required flag) — this NOT NULL
+    -- is the DB-level backstop, matching how asados.nombre/coccion/etc.
+    -- are already both form-required AND NOT NULL.
+    address TEXT NOT NULL,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    created_by INTEGER,                -- who added it (nullable — NOT a hard block on deleting that user)
+    created_at TEXT NOT NULL,          -- 'YYYY-MM-DD HH:MM:SS', same plain-text-date approach as elsewhere
+
+    FOREIGN KEY (created_by) REFERENCES users (id) ON DELETE SET NULL
 );

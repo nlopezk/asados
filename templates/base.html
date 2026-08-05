@@ -37,6 +37,8 @@
             <div class="navbar-right">
                 <a href="{{ url_for('new_asado') }}" class="nav-link">Añadir Asado</a>
                 <a href="{{ url_for('base_asados') }}" class="nav-link">📋 Base de Asados</a>
+                <a href="{{ url_for('activity_log_page') }}" class="nav-link">🕓 Actividad</a>
+                <a href="{{ url_for('locations_page') }}" class="nav-link">📍 Ubicaciones</a>
                 <a href="{{ url_for('config_page') }}" class="nav-link">⚙️ Config</a>
                 <span class="nav-username">👤 {{ g.name }}</span>
                 <a href="{{ url_for('logout') }}" class="nav-link">Salir</a>
@@ -49,5 +51,13 @@
              insert their own HTML content here. -->
         {% block content %}{% endblock %}
     </main>
+
+    <!-- Small, unobtrusive version tracker + a personal dedication —
+         "version" is injected by app.py's inject_version() context
+         processor, same pattern csrf_token() already uses. -->
+    <footer class="app-footer">
+        <span class="app-version">v{{ version }}</span>
+        <span class="app-footer-quote">"Soñás la hoguera donde siempre sos la leña" (Indio, 1949-2026)</span>
+    </footer>
 </body>
 </html>

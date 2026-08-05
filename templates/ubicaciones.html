@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+<!--
+    ubicaciones.html = "Ubicaciones Guardadas": manage the reusable pool
+    of saved places that the asado form's "Ubicación guardada" dropdown
+    draws from (see _asado_form.html). The MORE common way a location
+    ends up here is opportunistically, via that form's "Guardar esta
+    ubicación" checkbox while creating/editing an asado — the "Nueva
+    Ubicación" form below is a manual fallback for adding one directly,
+    without needing an address autocomplete/map (that's only wired up
+    on the asado form itself).
+
+    Any logged-in user can add a location or fix a typo in an existing
+    one; only an admin sees the "Eliminar" button — same open-edit/
+    admin-delete asymmetry asados themselves use. Editing/deleting a
+    saved location here does NOT retroactively change any past asado's
+    own location/latitude/longitude — see CLAUDE.md's "Recurring
+    locations" section for why (this pool is a quick-fill convenience,
+    not a live link).
+
+    Nombre/Dirección/coordinates are all REQUIRED here (unlike the
+    asado form's own, optional location) — a saved location with no
+    real address/coordinates would be useless as a future quick-fill.
+    The "Nueva Ubicación" form below reuses _location_picker.html (the
+    SAME autocomplete+map component the asado form uses) with
+    location_required set, so you can't submit without picking a real
+    suggestion or map point; existing locations' inline edit rows below
+    deliberately stay plain required text/number fields instead — see
+    CLAUDE.md for why (multiple simultaneous map-picker instances on
+    one page isn't something this component supports yet).
+
+    "Ubicaciones Existentes" is a compact, spreadsheet-style TABLE
+    (same .spreadsheet-table/.spreadsheet-wrapper classes Base de
+    Asados already uses) rather than one big stacked card per location
+    — editable cells, one row per location, a 💾 button per row applies
+    just THAT row. Each row's inputs live INSIDE the table, but their
+    <form> is declared separately, right before the table, and
+    associated via each input/button's form="location-form-<id>"
+    attribute — a <form> element isn't valid table-model content
+    directly inside <table>/<tbody> (browsers will silently hoist it
+    out, breaking the layout), so the form="..." attribute is the
+    standard HTML5 way to have a per-row submit without nesting a
+    <form> inside the table itself.
+-->
+
+{% block content %}
+<h2>Ubicaciones Guardadas</h2>
+
+{% if success %}
+    <p class="success-message">{{ success }}</p>
+{% endif %}
+{% if error %}
+    <p class="error-message">{{ error }}</p>
+{% endif %}
+
+<h3>Nueva Ubicación</h3>
+<form method="POST" action="{{ url_for('create_location') }}" class="asado-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="new_location_name">Nombre</label>
+    <input type="text" id="new_location_name" name="name" placeholder="Ej: Casa de Nico" required>
+
+    {% set location_field_name = "address" %}
+    {% set location_required = true %}
+    {% include "_location_picker.html" %}
+
+    <button type="submit" class="primary-button">+ Guardar Ubicación</button>
+</form>
+
+<h3>Ubicaciones Existentes</h3>
+{% if locations|length == 0 %}
+    <p class="empty-state">
+        Todavía no hay ubicaciones guardadas. Agrega una arriba, o marca
+        "💾 Guardar esta ubicación" la próxima vez que crees o edites un asado.
+    </p>
+{% else %}
+    <!-- One <form> per row — see the header comment above for why these
+         live here, outside the table, instead of nested inside it. -->
+    {% for loc in locations %}
+        <form id="location-form-{{ loc.id }}" method="POST" action="{{ url_for('edit_location', location_id=loc.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        </form>
+    {% endfor %}
+
+    <div class="spreadsheet-wrapper">
+        <table class="spreadsheet-table">
+            <thead>
+                <tr>
+                    <!-- "Agregada por" isn't its own column — shown as a
+                         tooltip on Nombre instead (see the row below),
+                         to save a whole column's width; it's nice-to-know
+                         info, not something you scan a whole table for. -->
+                    <th>Nombre</th>
+                    <th>Dirección</th>
+                    <th>Coordenadas</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for loc in locations %}
+                    <tr>
+                        <td title="{% if loc.created_by_name %}Agregada por {{ loc.created_by_name }} — {{ loc.created_at }}{% endif %}">
+                            <input type="text" name="name" value="{{ loc.name }}" required class="loc-name-input"
+                                   form="location-form-{{ loc.id }}">
+                        </td>
+                        <td>
+                            <input type="text" name="address" value="{{ loc.address }}" required class="loc-address-input"
+                                   form="location-form-{{ loc.id }}">
+                        </td>
+                        <td>
+                            <!-- Latitud/Longitud share ONE column (see
+                                 style.css's .loc-coord-pair) — still two
+                                 separate submitted fields, just displayed
+                                 side by side instead of in two columns
+                                 each with their own header/border overhead. -->
+                            <div class="loc-coord-pair">
+                                <input type="number" step="any" name="latitude" value="{{ loc.latitude }}" required
+                                       class="loc-coord-input" title="Latitud" form="location-form-{{ loc.id }}">
+                                <input type="number" step="any" name="longitude" value="{{ loc.longitude }}" required
+                                       class="loc-coord-input" title="Longitud" form="location-form-{{ loc.id }}">
+                            </div>
+                        </td>
+                        <td class="spreadsheet-actions">
+                            <button type="submit" form="location-form-{{ loc.id }}"
+                                    class="secondary-button" title="Guardar cambios de esta fila">💾</button>
+                            {% if g.role == "admin" %}
+                                <button type="submit" form="location-form-{{ loc.id }}"
+                                        formaction="{{ url_for('delete_location', location_id=loc.id) }}"
+                                        class="secondary-button" title="Eliminar"
+                                        onclick="return confirm('¿Eliminar esta ubicación guardada? No afecta a los asados que ya la usaron.');">
+                                    🗑
+                                </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endif %}
+{% endblock %}

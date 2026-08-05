@@ -178,6 +178,31 @@ hr {
     padding: 20px;
 }
 
+/* --- Footer: version tracker + a small personal dedication --- */
+/* Deliberately tiny/muted — this isn't meant to compete for attention
+   with anything above it, just a quiet "here's what's running" plus
+   a short line that matters to the person who built this. */
+.app-footer {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 10px 20px 18px;
+    text-align: center;
+    font-size: 0.72em;
+    color: var(--color-text-muted);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.app-version {
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.app-footer-quote {
+    font-style: italic;
+}
+
 /* --- Asado cards on the home page --- */
 .asado-card {
     background: var(--color-surface);
@@ -241,6 +266,67 @@ hr {
     margin-top: 32px;
 }
 
+/* --- Activity log entries --- */
+/* Same card look as .asado-card (surface background, border, shadow)
+   for visual consistency — this is just another list of small records,
+   same as asado cards on the home page. */
+.log-entry {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 10px 16px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.log-entry-header {
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.log-entry-icon {
+    margin-right: 2px;
+}
+
+.log-entry-header a {
+    color: var(--color-accent-text);
+    text-decoration: none;
+}
+
+.log-entry-header a:hover {
+    color: var(--color-accent-text-hover);
+}
+
+.log-entry-timestamp {
+    margin-left: auto;
+    color: var(--color-text-muted);
+    font-size: 0.82em;
+    white-space: nowrap;
+}
+
+.log-entry-changes {
+    margin: 6px 0 0 0;
+    padding-left: 18px;
+    font-size: 0.9em;
+    color: var(--color-text-muted);
+}
+
+.log-entry-changes li {
+    margin-bottom: 2px;
+}
+
+.log-old-value {
+    text-decoration: line-through;
+    opacity: 0.75;
+}
+
+.log-new-value {
+    color: var(--color-text);
+}
+
 /* --- Forms --- */
 .asado-form {
     display: flex;
@@ -277,6 +363,29 @@ hr {
 .asado-form input::placeholder,
 .asado-form textarea::placeholder {
     color: var(--color-text-muted);
+}
+
+/* Overrides ".asado-form label" above (higher specificity, so it wins
+   regardless of source order) — a checkbox's own label is a full
+   sentence ("💾 Guardar esta ubicación..."), not a short field name, so
+   the small-caps/letter-spaced field-label treatment would make it
+   hard to read here. */
+.asado-form label.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    font-weight: 400;
+    font-size: 0.95em;
+    text-transform: none;
+    letter-spacing: normal;
+    color: var(--color-text);
+    cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: auto;
+    accent-color: var(--color-accent);
 }
 
 .participant-row {
@@ -578,6 +687,15 @@ button:hover {
     color: var(--color-text-muted);
 }
 
+/* Read-only "📍 Coordenadas: ..." reference line under the address
+   picker (see _location_picker.html) — same muted, small treatment as
+   .map-picked-address above, just outside the modal. */
+.coordinates-display {
+    font-size: 0.9em;
+    color: var(--color-text-muted);
+    margin: 2px 0 0 0;
+}
+
 /* --- Home page filters (date / user) --- */
 .filter-form {
     display: flex;
@@ -655,14 +773,20 @@ button:hover {
 .spreadsheet-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.9em;
+    font-size: 0.85em;
     white-space: nowrap; /* keep each cell on one line, like a real spreadsheet */
 }
 
+/* Padding/font trimmed down from an earlier, slightly roomier version
+   — with Base de Asados' 21 columns (and Ubicaciones' editable-input
+   row), every cell's horizontal padding adds up fast across a whole
+   row; shaving a couple px per side measurably cuts how much a wide
+   table has to scroll sideways, without making cells unreadably
+   cramped. */
 .spreadsheet-table th,
 .spreadsheet-table td {
     border: 1px solid var(--color-border); /* grid lines on every cell, not just row dividers */
-    padding: 7px 10px;
+    padding: 5px 7px;
     text-align: left;
 }
 
@@ -677,6 +801,106 @@ button:hover {
 
 .spreadsheet-table tbody tr:nth-child(even) {
     background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* --- Editable cells (Ubicaciones Existentes) --- */
+/* Same table, but some cells hold real <input>s instead of plain text
+   (see ubicaciones.html) — deliberately narrow, purpose-specific
+   widths (rather than one generic input[type] rule) so the row reads
+   as a compact spreadsheet line instead of a stack of full-width form
+   fields: Nombre/Dirección need enough room to read a real value,
+   Latitud/Longitud don't (a coordinate is always a short number). */
+.spreadsheet-table input[type="text"],
+.spreadsheet-table input[type="number"] {
+    padding: 3px 5px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-size: 0.95em;
+    font-family: inherit;
+}
+
+.loc-name-input {
+    width: 100px;
+}
+
+.loc-address-input {
+    width: 190px;
+}
+
+/* Latitud/Longitud share one "Coordenadas" column (see ubicaciones.html)
+   — two narrow inputs side by side instead of two separate columns,
+   each with their own header/border/padding overhead. */
+.loc-coord-input {
+    width: 62px;
+}
+
+.loc-coord-pair {
+    display: flex;
+    gap: 4px;
+}
+
+/* The little up/down spinner arrows a browser adds to type="number"
+   inputs by default don't add anything useful on a coordinate field
+   (nobody increments a latitude by 1 with a click) — just uses up
+   width for no benefit. Removed only here (not globally): they're
+   genuinely useful on fields like "Cantidad de personas". */
+.spreadsheet-table input[type="number"]::-webkit-outer-spin-button,
+.spreadsheet-table input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.spreadsheet-table input[type="number"] {
+    -moz-appearance: textfield; /* Firefox's equivalent of the WebKit rule above */
+}
+
+.spreadsheet-actions {
+    white-space: nowrap;
+}
+
+.spreadsheet-actions button {
+    padding: 3px 7px;
+}
+
+.spreadsheet-actions button + button {
+    margin-left: 4px;
+}
+
+/* --- Long free-text cells: TRUNCATE with an ellipsis, never wrap.
+   Base de Asados' Tipo Carne (multiple selected types joined with
+   "; ") and especially Ubicación (a full Nominatim address can run
+   60-100+ characters) are the two columns long enough to matter. An
+   earlier version let these WRAP onto multiple lines instead — that
+   made whichever row had a long address noticeably taller than every
+   other row, breaking the "one row = one line" spreadsheet look this
+   table is going for everywhere else. Truncating keeps every row the
+   same height; the full value is still one hover away via the
+   element's own `title` attribute (a native browser tooltip, no JS).
+
+   The truncation lives on an inner <span>, not the <td> itself —
+   max-width/overflow/text-overflow on a bare table cell only reliably
+   truncates under table-layout:fixed (which would need every OTHER
+   column to also get an explicit width to look right); wrapping the
+   text in its own inline-block span sidesteps that entirely and works
+   regardless of the table's layout algorithm. */
+.spreadsheet-table .truncate-cell,
+.spreadsheet-table .truncate-cell-wide {
+    display: inline-block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+    cursor: help; /* signals "hover for the full value" */
+}
+
+.spreadsheet-table .truncate-cell {
+    max-width: 130px;
+}
+
+.spreadsheet-table .truncate-cell-wide {
+    max-width: 220px;
 }
 
 /* --- Pagination (home page + Base de Asados) --- */

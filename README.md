@@ -30,6 +30,7 @@ how the deployment is wired up and how to ship an update
    you create the first account, an admin, yourself with this script):
    ```
    python create_user.py nico "nico" "Don Nicola" admin
+
    ```
    `role` (`admin` or `normal`) is optional and defaults to `normal` if
    omitted. Once you have an admin account, you can create the rest of
@@ -38,7 +39,7 @@ how the deployment is wired up and how to ship an update
 6. *(Optional)* **Fill it with random test data** instead of typing entries
    by hand, so you have something to click around and filter/export:
    ```
-   python seed_random_asados.py 15
+   python seed_random_asados.py 150
    ```
 7. **Run the app:**
    ```
@@ -100,11 +101,19 @@ asado_app/
 ## Git workflow
 ```
 git add .
-git commit -m "describe what you changed"
+git commit -m "changes in version"
+git tag -a v0.11.0 -m "changes in version"
 git push
+git push origin v0.10.0 v0.11.0
+
 ```
 
-workon asados-venv
-cd ~/asados
+## Init quick
 
-venv path /home/asados/.virtualenvs/asados-venv
+python -c "from app import init_db; init_db()"
+python create_user.py nico "nico" "Don Nicola" admin
+python create_user.py augusto "augusto" "augusto" admin
+python create_user.py cristian "cristian" "cristian" admin
+python create_user.py raul "raul" "raul" admin
+python create_user.py nicog "nicog" "nicog" admin
+python seed_random_asados.py 150

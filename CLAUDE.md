@@ -215,7 +215,29 @@ yet, just one Flask app with a handful of routes:
   = 100/page) — but `/base-asados/csv` deliberately ignores pagination
   and always exports every row; if you ever add filters to this page,
   remember to decide explicitly whether the CSV should respect them or
-  keep exporting everything
+  keep exporting everything. **On-screen `<th>` labels are abbreviated**
+  ("Peso Tipo Carne" → "Peso T.Carne", "Latitud" → "Lat.", etc., in
+  `base_asados.html`) purely to cut how much this 21-column table has
+  to scroll sideways — completely independent from
+  `base_asados_csv()`'s own header row, which keeps the full,
+  unabbreviated names; if you add a column, decide the on-screen label
+  and the CSV header separately, they're two different lists on
+  purpose. **Tipo Carne and Ubicación TRUNCATE with an ellipsis
+  (`.truncate-cell`/`.truncate-cell-wide` in style.css), they never
+  wrap** — these are the two columns that can genuinely run long
+  (multiple selected meat types; a full Nominatim address), and an
+  earlier version let them wrap onto multiple lines instead, which made
+  whichever row had a long value visibly TALLER than every other row —
+  breaking the "one row = one line" spreadsheet look this table already
+  relies on everywhere else (`white-space: nowrap` on every other
+  column, sticky `overflow-y` header, etc.). The truncation lives on an
+  inner `<span>` with its own `title="..."` (the full value, shown on
+  hover — a plain browser tooltip, no JS), not on the `<td>` itself:
+  `max-width`/`text-overflow: ellipsis` on a bare table cell only
+  reliably truncates under `table-layout: fixed` (which would need
+  every OTHER column to also get an explicit width to look right);
+  wrapping the text in its own `display: inline-block` span sidesteps
+  that and works regardless of the table's layout algorithm.
 - `/base-asados/csv` (`base_asados_csv`) — same rows as above, streamed
   back as a downloadable CSV (UTF-8 with a BOM prefix, so accented
   characters open correctly in Excel on Windows)
@@ -224,6 +246,13 @@ yet, just one Flask app with a handful of routes:
 - `/config/users/create`, `/config/users/<id>/delete` — admin-only
   (see `admin_required` in `app.py`), lets an admin manage accounts
   from the browser instead of only via `create_user.py`
+- `/actividad` (`activity_log_page`) — "Registro de Actividad": who
+  created/edited/deleted which asado, and when. Visible to every
+  logged-in user, not admin-only — see the "Activity log" section below
+- `/ubicaciones` (`locations_page`), `/ubicaciones/create`,
+  `/ubicaciones/<id>/edit` (any logged-in user), `/ubicaciones/<id>/delete`
+  (admin-only) — manage the reusable pool of saved locations; see the
+  "Recurring locations" section below
 
 Data model (`schema.sql`): `users` ← `participations` → `asados` ←
 `asado_tipo_carne`, all classic many-to-many junction tables. `users`
@@ -395,6 +424,206 @@ account/server, since backups live on the same disk as the live
 database. Offsite copies (e.g. periodically pulling `backups/` down to
 the user's Synology NAS) were discussed and intentionally deferred —
 a manual step for now, not automated.
+
+### Activity log — who created/edited/deleted which asado, and when
+`activity_log.py` holds three write functions (`log_create`,
+`log_edit`, `log_delete`) and one diff builder (`diff_asado`), called
+from `new_asado()`/`edit_asado()`/`delete_asado()` in `app.py` **before**
+each route's own `db.commit()`, never after — a log entry and the
+asado change it describes are written in the same transaction on
+purpose, so one can never be saved without the other (unlike the
+backup call in `new_asado()`, which deliberately runs AFTER commit —
+see "Automatic backups" above for why that one's different).
+
+**Scope, deliberately narrow for now**: only asado create/edit/delete
+is logged. User-account management (`/config/users/*`) and profile
+edits are NOT — this was an explicit scope call, not an oversight; ask
+before extending it there.
+
+**Every field that changed on an edit is recorded, not just the fact
+that an edit happened** — `diff_asado()` compares the asado's row
+*before* the update (fetched at the very top of `edit_asado()`, before
+anything else runs) against what was just submitted, plus the
+before/after Tipo de Carne list and before/after participant list
+(each resolved to `"Nombre (Rol)"` strings), and returns only the
+fields that actually differ. An edit that resubmits the form with
+nothing really changed still gets ONE `activity_log` row (proof the
+save happened) but zero `activity_log_changes` rows — don't read "no
+changes listed" as "nothing was logged." `latitude`/`longitude` are
+deliberately NOT diffed as their own fields (a pixel-level pin nudge
+with the same typed address would just add noise); `location`'s text
+already covers the meaningful case. Create/delete actions never get
+diff rows at all — comparing a brand-new asado against "nothing", or
+vice versa, isn't useful; the single `activity_log` row already says
+who/what/when for those two.
+
+**A separate `activity_log_changes` table, one row per changed field —
+not a JSON blob column.** Same reasoning as `asado_tipo_carne` over a
+concatenated string (see below): keeps every individual diff queryable
+and consistent with how this app already avoids blob/string-packed
+data.
+
+**`user_id`/`asado_id` are real FOREIGN KEYs with `ON DELETE SET
+NULL`, not `ON DELETE CASCADE` or a manual pre-delete block.** Deleting
+a user account or an asado must NEVER be blocked just because old log
+entries reference it — that would be a foot-gun no one would expect
+("why can't I delete this asado, it doesn't even exist anymore?").
+Unlike `delete_user_route`'s existing check (blocked if the user has
+`participations`), a user or asado with ONLY activity-log history is
+freely deletable; the FK just nulls the reference out automatically.
+This is exactly why `activity_log` ALSO stores `actor_name`/
+`asado_nombre`/`asado_date` as FROZEN plain text at write time (same
+"freeze it" pattern as weights/points elsewhere in this app) — the log
+entry stays fully readable ("Nico eliminó el asado 'Épico Junte'")
+even after the user or asado it names is long gone.
+
+**Visible to every logged-in user, not admin-gated** — `/actividad`
+uses `@login_required`, not `@admin_required`. Deliberate: since ANY
+user can already edit ANY asado (see "Edit/delete permissions" below),
+this log is what makes that openness accountable to the group, not
+something that itself needs restricting on top of it.
+
+### Recurring locations — a quick-fill pool, deliberately NOT linked to asados
+`locations` (schema.sql) holds a small, user-curated pool of named
+places ("Casa de Nico", "Quincho El Bosque") — managed at `/ubicaciones`
+and exposed on the asado form (`_asado_form.html`) as an "Ubicación
+guardada" `<select>` above the existing address/map picker.
+
+**`name`/`address`/`latitude`/`longitude` are all NOT NULL on this
+table** — unlike `asados.location` (which stays free/optional, see its
+own comment in schema.sql), a location saved to the reusable pool is
+useless as a future quick-fill without a real address AND coordinates.
+Enforced three ways at once, deliberately redundant: (1) the HTML
+`required` attribute, (2) friendly `?error=` checks at the top of
+`create_location()`/`edit_location()` in `app.py`, (3) `NOT NULL` in
+`schema.sql` as the last-resort DB-level backstop — same "form-required
+= DB NOT NULL" pattern `asados.nombre`/`coccion`/etc. already use.
+`maybe_save_location()` (called from the asado form's "Guardar esta
+ubicación" checkbox) mirrors the same check but SILENTLY no-ops instead
+of erroring if address/lat/lon are missing — very possible there, since
+the asado form's own location can be freely typed without ever being
+geocoded (no suggestion/map point picked); the asado itself must still
+save fine either way, it just won't be added to the pool.
+
+**`_location_picker.html` is the ONE place the address-autocomplete +
+Leaflet map-modal component exists** — extracted out of
+`_asado_form.html` specifically so `/ubicaciones`' own "Nueva Ubicación"
+form could reuse the exact same picker (same reasoning CLAUDE.md
+already gives for why `_asado_form.html` itself is a shared partial:
+two hand-copied map pickers would eventually drift). It takes
+`location_value`/`latitude_value`/`longitude_value` (prefill),
+`location_field_name` (which `name=` the address input submits under —
+`"location"` for the asado form, `"address"` for `/ubicaciones`, since
+that's each route's own column name), and `location_required` (adds
+HTML `required` on the address input, AND blocks that `<form>`'s submit
+via JS until latitude/longitude actually have values — `/ubicaciones`
+sets this, the asado form doesn't, since its own location stays
+optional). **Only ever include this partial ONCE per page** — its
+`<script>` declares top-level `const`s and fixed element ids
+(`#location`, `#map-modal`, ...) that would collide if included twice.
+This is exactly why, on `/ubicaciones`, only the "Nueva Ubicación" form
+got the full picker — each EXISTING saved location's own inline edit
+row deliberately kept plain required text/number fields instead of a
+second picker instance (a real product/scope decision, not a
+last-minute cut corner: making N simultaneous map-picker instances
+safe on one page needs a per-instance id-prefix refactor this
+component doesn't have yet — revisit if that's ever actually wanted).
+
+**Coordinates are shown, but never directly editable, on the picker
+itself.** `_location_picker.html` renders a read-only "📍 Coordenadas:
+lat, lon" line under the address field (`#coordinates-display`),
+kept in sync by `updateCoordinatesDisplay()` — called from
+`selectAddress()` (covers both the autocomplete-click and map-click
+paths) and, cross-`<script>`-tag, from `_asado_form.html`'s "Ubicación
+guardada" dropdown handler too (same "top-level `const`/function
+declared in one `<script>` tag stays visible to a later one on the
+same page" mechanism the shared `locationInput`/`latInput`/`lonInput`
+already rely on). It's deliberately NOT an editable field: latitude/
+longitude only ever come from picking a real suggestion or map point,
+never free-typed, so there'd be nothing meaningful to type into a
+coordinates input directly — this is purely a "here's what got
+captured" confirmation.
+
+**"Ubicaciones Existentes" is a compact spreadsheet-style TABLE**
+(`ubicaciones.html`, reusing the same `.spreadsheet-table`/
+`.spreadsheet-wrapper` classes Base de Asados already uses), not one
+big stacked card per location — one row per saved place, editable
+cells, a 💾 button per row applies just that row's changes. Each row's
+`<form>` is declared SEPARATELY, right before the table (not nested
+inside `<table>`/`<tbody>` — a `<form>` isn't valid table-model
+content there; browsers silently hoist it out and break the layout),
+and every cell's input/button is tied to its row's form via the
+standard HTML5 `form="location-form-<id>"` attribute rather than DOM
+nesting. The delete button reuses the same `formaction` trick as
+before (same form, different target URL for that one button).
+
+**Compacted horizontally on request** (it was noticeably wide with 4
+separately-boxed fields per row): Latitud/Longitud share ONE
+"Coordenadas" `<th>`/`<td>` — still two independently-submitted
+`name="latitude"`/`name="longitude"` inputs, just laid out side by
+side (`.loc-coord-pair`) instead of two full columns each with their
+own header/border/padding overhead. "Agregada por" isn't its own
+column at all anymore — it's a `title` tooltip on the Nombre cell,
+since it's nice-to-know info, not something worth a whole column's
+width. Purpose-specific width classes (`.loc-name-input`,
+`.loc-address-input`, `.loc-coord-input`) replace one generic
+`input[type=text]`/`input[type=number]` rule, since Nombre/Dirección
+need real room to read a value and a coordinate never does. The
+browser's default up/down spinner arrows on Latitud/Longitud are
+removed too (`.spreadsheet-table input[type="number"]` in style.css) —
+they don't add anything on a coordinate field (nobody increments a
+latitude by 1 with a click); this is scoped to `.spreadsheet-table`
+only, not applied globally, since spinners ARE genuinely useful on
+fields like "Cantidad de personas" elsewhere.
+
+**Picking a saved location is a one-time PREFILL, not a live link.**
+Choosing one just copies its `address`/`latitude`/`longitude` into the
+SAME `location`/`latitude`/`longitude` fields the free-typed/map-picked
+flow already fills (see the dropdown's `onchange` handler in
+`_asado_form.html`) — `asados` has no `location_id` foreign key to
+`locations` at all, on purpose. This means later renaming or deleting a
+saved location on `/ubicaciones` can NEVER retroactively change any
+asado that already used it; each asado's `location` text is a plain,
+independent snapshot from the moment it was saved — same "frozen at
+the moment of use" philosophy as weights/points elsewhere in this app,
+just applied to convenience data instead of scoring data. If you ever
+need to know which saved location (if any) a past asado's address
+corresponds to, that's a manual/fuzzy lookup by text, not a join —
+there's no stored relationship to query.
+
+**Using a one-off, never-saved location (the app's original behavior,
+before this feature existed) still works exactly as before, with zero
+extra clicks.** The "💾 Guardar esta ubicación para reutilizarla más
+adelante" checkbox next to the location fields defaults UNCHECKED —
+only ticking it (and giving it a short name in the field that then
+reveals itself) adds the just-used address/pin to the pool via
+`maybe_save_location()` in `app.py`, called from `new_asado()`/
+`edit_asado()` right before their own `db.commit()`. Leaving it
+unchecked is a complete no-op as far as `locations` is concerned.
+
+**Duplicate names are silently skipped, not an error.** If the
+submitted `location_name` (case-insensitive) already matches an
+existing saved location, `maybe_save_location()` just returns without
+inserting — the asado itself still saves normally either way. Fixing
+or renaming an already-saved location is what the `/ubicaciones` page's
+own edit form is for, not something a same-named checkbox submission
+should silently overwrite.
+
+**Permissions mirror the exact asado create/edit/delete asymmetry**:
+any logged-in user can add a new saved location or edit an existing
+one's name/address/coordinates (`create_location`/`edit_location`, both
+`@login_required`); only an admin can remove one from the pool
+(`delete_location`, `@admin_required`) — same reasoning as
+`delete_asado`: removing a shared resource other people may be relying
+on is the one genuinely destructive action here, editing/adding isn't.
+
+**`created_by` is a real FOREIGN KEY with `ON DELETE SET NULL`, not a
+frozen name column** — unlike `activity_log`'s `actor_name`, this isn't
+an audit trail (nobody needs to prove who added a location after the
+fact the way they'd need to prove who edited an asado), so a live
+`LEFT JOIN` to `users.name` for display is enough; if that user account
+is later deleted, the "Agregada por ..." line just stops showing a
+name instead of needing its own frozen copy.
 
 ### CSRF protection
 Every POST route (`login`, `/config/profile`, `/config/users/create`,
@@ -635,6 +864,12 @@ rate limits), both called directly from the browser in
   `DROP TABLE` + `CREATE TABLE` from `schema.sql` — there's no
   migration system yet. Any schema change requires recreating the DB
   and, since Phase 2, recreating user accounts via `create_user.py`.
+- **`VERSION` (`app.py`) is a THIRD manually-bumped place, alongside
+  `CHANGELOG.md` and the git tag.** It's shown in the small footer on
+  every page (see below) via `inject_version()`. Nothing automatically
+  keeps these three in sync — check `VERSION` specifically before
+  tagging a release, or the footer will silently show a stale number
+  even after `CHANGELOG.md`/the tag have moved on.
 - **Stray empty files/folders** (e.g. `download`, `next fix`) have
   appeared in the repo a few times, likely from drag-and-drop actions
   on the GitHub web UI rather than local Git commands. Harmless, but

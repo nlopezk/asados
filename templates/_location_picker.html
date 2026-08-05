@@ -1,0 +1,302 @@
+<!--
+    _location_picker.html = the reusable "type an address (with live
+    autocomplete) OR click a point on a map" component — an address
+    text input + hidden latitude/longitude fields + a Leaflet map
+    modal, backed by OpenStreetMap's free Nominatim search/reverse-
+    geocoding API (see CLAUDE.md's "Maps" section for why OSM/Leaflet
+    over Google Maps).
+
+    Included by _asado_form.html (the asado create/edit form) and
+    ubicaciones.html ("Nueva Ubicación") — the ONE place this
+    markup+JS exists, so the two can never drift the way two
+    hand-copied map pickers eventually would (same reasoning CLAUDE.md
+    already gives for why _asado_form.html itself exists).
+
+    IMPORTANT — only ever include this ONCE per page. Its JS declares
+    top-level `const`s (locationInput, latInput, mapModal, ...) and
+    fixed element ids (#location, #map-modal, #map-picker, ...) that
+    would collide/redeclare if this partial appeared twice on the same
+    page — which is why, on ubicaciones.html, only the "Nueva
+    Ubicación" form uses it; each EXISTING saved location's own inline
+    edit row deliberately stays plain text/number fields instead (see
+    CLAUDE.md's "Recurring locations" section for that scope call). If
+    a future page ever needs two independent pickers open at once,
+    this component needs a real per-instance id-prefix refactor first
+    — don't just copy-paste it a second time.
+
+    Variables the including template may set before including (all
+    optional):
+      location_value     - prefill text for the address input
+      latitude_value      - prefill value for the hidden latitude input
+      longitude_value      - prefill value for the hidden longitude input
+      location_field_name - the <input name="..."> to submit the address
+                             under (default "location", matching
+                             asados.location; ubicaciones.html sets this
+                             to "address" to match locations.address)
+      location_required   - if truthy, marks the address input required
+                             AND blocks submitting the enclosing <form>
+                             until a suggestion or map point has been
+                             picked (so latitude/longitude are actually
+                             set, not just the free-typed text) — used
+                             by ubicaciones.html's "Nueva Ubicación"
+                             form; the asado form leaves this unset,
+                             since its own location stays optional.
+-->
+
+<!-- Leaflet is the mapping library we use for the location picker.
+     It's loaded from a public CDN — this runs in the user's own
+     browser, so it just needs their internet connection, not ours. -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<label for="location">Ubicación</label>
+<div class="location-picker">
+    <!-- autocomplete="off" stops the BROWSER's own address
+         suggestions from covering up our custom dropdown below. -->
+    <input type="text" id="location" name="{{ location_field_name or 'location' }}" autocomplete="off"
+           value="{{ location_value or '' }}"
+           placeholder="Escribe una dirección..."
+           {% if location_required %}required{% endif %}>
+    <!-- This div holds the live search-suggestion list, positioned
+         right under the text input via CSS. -->
+    <div id="address-suggestions" class="address-suggestions"></div>
+    <button type="button" id="open-map-btn" class="secondary-button">📍 Elegir en el mapa</button>
+</div>
+<!-- Hidden inputs: not visible to the user, but submitted with the
+     form so app.py can save the coordinates. Deliberately NOT marked
+     "required" even when location_required is set — a required HIDDEN
+     input blocks submission with no visible focus/error near it,
+     which reads as a silently broken form. The JS submit-guard below
+     covers the same requirement with an actual, visible message. -->
+<input type="hidden" id="latitude" name="latitude" value="{{ latitude_value or '' }}">
+<input type="hidden" id="longitude" name="longitude" value="{{ longitude_value or '' }}">
+
+<!-- Read-only REFERENCE display of the coordinates the hidden inputs
+     above actually hold — not editable here on purpose: latitude/
+     longitude only ever come from picking a real suggestion or a map
+     point (see selectAddress() below), never free-typed, so there's
+     nothing meaningful to type into a coordinates field directly. This
+     is just visual confirmation of what got captured. Kept updated live
+     by updateCoordinatesDisplay(), called from selectAddress() below
+     AND from the "Ubicación guardada" dropdown handler in
+     _asado_form.html (that dropdown sets latInput/lonInput directly,
+     bypassing selectAddress()). -->
+<p class="coordinates-display" id="coordinates-display">
+    📍 Coordenadas:
+    {% if latitude_value and longitude_value %}
+        {{ latitude_value }}, {{ longitude_value }}
+    {% else %}
+        —
+    {% endif %}
+</p>
+
+<!-- The map modal: hidden by default (class "hidden" sets display:none
+     in our CSS), shown when the user clicks "Elegir en el mapa". -->
+<div id="map-modal" class="map-modal hidden">
+    <div class="map-modal-content">
+        <div id="map-picker" class="map-picker"></div>
+        <div class="map-modal-actions">
+            <span id="map-picked-address" class="map-picked-address"></span>
+            <button type="button" id="map-confirm-btn" class="primary-button">Confirmar ubicación</button>
+            <button type="button" id="map-cancel-btn" class="secondary-button">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // =================================================================
+    // LOCATION PICKER: address autocomplete + map, using OpenStreetMap's
+    // free Nominatim search service (no API key needed).
+    // =================================================================
+
+    const locationInput = document.getElementById("location");
+    const suggestionsBox = document.getElementById("address-suggestions");
+    const latInput = document.getElementById("latitude");
+    const lonInput = document.getElementById("longitude");
+
+    {% if location_required %}
+    // location_required: block submitting the enclosing form until
+    // latitude/longitude actually have values — typing free text
+    // without ever picking a suggestion or a map point would otherwise
+    // submit an "address" with no real coordinates, which defeats the
+    // point of a SAVED location (see CLAUDE.md's "Recurring locations"
+    // section on why address/coordinates are mandatory here but not on
+    // the asado form itself).
+    const locationForm = locationInput.closest("form");
+    if (locationForm) {
+        locationForm.addEventListener("submit", function (event) {
+            if (!latInput.value || !lonInput.value) {
+                event.preventDefault();
+                alert("Selecciona una sugerencia de la lista, o un punto en el mapa, para fijar las coordenadas de esta ubicación.");
+                locationInput.focus();
+            }
+        });
+    }
+    {% endif %}
+
+    // "Debounce" = wait until the user pauses typing before searching,
+    // instead of firing a request on every single keystroke. This is
+    // both faster for the user and respectful of Nominatim's free
+    // service (which asks that we avoid hammering it with requests).
+    let debounceTimer = null;
+
+    locationInput.addEventListener("input", function () {
+        clearTimeout(debounceTimer);
+        const query = locationInput.value.trim();
+
+        if (query.length < 3) {
+            suggestionsBox.innerHTML = "";
+            return;
+        }
+
+        debounceTimer = setTimeout(function () {
+            searchAddress(query);
+        }, 400); // wait 400ms after the last keystroke
+    });
+
+    // Calls Nominatim's search endpoint and renders the results as a
+    // clickable list under the text input.
+    function searchAddress(query) {
+        const url = "https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&q=" + encodeURIComponent(query);
+
+        fetch(url, { headers: { "Accept-Language": "es" } })
+            .then(function (response) { return response.json(); })
+            .then(function (results) {
+                suggestionsBox.innerHTML = "";
+                results.forEach(function (result) {
+                    const item = document.createElement("div");
+                    item.className = "address-suggestion-item";
+                    item.textContent = result.display_name;
+                    item.addEventListener("click", function () {
+                        selectAddress(result.display_name, result.lat, result.lon);
+                    });
+                    suggestionsBox.appendChild(item);
+                });
+            })
+            .catch(function (error) {
+                console.error("Address search failed:", error);
+            });
+    }
+
+    // Fills the form fields once an address is chosen (either from the
+    // autocomplete list or from clicking the map).
+    function selectAddress(displayName, lat, lon) {
+        locationInput.value = displayName;
+        latInput.value = lat;
+        lonInput.value = lon;
+        suggestionsBox.innerHTML = "";
+        updateCoordinatesDisplay();
+    }
+
+    // Keeps the read-only "📍 Coordenadas: ..." text in sync with
+    // whatever latInput/lonInput actually hold. Exposed (not wrapped in
+    // an IIFE) so _asado_form.html's "Ubicación guardada" dropdown can
+    // also call it after setting latInput/lonInput directly — same
+    // cross-<script>-tag visibility as locationInput/latInput/lonInput
+    // themselves (see the header comment above).
+    function updateCoordinatesDisplay() {
+        const display = document.getElementById("coordinates-display");
+        if (latInput.value && lonInput.value) {
+            display.textContent = "📍 Coordenadas: " + latInput.value + ", " + lonInput.value;
+        } else {
+            display.textContent = "📍 Coordenadas: —";
+        }
+    }
+
+    // Hide the suggestions list if the user clicks anywhere else on the page.
+    document.addEventListener("click", function (event) {
+        if (event.target !== locationInput) {
+            suggestionsBox.innerHTML = "";
+        }
+    });
+
+    // -----------------------------------------------------------------
+    // MAP MODAL (click-to-pick-a-point)
+    // -----------------------------------------------------------------
+    const mapModal = document.getElementById("map-modal");
+    const openMapBtn = document.getElementById("open-map-btn");
+    const cancelMapBtn = document.getElementById("map-cancel-btn");
+    const confirmMapBtn = document.getElementById("map-confirm-btn");
+    const pickedAddressLabel = document.getElementById("map-picked-address");
+
+    let leafletMap = null;    // will hold the Leaflet map instance
+    let mapMarker = null;     // will hold the draggable marker
+    let pickedLat = null;
+    let pickedLon = null;
+    let pickedDisplayName = "";
+
+    openMapBtn.addEventListener("click", function () {
+        mapModal.classList.remove("hidden");
+
+        // Leaflet needs the container to be VISIBLE before it
+        // initializes correctly, so we create the map only the first
+        // time the modal is opened (and refresh its size afterward).
+        if (leafletMap === null) {
+            // Default view: centered on Santiago, Chile.
+            leafletMap = L.map("map-picker").setView([-33.4489, -70.6693], 12);
+
+            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                attribution: "&copy; OpenStreetMap contributors"
+            }).addTo(leafletMap);
+
+            // Clicking anywhere on the map drops/moves the marker and
+            // reverse-geocodes that point into a human-readable address.
+            leafletMap.on("click", function (event) {
+                placeMarker(event.latlng.lat, event.latlng.lng);
+                reverseGeocode(event.latlng.lat, event.latlng.lng);
+            });
+        }
+
+        // Fixes a common Leaflet quirk where the map renders wrong if
+        // it was initialized while its container was hidden.
+        setTimeout(function () { leafletMap.invalidateSize(); }, 100);
+    });
+
+    function placeMarker(lat, lon) {
+        pickedLat = lat;
+        pickedLon = lon;
+
+        if (mapMarker === null) {
+            mapMarker = L.marker([lat, lon], { draggable: true }).addTo(leafletMap);
+            // If the user drags the marker after placing it, re-run
+            // reverse geocoding for the new position.
+            mapMarker.on("dragend", function () {
+                const pos = mapMarker.getLatLng();
+                placeMarker(pos.lat, pos.lng);
+                reverseGeocode(pos.lat, pos.lng);
+            });
+        } else {
+            mapMarker.setLatLng([lat, lon]);
+        }
+    }
+
+    // Converts coordinates back into a readable address using
+    // Nominatim's "reverse" endpoint (the opposite of search).
+    function reverseGeocode(lat, lon) {
+        const url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lon;
+
+        pickedAddressLabel.textContent = "Buscando dirección...";
+
+        fetch(url, { headers: { "Accept-Language": "es" } })
+            .then(function (response) { return response.json(); })
+            .then(function (result) {
+                pickedDisplayName = result.display_name || (lat + ", " + lon);
+                pickedAddressLabel.textContent = pickedDisplayName;
+            })
+            .catch(function () {
+                pickedDisplayName = lat + ", " + lon;
+                pickedAddressLabel.textContent = pickedDisplayName;
+            });
+    }
+
+    confirmMapBtn.addEventListener("click", function () {
+        if (pickedLat !== null && pickedLon !== null) {
+            selectAddress(pickedDisplayName, pickedLat, pickedLon);
+        }
+        mapModal.classList.add("hidden");
+    });
+
+    cancelMapBtn.addEventListener("click", function () {
+        mapModal.classList.add("hidden");
+    });
+</script>

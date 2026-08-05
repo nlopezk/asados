@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+<!--
+    activity_log.html = "Registro de Actividad": a chronological feed
+    of who created/edited/deleted which asado, and when. Visible to
+    EVERY logged-in user, not just admins — see app.py's
+    activity_log_page() for why.
+
+    Each item in "entries" is a dict: {"entry": <activity_log row>,
+    "changes": <activity_log_changes rows>} — "changes" is only ever
+    non-empty for action == "edit" (see activity_log.py: create/delete
+    actions don't produce field-level diff rows).
+-->
+
+{% block content %}
+<h2>Registro de Actividad</h2>
+
+{% if entries|length == 0 %}
+    <p class="empty-state">Todavía no hay actividad registrada.</p>
+{% else %}
+    <div class="log-list">
+        {% for item in entries %}
+            {% set entry = item.entry %}
+            <div class="log-entry">
+                <p class="log-entry-header">
+                    {% if entry.action == "create" %}
+                        <span class="log-entry-icon">➕</span>
+                        <strong>{{ entry.actor_name }}</strong> creó el asado
+                    {% elif entry.action == "edit" %}
+                        <span class="log-entry-icon">✏️</span>
+                        <strong>{{ entry.actor_name }}</strong> editó el asado
+                    {% else %}
+                        <span class="log-entry-icon">🗑</span>
+                        <strong>{{ entry.actor_name }}</strong> eliminó el asado
+                    {% endif %}
+                    {% if entry.asado_id %}
+                        <a href="{{ url_for('view_asado', asado_id=entry.asado_id) }}">"{{ entry.asado_nombre }}"</a>
+                    {% else %}
+                        <!-- The asado no longer exists (this IS its
+                             deletion record, or it was deleted since)
+                             — nothing to link to, just show the frozen
+                             name as plain text. -->
+                        "{{ entry.asado_nombre }}"
+                    {% endif %}
+                    <span class="log-entry-timestamp">{{ entry.timestamp }}</span>
+                </p>
+
+                {% if item.changes|length > 0 %}
+                    <ul class="log-entry-changes">
+                        {% for change in item.changes %}
+                            <li>
+                                <strong>{{ change.field_label }}:</strong>
+                                <span class="log-old-value">{{ change.old_value if change.old_value else "(vacío)" }}</span>
+                                →
+                                <span class="log-new-value">{{ change.new_value if change.new_value else "(vacío)" }}</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+
+    {% if total_pages > 1 %}
+        <nav class="pagination">
+            {% if page > 1 %}
+                <a href="{{ url_for('activity_log_page', page=page-1) }}" class="secondary-button">← Anterior</a>
+            {% endif %}
+            <span class="pagination-status">Página {{ page }} de {{ total_pages }}</span>
+            {% if page < total_pages %}
+                <a href="{{ url_for('activity_log_page', page=page+1) }}" class="secondary-button">Siguiente →</a>
+            {% endif %}
+        </nav>
+    {% endif %}
+{% endif %}
+{% endblock %}

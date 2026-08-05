@@ -54,12 +54,6 @@
 </div>
 {% endmacro %}
 
-<!-- Leaflet is the mapping library we use for the location picker.
-     It's loaded from a public CDN — this runs in the user's own
-     browser, so it just needs their internet connection, not ours. -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <form method="POST" action="{{ form_action }}" class="asado-form" id="asado-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -157,22 +151,46 @@
 
     <!-- --- Optional, non-scoring fields, intentionally placed LAST --- -->
 
-    <label for="location">Ubicación</label>
-    <div class="location-picker">
-        <!-- autocomplete="off" stops the BROWSER's own address
-             suggestions from covering up our custom dropdown below. -->
-        <input type="text" id="location" name="location" autocomplete="off"
-               value="{{ asado.location if asado else '' }}"
-               placeholder="Escribe una dirección...">
-        <!-- This div holds the live search-suggestion list, positioned
-             right under the text input via CSS. -->
-        <div id="address-suggestions" class="address-suggestions"></div>
-        <button type="button" id="open-map-btn" class="secondary-button">📍 Elegir en el mapa</button>
+    <!-- "Ubicación guardada": a QUICK-FILL convenience over the
+         reusable pool managed on /ubicaciones (see CLAUDE.md's
+         "Recurring locations" section) — picking one just prefills the
+         same location/latitude/longitude fields below, exactly as if
+         you'd typed/map-picked it yourself. It's not a live link: this
+         asado's own location data is a plain snapshot from here on,
+         same as before this feature existed. Using a brand-new,
+         never-saved location (today's original flow) still works
+         exactly as before — just leave this on "Nueva ubicación". -->
+    <label for="saved_location">Ubicación guardada</label>
+    <select id="saved_location">
+        <option value="">— Nueva ubicación —</option>
+        {% for loc in saved_locations %}
+            <option value="{{ loc.id }}"
+                    data-address="{{ loc.address or '' }}"
+                    data-lat="{{ loc.latitude if loc.latitude is not none else '' }}"
+                    data-lon="{{ loc.longitude if loc.longitude is not none else '' }}">
+                {{ loc.name }}
+            </option>
+        {% endfor %}
+    </select>
+
+    <!-- The address/map picker itself lives in _location_picker.html —
+         see that file's header comment for why it's a shared partial
+         and the "only include once per page" rule. The asado's own
+         location stays OPTIONAL (location_required is left unset) —
+         unlike /ubicaciones' "Nueva Ubicación" form, which requires it. -->
+    {% set location_value = asado.location if asado else '' %}
+    {% set latitude_value = asado.latitude if asado and asado.latitude is not none else '' %}
+    {% set longitude_value = asado.longitude if asado and asado.longitude is not none else '' %}
+    {% include "_location_picker.html" %}
+
+    <label class="checkbox-label">
+        <input type="checkbox" id="save_location_checkbox" name="save_location">
+        💾 Guardar esta ubicación para reutilizarla más adelante
+    </label>
+    <div id="save-location-name-field" class="hidden">
+        <label for="location_name">Nombre de Ubicación para guardar</label>
+        <input type="text" id="location_name" name="location_name" placeholder="Ej: Casa de Nico">
     </div>
-    <!-- Hidden inputs: not visible to the user, but submitted with the
-         form so app.py can save the coordinates. -->
-    <input type="hidden" id="latitude" name="latitude" value="{{ asado.latitude if asado and asado.latitude is not none else '' }}">
-    <input type="hidden" id="longitude" name="longitude" value="{{ asado.longitude if asado and asado.longitude is not none else '' }}">
 
     <label for="people">Cantidad de personas</label>
     <input type="number" id="people" name="people" min="1" value="{{ asado.people if asado and asado.people is not none else '' }}">
@@ -184,19 +202,6 @@
 
     <button type="submit" class="primary-button">{{ submit_label }}</button>
 </form>
-
-<!-- The map modal: hidden by default (class "hidden" sets display:none
-     in our CSS), shown when the user clicks "Elegir en el mapa". -->
-<div id="map-modal" class="map-modal hidden">
-    <div class="map-modal-content">
-        <div id="map-picker" class="map-picker"></div>
-        <div class="map-modal-actions">
-            <span id="map-picked-address" class="map-picked-address"></span>
-            <button type="button" id="map-confirm-btn" class="primary-button">Confirmar ubicación</button>
-            <button type="button" id="map-cancel-btn" class="secondary-button">Cancelar</button>
-        </div>
-    </div>
-</div>
 
 <script>
     // =================================================================
@@ -439,163 +444,49 @@
     updateTipoCarneHints();
     updatePointsSummary();
 
-    // =================================================================
-    // LOCATION PICKER: address autocomplete + map, using OpenStreetMap's
-    // free Nominatim search service (no API key needed).
-    // =================================================================
+    // -----------------------------------------------------------------
+    // "UBICACIÓN GUARDADA" DROPDOWN — a quick-fill convenience only.
+    // locationInput/suggestionsBox/latInput/lonInput referenced below
+    // are declared in _location_picker.html's own <script> block,
+    // included earlier on this page (see the location section above) —
+    // top-level const/let declared in one <script> tag stay in scope
+    // for every later <script> tag on the same page, so this works
+    // without redeclaring them here.
+    // Picking a saved location just copies its address/lat/lon into the
+    // SAME fields the free-typed/map-picked flow below already fills —
+    // nothing here is a live link back to the locations table, so
+    // editing these fields afterward is completely normal and doesn't
+    // "detach" from or modify the saved location itself.
+    // -----------------------------------------------------------------
+    const savedLocationSelect = document.getElementById("saved_location");
+    const saveLocationCheckbox = document.getElementById("save_location_checkbox");
+    const saveLocationNameField = document.getElementById("save-location-name-field");
 
-    const locationInput = document.getElementById("location");
-    const suggestionsBox = document.getElementById("address-suggestions");
-    const latInput = document.getElementById("latitude");
-    const lonInput = document.getElementById("longitude");
+    savedLocationSelect.addEventListener("change", function () {
+        const option = savedLocationSelect.options[savedLocationSelect.selectedIndex];
+        if (!option.value) return;  // "— Nueva ubicación —" placeholder, nothing to fill
 
-    // "Debounce" = wait until the user pauses typing before searching,
-    // instead of firing a request on every single keystroke. This is
-    // both faster for the user and respectful of Nominatim's free
-    // service (which asks that we avoid hammering it with requests).
-    let debounceTimer = null;
-
-    locationInput.addEventListener("input", function () {
-        clearTimeout(debounceTimer);
-        const query = locationInput.value.trim();
-
-        if (query.length < 3) {
-            suggestionsBox.innerHTML = "";
-            return;
-        }
-
-        debounceTimer = setTimeout(function () {
-            searchAddress(query);
-        }, 400); // wait 400ms after the last keystroke
-    });
-
-    // Calls Nominatim's search endpoint and renders the results as a
-    // clickable list under the text input.
-    function searchAddress(query) {
-        const url = "https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&q=" + encodeURIComponent(query);
-
-        fetch(url, { headers: { "Accept-Language": "es" } })
-            .then(function (response) { return response.json(); })
-            .then(function (results) {
-                suggestionsBox.innerHTML = "";
-                results.forEach(function (result) {
-                    const item = document.createElement("div");
-                    item.className = "address-suggestion-item";
-                    item.textContent = result.display_name;
-                    item.addEventListener("click", function () {
-                        selectAddress(result.display_name, result.lat, result.lon);
-                    });
-                    suggestionsBox.appendChild(item);
-                });
-            })
-            .catch(function (error) {
-                console.error("Address search failed:", error);
-            });
-    }
-
-    // Fills the form fields once an address is chosen (either from the
-    // autocomplete list or from clicking the map).
-    function selectAddress(displayName, lat, lon) {
-        locationInput.value = displayName;
-        latInput.value = lat;
-        lonInput.value = lon;
+        // Prefer the saved address text; fall back to the location's
+        // own short name if it was saved without a full address (e.g.
+        // typed straight into /ubicaciones with just coordinates).
+        locationInput.value = option.dataset.address || option.textContent.trim();
+        latInput.value = option.dataset.lat;
+        lonInput.value = option.dataset.lon;
         suggestionsBox.innerHTML = "";
-    }
+        updateCoordinatesDisplay();
 
-    // Hide the suggestions list if the user clicks anywhere else on the page.
-    document.addEventListener("click", function (event) {
-        if (event.target !== locationInput) {
-            suggestionsBox.innerHTML = "";
-        }
+        // A location just picked FROM the saved pool wouldn't normally
+        // be re-saved under another name — reset the checkbox so it
+        // doesn't stay checked from an earlier, different selection.
+        saveLocationCheckbox.checked = false;
+        saveLocationNameField.classList.add("hidden");
     });
 
-    // -----------------------------------------------------------------
-    // MAP MODAL (click-to-pick-a-point)
-    // -----------------------------------------------------------------
-    const mapModal = document.getElementById("map-modal");
-    const openMapBtn = document.getElementById("open-map-btn");
-    const cancelMapBtn = document.getElementById("map-cancel-btn");
-    const confirmMapBtn = document.getElementById("map-confirm-btn");
-    const pickedAddressLabel = document.getElementById("map-picked-address");
-
-    let leafletMap = null;    // will hold the Leaflet map instance
-    let mapMarker = null;     // will hold the draggable marker
-    let pickedLat = null;
-    let pickedLon = null;
-    let pickedDisplayName = "";
-
-    openMapBtn.addEventListener("click", function () {
-        mapModal.classList.remove("hidden");
-
-        // Leaflet needs the container to be VISIBLE before it
-        // initializes correctly, so we create the map only the first
-        // time the modal is opened (and refresh its size afterward).
-        if (leafletMap === null) {
-            // Default view: centered on Santiago, Chile.
-            leafletMap = L.map("map-picker").setView([-33.4489, -70.6693], 12);
-
-            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-                attribution: "&copy; OpenStreetMap contributors"
-            }).addTo(leafletMap);
-
-            // Clicking anywhere on the map drops/moves the marker and
-            // reverse-geocodes that point into a human-readable address.
-            leafletMap.on("click", function (event) {
-                placeMarker(event.latlng.lat, event.latlng.lng);
-                reverseGeocode(event.latlng.lat, event.latlng.lng);
-            });
-        }
-
-        // Fixes a common Leaflet quirk where the map renders wrong if
-        // it was initialized while its container was hidden.
-        setTimeout(function () { leafletMap.invalidateSize(); }, 100);
-    });
-
-    function placeMarker(lat, lon) {
-        pickedLat = lat;
-        pickedLon = lon;
-
-        if (mapMarker === null) {
-            mapMarker = L.marker([lat, lon], { draggable: true }).addTo(leafletMap);
-            // If the user drags the marker after placing it, re-run
-            // reverse geocoding for the new position.
-            mapMarker.on("dragend", function () {
-                const pos = mapMarker.getLatLng();
-                placeMarker(pos.lat, pos.lng);
-                reverseGeocode(pos.lat, pos.lng);
-            });
-        } else {
-            mapMarker.setLatLng([lat, lon]);
-        }
-    }
-
-    // Converts coordinates back into a readable address using
-    // Nominatim's "reverse" endpoint (the opposite of search).
-    function reverseGeocode(lat, lon) {
-        const url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lon;
-
-        pickedAddressLabel.textContent = "Buscando dirección...";
-
-        fetch(url, { headers: { "Accept-Language": "es" } })
-            .then(function (response) { return response.json(); })
-            .then(function (result) {
-                pickedDisplayName = result.display_name || (lat + ", " + lon);
-                pickedAddressLabel.textContent = pickedDisplayName;
-            })
-            .catch(function () {
-                pickedDisplayName = lat + ", " + lon;
-                pickedAddressLabel.textContent = pickedDisplayName;
-            });
-    }
-
-    confirmMapBtn.addEventListener("click", function () {
-        if (pickedLat !== null && pickedLon !== null) {
-            selectAddress(pickedDisplayName, pickedLat, pickedLon);
-        }
-        mapModal.classList.add("hidden");
-    });
-
-    cancelMapBtn.addEventListener("click", function () {
-        mapModal.classList.add("hidden");
+    // The "Nombre para guardar" field only makes sense (and is only
+    // shown) once the checkbox above is actually ticked — unchecked is
+    // the default, so a one-off/never-saved location (the original
+    // behavior, before this feature existed) needs zero extra clicks.
+    saveLocationCheckbox.addEventListener("change", function () {
+        saveLocationNameField.classList.toggle("hidden", !saveLocationCheckbox.checked);
     });
 </script>

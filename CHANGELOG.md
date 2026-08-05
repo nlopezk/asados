@@ -12,14 +12,56 @@ and when.
 Roughly in the order they came up, not necessarily the order they'll
 ship. "Simple leaderboard" and "Dashboard mockup with a KPI" are both
 Phase 4 (Summary & stats) from the `Phases` roadmap file.
-- Activity log: who added/edited/deleted what, and when.
-- Recurring locations: a customizable, reusable pool of saved places to
-  pick from, instead of typing an address or dropping a map pin every
-  single time.
 - Simple leaderboard (Phase 4).
 - Dashboard mockup with a KPI (Phase 4).
 
 ## [Unreleased]
+
+## [0.11.0] - 2026-08-04
+### Added
+- "Registro de Actividad" (`/actividad`): a log of who created, edited,
+  or deleted each asado, and when — visible to every logged-in user,
+  not just admins. Edits show a field-by-field diff (old → new) for
+  whatever actually changed; creates/deletes just show the action
+  itself. New `activity_log`/`activity_log_changes` tables — requires
+  re-running `init_db()` (wipes local data) before this version will run.
+- "Ubicaciones Guardadas" (`/ubicaciones`): a reusable pool of saved
+  locations. A new "💾 Guardar esta ubicación" checkbox on the asado
+  form optionally adds whatever address/pin you just used to the pool
+  (unchecked by default — a one-off, never-saved location still works
+  exactly as before); a new "Ubicación guardada" dropdown then quick-
+  fills from that pool next time instead of retyping an address or
+  dropping a map pin. Any logged-in user can add/edit a saved location;
+  deleting one is admin-only. New `locations` table — also requires
+  re-running `init_db()`.
+- `/ubicaciones`' "Nueva Ubicación" form now uses the same address-
+  autocomplete + map picker as the asado form (extracted into a shared
+  `_location_picker.html` partial), and Nombre/Dirección/coordinates
+  are all required there — a saved location needs a real address and
+  coordinates to be useful as a future quick-fill.
+- The address/map picker (both `/ubicaciones` and the asado form) now
+  shows the picked coordinates as a read-only reference line under the
+  address field, instead of only storing them invisibly.
+- "Ubicaciones Existentes" redesigned as a compact spreadsheet-style
+  table (one row per saved location, editable cells, a 💾 per row)
+  instead of a stacked card per location.
+- Both spreadsheet tables (Ubicaciones Existentes, Base de Asados) made
+  noticeably more compact horizontally: tighter cell padding, Latitud/
+  Longitud merged into one narrow "Coordenadas" column (Ubicaciones),
+  "Agregada por" moved from its own column to a tooltip, and Base de
+  Asados' longest headers abbreviated on-screen (CSV export headers
+  unchanged). The number-spinner arrows on Latitud/Longitud were also
+  removed — not useful on a coordinate field.
+- Base de Asados' Tipo Carne/Ubicación columns now truncate long values
+  with an ellipsis (full text on hover) instead of wrapping onto
+  multiple lines — keeps every row a single, consistent height.
+- A small version tracker + personal dedication in the footer of every
+  page ("v0.11.0 — 'Soñás la hoguera donde siempre sos la leña'
+  (Indio, 1949-2026)").
+### Changed
+- **Schema change**: two new tables, `activity_log`/`activity_log_changes`
+  and `locations` — requires re-running `init_db()` (wipes local data)
+  before this version will run.
 
 ## [0.10.0] - 2026-08-04
 ### Added

@@ -23,8 +23,16 @@ from config import (
     LOCAL_WEIGHTS, ROL_WEIGHTS, FORMULA, VARIABLE_LABELS,
 )
 from backup_db import backup_database
+from activity_log import log_create, log_edit, log_delete, diff_asado, now_timestamp
 
 DATABASE = "asados.db"  # the SQLite database is just a single file on disk
+
+# Shown in the small footer on every page (see base.html) — bumped by
+# hand alongside CHANGELOG.md and the matching git tag each time a
+# version is cut (see CLAUDE.md). Nothing ties these three together
+# automatically; forgetting to bump this is a real, easy-to-repeat
+# mistake, so check it specifically before tagging a new release.
+VERSION = "0.11.0"
 
 # How many rows to show per page before showing a "next" arrow, on the
 # home page and on Base de Asados respectively. Base de Asados can show
@@ -32,6 +40,7 @@ DATABASE = "asados.db"  # the SQLite database is just a single file on disk
 # than a full asado card.
 INDEX_PAGE_SIZE = 30
 BASE_ASADOS_PAGE_SIZE = 100
+ACTIVITY_LOG_PAGE_SIZE = 30
 
 # For the home page's "Mes" filter dropdown. Kept as a plain number
 # (label) rather than a Spanish month name, to save space in the filter
@@ -291,6 +300,15 @@ def inject_csrf_token():
     return {"csrf_token": lambda: session.get("csrf_token", "")}
 
 
+@app.context_processor
+def inject_version():
+    """Makes {{ version }} available in every template — same
+    "inject once, use everywhere" pattern as csrf_token() above — so
+    base.html's footer can show it without every single route passing
+    it through render_template() by hand."""
+    return {"version": VERSION}
+
+
 @app.before_request
 def load_logged_in_user():
     """
@@ -481,6 +499,131 @@ def delete_user_route(user_id):
     return redirect(url_for("config_page", success="Usuario eliminado."))
 
 
+# ---------------------------------------------------------------------
+# UBICACIONES (reusable pool of saved locations)
+# ---------------------------------------------------------------------
+# See CLAUDE.md's "Recurring locations" section for the full reasoning.
+# Any logged-in user can add a new saved location or fix a typo in an
+# existing one (same open-editing philosophy as asados themselves);
+# only an admin can delete one — same asymmetry as delete_asado, for
+# the same reason (this removes a resource other people may be relying
+# on). Deliberately NOT linked to `asados` via a foreign key: this pool
+# only ever PREFILLS the normal location/latitude/longitude fields at
+# save time, so editing/deleting a saved location here never
+# retroactively touches any asado that already used it.
+
+@app.route("/ubicaciones")
+@login_required
+def locations_page():
+    db = get_db()
+    locations = db.execute(
+        """
+        SELECT locations.*, users.name AS created_by_name
+        FROM locations
+        LEFT JOIN users ON locations.created_by = users.id
+        ORDER BY locations.name
+        """
+    ).fetchall()
+    return render_template(
+        "ubicaciones.html",
+        locations=locations,
+        success=request.args.get("success"),
+        error=request.args.get("error"),
+    )
+
+
+@app.route("/ubicaciones/create", methods=["POST"])
+@login_required
+def create_location():
+    """Manual "add a saved location" form on /ubicaciones itself. The
+    MORE common way a location gets added is opportunistically, via the
+    "Guardar esta ubicación" checkbox on the asado form (see
+    maybe_save_location() below) — this route exists so the pool can
+    also be built up directly, without needing to create/edit an asado
+    first."""
+    db = get_db()
+    name = request.form.get("name", "").strip()
+    address = request.form.get("address", "").strip()
+    latitude = request.form.get("latitude", type=float)
+    longitude = request.form.get("longitude", type=float)
+
+    # Name, address, AND coordinates are all mandatory here — unlike
+    # the asado form's own (optional) location, a saved location with a
+    # missing address or no real coordinates would be useless as a
+    # future quick-fill. locations.* is NOT NULL at the DB level too
+    # (see schema.sql); this is the friendly, form-level check that
+    # runs first, same "form-required = DB NOT NULL" pattern asados
+    # already uses for its own required fields.
+    if not name:
+        return redirect(url_for("locations_page", error="El nombre no puede estar vacío."))
+    if not address:
+        return redirect(url_for("locations_page", error="La dirección no puede estar vacía."))
+    if latitude is None or longitude is None:
+        return redirect(url_for(
+            "locations_page",
+            error="Selecciona una sugerencia o un punto en el mapa para fijar las coordenadas.",
+        ))
+
+    existing = db.execute("SELECT 1 FROM locations WHERE LOWER(name) = LOWER(?)", (name,)).fetchone()
+    if existing:
+        return redirect(url_for("locations_page", error=f"Ya existe una ubicación llamada '{name}'."))
+
+    db.execute(
+        "INSERT INTO locations (name, address, latitude, longitude, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (name, address, latitude, longitude, session["user_id"], now_timestamp()),
+    )
+    db.commit()
+    return redirect(url_for("locations_page", success=f"Ubicación '{name}' guardada."))
+
+
+@app.route("/ubicaciones/<int:location_id>/edit", methods=["POST"])
+@login_required
+def edit_location(location_id):
+    """Any logged-in user may edit any saved location — e.g. fixing a
+    typo'd address — same open-editing rule asados themselves use."""
+    db = get_db()
+    location = db.execute("SELECT id FROM locations WHERE id = ?", (location_id,)).fetchone()
+    if location is None:
+        return "Ubicación no encontrada.", 404
+
+    name = request.form.get("name", "").strip()
+    address = request.form.get("address", "").strip()
+    latitude = request.form.get("latitude", type=float)
+    longitude = request.form.get("longitude", type=float)
+
+    # Same mandatory checks as create_location() above.
+    if not name:
+        return redirect(url_for("locations_page", error="El nombre no puede estar vacío."))
+    if not address:
+        return redirect(url_for("locations_page", error="La dirección no puede estar vacía."))
+    if latitude is None or longitude is None:
+        return redirect(url_for("locations_page", error="La latitud y longitud son obligatorias."))
+
+    duplicate = db.execute(
+        "SELECT 1 FROM locations WHERE LOWER(name) = LOWER(?) AND id != ?", (name, location_id)
+    ).fetchone()
+    if duplicate:
+        return redirect(url_for("locations_page", error=f"Ya existe otra ubicación llamada '{name}'."))
+
+    db.execute(
+        "UPDATE locations SET name = ?, address = ?, latitude = ?, longitude = ? WHERE id = ?",
+        (name, address, latitude, longitude, location_id),
+    )
+    db.commit()
+    return redirect(url_for("locations_page", success="Ubicación actualizada."))
+
+
+@app.route("/ubicaciones/<int:location_id>/delete", methods=["POST"])
+@admin_required
+def delete_location(location_id):
+    """Admin-only — see the module-level comment above for why this one
+    action (unlike add/edit) is restricted."""
+    db = get_db()
+    db.execute("DELETE FROM locations WHERE id = ?", (location_id,))
+    db.commit()
+    return redirect(url_for("locations_page", success="Ubicación eliminada."))
+
+
 def asado_form_context(db):
     """
     The dropdown options + weights (for the live points preview) +
@@ -510,7 +653,49 @@ def asado_form_context(db):
         # free-typed names. Ordered/displayed by "name" (the friendly
         # display name), matching how every other page identifies a user.
         "registered_users": db.execute("SELECT id, username, name FROM users ORDER BY name").fetchall(),
+        # For the "Ubicación guardada" quick-fill dropdown — see
+        # CLAUDE.md's "Recurring locations" section. Purely a prefill
+        # convenience: picking one just fills in the same location/
+        # latitude/longitude fields you'd otherwise type/map-pick
+        # yourself, nothing here is a live link back to this table.
+        "saved_locations": db.execute(
+            "SELECT id, name, address, latitude, longitude FROM locations ORDER BY name"
+        ).fetchall(),
     }
+
+
+def maybe_save_location(db, user_id, name, address, latitude, longitude):
+    """
+    Called from new_asado()/edit_asado() when the "Guardar esta
+    ubicación" checkbox was ticked — inserts a new row into `locations`
+    so it shows up in the "Ubicación guardada" dropdown next time (see
+    CLAUDE.md's "Recurring locations" section). A no-op (returns
+    without inserting) if:
+      - `name` is blank,
+      - `address`/`latitude`/`longitude` are missing — locations.* are
+        NOT NULL (see schema.sql), and unlike /ubicaciones' OWN "Nueva
+        Ubicación" form, the asado form's location stays fully
+        optional/free-typed, so it's entirely possible to reach here
+        with an address that was never actually geocoded (no
+        suggestion/map point ever picked). Silently not saving it to
+        the pool is the right behavior — a location with no real
+        coordinates would be useless as a map quick-fill anyway — and
+        this asado itself must still save normally either way,
+      - a location with that exact name (case-insensitive) already
+        exists — silently skipping a duplicate is simpler and less
+        surprising than erroring out an otherwise-successful asado save
+        over a naming collision; renaming/fixing an existing saved
+        location is what the /ubicaciones page itself is for.
+    """
+    if not name or not address or latitude is None or longitude is None:
+        return
+    existing = db.execute("SELECT 1 FROM locations WHERE LOWER(name) = LOWER(?)", (name,)).fetchone()
+    if existing:
+        return
+    db.execute(
+        "INSERT INTO locations (name, address, latitude, longitude, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (name, address, latitude, longitude, user_id, now_timestamp()),
+    )
 
 
 # ---------------------------------------------------------------------
@@ -718,6 +903,12 @@ def new_asado():
         longitude = request.form.get("longitude", type=float)
         people = request.form.get("people", type=int)
         total_weight = request.form.get("total_weight", type=float)
+        # "Guardar esta ubicación" checkbox (see _asado_form.html) — an
+        # UNCHECKED box, the default, means today's original one-off
+        # behavior: this location is used for THIS asado only and never
+        # added to the reusable pool. See maybe_save_location() above.
+        save_location = request.form.get("save_location") == "on"
+        location_name = request.form.get("location_name", "").strip()
 
         # --- Step 2: insert the asado row and get its new auto-generated id ---
         # Look up (and freeze) the shared weights NOW, at creation time
@@ -789,6 +980,17 @@ def new_asado():
                 """,
                 (asado_id, user_id, rol, rol_weight, points),
             )
+
+        # Log the creation — see activity_log.py. Called before commit()
+        # so the log entry and the asado itself are saved together, in
+        # the same transaction (either both succeed or, if something
+        # above raised first, neither does).
+        log_create(db, session["user_id"], g.name, asado_id, nombre, date)
+
+        # If "Guardar esta ubicación" was checked, add it to the
+        # reusable pool now — see maybe_save_location() above.
+        if save_location:
+            maybe_save_location(db, session["user_id"], location_name, location, latitude, longitude)
 
         db.commit()  # save everything permanently to the database file
 
@@ -915,9 +1117,31 @@ def edit_asado(asado_id):
     """
     db = get_db()
 
-    asado = db.execute("SELECT id FROM asados WHERE id = ?", (asado_id,)).fetchone()
-    if asado is None:
+    # Fetch the FULL "before" state now, not just id — diff_asado()
+    # below needs it to compare against what's being submitted.
+    # Participations and asado_tipo_carne are captured too, since
+    # they're about to be deleted and replaced wholesale further down
+    # (see their own comments) — their old state wouldn't exist to look
+    # up anymore by the time the diff is built otherwise.
+    old_asado = db.execute("SELECT * FROM asados WHERE id = ?", (asado_id,)).fetchone()
+    if old_asado is None:
         return "Asado no encontrado.", 404
+
+    old_tipo_carne_rows = db.execute(
+        "SELECT tipo_carne FROM asado_tipo_carne WHERE asado_id = ? ORDER BY id", (asado_id,)
+    ).fetchall()
+    old_tipo_carne = [row["tipo_carne"] for row in old_tipo_carne_rows]
+
+    old_participant_rows = db.execute(
+        """
+        SELECT users.name, participations.rol
+        FROM participations JOIN users ON participations.user_id = users.id
+        WHERE participations.asado_id = ?
+        ORDER BY participations.id
+        """,
+        (asado_id,),
+    ).fetchall()
+    old_participants = [f"{p['name']} ({p['rol']})" for p in old_participant_rows]
 
     date = request.form["date"]
     nombre = request.form["nombre"]
@@ -931,6 +1155,8 @@ def edit_asado(asado_id):
     longitude = request.form.get("longitude", type=float)
     people = request.form.get("people", type=int)
     total_weight = request.form.get("total_weight", type=float)
+    save_location = request.form.get("save_location") == "on"
+    location_name = request.form.get("location_name", "").strip()
 
     shared_weights = get_shared_weights(tipo_carne_list, coccion, superficie, local)
 
@@ -966,6 +1192,7 @@ def edit_asado(asado_id):
     user_ids = request.form.getlist("participant_user_id")
     roles = request.form.getlist("participant_rol")
 
+    new_participants = []  # "Nombre (Rol)" strings, for the activity log diff below
     for user_id_str, rol in zip(user_ids, roles):
         if not user_id_str:
             continue  # skip any row where nothing was selected
@@ -973,8 +1200,10 @@ def edit_asado(asado_id):
         user_id = int(user_id_str)
 
         # Safety check: confirm this id really matches an existing
-        # user, in case of any tampering with the submitted form.
-        user_row = db.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+        # user, in case of any tampering with the submitted form. Also
+        # fetches "name" now (not just "id"), needed for the activity
+        # log's participant diff below.
+        user_row = db.execute("SELECT id, name FROM users WHERE id = ?", (user_id,)).fetchone()
         if user_row is None:
             continue
 
@@ -988,6 +1217,27 @@ def edit_asado(asado_id):
             """,
             (asado_id, user_id, rol, rol_weight, points),
         )
+        new_participants.append(f"{user_row['name']} ({rol})")
+
+    # Log this edit: one activity_log row, plus one activity_log_changes
+    # row per field that actually differs from the "before" state
+    # captured at the top of this route — see activity_log.py.
+    changes = diff_asado(
+        old_asado,
+        {
+            "date": date, "nombre": nombre, "description": description,
+            "coccion": coccion, "superficie": superficie, "local": local,
+            "location": location, "people": people, "total_weight": total_weight,
+        },
+        old_tipo_carne, tipo_carne_list,
+        old_participants, new_participants,
+    )
+    log_edit(db, session["user_id"], g.name, asado_id, nombre, date, changes)
+
+    # If "Guardar esta ubicación" was checked, add it to the reusable
+    # pool now — see maybe_save_location() above.
+    if save_location:
+        maybe_save_location(db, session["user_id"], location_name, location, latitude, longitude)
 
     db.commit()
     return redirect(url_for("view_asado", asado_id=asado_id, success="Asado actualizado."))
@@ -1004,9 +1254,16 @@ def delete_asado(asado_id):
     """
     db = get_db()
 
-    asado = db.execute("SELECT id FROM asados WHERE id = ?", (asado_id,)).fetchone()
+    asado = db.execute("SELECT id, nombre, date FROM asados WHERE id = ?", (asado_id,)).fetchone()
     if asado is None:
         return "Asado no encontrado.", 404
+
+    # Log the deletion FIRST, while asado_id still references a real,
+    # not-yet-deleted row — activity_log.asado_id is a real FOREIGN KEY,
+    # and its ON DELETE SET NULL only nulls it out once the asado row
+    # below is actually removed, not before. See activity_log.py's
+    # log_delete() docstring for the full reasoning.
+    log_delete(db, session["user_id"], g.name, asado_id, asado["nombre"], asado["date"])
 
     # Participations and asado_tipo_carne FIRST — schema.sql declares
     # both asado_id columns as FOREIGN KEYs, and get_db() enforces that
@@ -1116,6 +1373,57 @@ def base_asados_csv():
         csv_data,
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=base_asados.csv"},
+    )
+
+
+@app.route("/actividad")
+@login_required
+def activity_log_page():
+    """
+    "Registro de Actividad": a chronological feed of who created,
+    edited, or deleted which asado, and when — the activity_log table
+    populated by log_create()/log_edit()/log_delete() (see
+    activity_log.py) from new_asado(), edit_asado(), and delete_asado()
+    above.
+
+    Visible to EVERY logged-in user, not just admins — deliberately the
+    same visibility as editing itself (see CLAUDE.md's "Edit/delete
+    permissions" note: any user can edit any asado). Since that
+    openness already exists, this log is what makes it accountable/
+    transparent to the whole group, not something that itself needs
+    restricting.
+
+    Newest first, paginated like index()/base_asados() above.
+    """
+    db = get_db()
+    page = parse_page_number(request.args.get("page"))
+
+    total_count = db.execute("SELECT COUNT(*) FROM activity_log").fetchone()[0]
+    total_pages = max(1, -(-total_count // ACTIVITY_LOG_PAGE_SIZE))  # ceiling division
+    page = min(page, total_pages)
+    offset = (page - 1) * ACTIVITY_LOG_PAGE_SIZE
+
+    entries = db.execute(
+        "SELECT * FROM activity_log ORDER BY id DESC LIMIT ? OFFSET ?",
+        (ACTIVITY_LOG_PAGE_SIZE, offset),
+    ).fetchall()
+
+    # One small extra query per entry for its field-level changes (only
+    # 'edit' entries ever have any) — same "fine at this app's scale"
+    # tradeoff index() already makes fetching each asado's participants.
+    entries_with_changes = []
+    for entry in entries:
+        changes = db.execute(
+            "SELECT field_label, old_value, new_value FROM activity_log_changes WHERE log_id = ? ORDER BY id",
+            (entry["id"],),
+        ).fetchall()
+        entries_with_changes.append({"entry": entry, "changes": changes})
+
+    return render_template(
+        "activity_log.html",
+        entries=entries_with_changes,
+        page=page,
+        total_pages=total_pages,
     )
 
 
