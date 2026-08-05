@@ -112,8 +112,8 @@ git push origin v0.10.0 v0.11.0
 
 python -c "from app import init_db; init_db()"
 python create_user.py nico "nico" "Don Nicola" admin
-python create_user.py augusto "augusto" "augusto" admin
-python create_user.py cristian "cristian" "cristian" admin
-python create_user.py raul "raul" "raul" admin
-python create_user.py nicog "nicog" "nicog" admin
+python create_user.py augusto "augusto" "Augusto" admin
+python create_user.py cristian "cristian" "CDC" admin
+python create_user.py raul "raul" "Raul" admin
+python create_user.py nicog "nicog" "Nico G." admin
 python seed_random_asados.py 150
