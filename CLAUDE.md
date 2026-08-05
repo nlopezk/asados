@@ -68,13 +68,14 @@ Phase 5 – Make it responsive. Improve CSS/layout so it works well on phones, s
 Phase 6 – Deploy. Put it online (e.g. Render, Railway, Fly.io — all have free tiers) so others can actually use it from their phones.
 Phase 7+ – Advanced. Photo uploads, notifications, a proper mobile app wrapper (e.g. Capacitor) or React Native, richer stats/dashboards, etc.
 
-**Currently at the end of Phase 3 + Phase 5** (login + edit/delete +
-mobile responsiveness exist; Phase 4's stats/leaderboard is still
-outstanding, not deployed yet — Phase 5 was deliberately done out of
-order, before Phase 4, at the user's request). Phase 3 deliberately
-deviated from its own description above: editing is open to **every**
-logged-in user (not "only your own entries"), while deleting is
-**admin-only** — see the "Edit/delete permissions" note below.
+**Currently at the end of Phase 3 + Phase 5 + Phase 6** (login +
+edit/delete + mobile responsiveness + deployment all exist; Phase 4's
+stats/leaderboard is the only thing still outstanding — Phases 5 and 6
+were deliberately done out of order, ahead of Phase 4, at the user's
+request). Phase 3 deliberately deviated from its own description
+above: editing is open to **every** logged-in user (not "only your own
+entries"), while deleting is **admin-only** — see the "Edit/delete
+permissions" note below.
 
 **Phase 5 (mobile responsiveness) turned out to need very little new
 work** — the app was already close to fully responsive as a side
@@ -97,25 +98,79 @@ If you add a new page or component, check it at both breakpoints
 before considering it done — this app's whole layout language (flex +
 `flex-wrap` + percentage widths, no fixed pixel widths on containers)
 is what made the rest of the app responsive almost for free; keep
-
-**Phase 6 (deploy) hosting decision: PythonAnywhere free tier, not
-Render/Railway/Fly.io.** The deciding factor was SQLite: this app
-stores its whole database as a single `asados.db` file, and Render's
-and Railway's free tiers wipe their filesystem on every redeploy —
-that would silently delete the database the first time you pushed a
-code update. PythonAnywhere's free tier has genuine persistent
-storage (SQLite just works, no volume/mount config needed) and stays
-always-on (no Render-style cold-start sleep). Trade-off accepted
-knowingly: the URL is `yourname.pythonanywhere.com`, not a custom
-domain — a non-issue for sharing a link with 5-10 friends. A Synology
-NAS (self-hosted via Docker + a volume mount + Cloudflare Tunnel) was
-seriously considered and would also work well, but was set aside for
-now in favor of PythonAnywhere's lower setup effort; revisit if full
-data ownership or avoiding a third-party platform ever becomes a
-priority. Deployment itself (turning off `debug=True`, the actual
-PythonAnywhere WSGI config, etc.) hasn't been done yet as of this
-writing — only the backup story above has been built in preparation.
 using that pattern rather than fixed widths.
+
+**Phase 6 (deploy): live on PythonAnywhere's free tier**, not
+Render/Railway/Fly.io. The deciding factor was SQLite: this app stores
+its whole database as a single `asados.db` file, and Render's and
+Railway's free tiers wipe their filesystem on every redeploy — that
+would silently delete the database the first time you pushed a code
+update. PythonAnywhere's free tier has genuine persistent storage
+(SQLite just works, no volume/mount config needed) and stays always-on
+(no Render-style cold-start sleep). A Synology NAS (self-hosted via
+Docker + a volume mount + Cloudflare Tunnel) was seriously considered
+and would also work well, but was set aside in favor of
+PythonAnywhere's lower setup effort; revisit if full data ownership or
+avoiding a third-party platform ever becomes a priority.
+
+**Canonical live URL: `https://asados.pythonanywhere.com`** — hosted
+under a dedicated PythonAnywhere account with username `asados`
+(created specifically for this project), not tied to any one person's
+own account. An earlier attempt was deployed under a personal account
+(`nicolasalk.pythonanywhere.com`) first, then re-deployed from scratch
+under the `asados` account for a cleaner, project-branded URL — that
+personal-account deployment is retired; don't reference
+`nicolasalk.pythonanywhere.com` anywhere going forward, and feel free
+to delete that account/deployment whenever convenient (not urgent,
+just no longer used).
+
+**How the live deployment is actually wired up** (so a future update
+doesn't require rediscovering this):
+- Code lives at `/home/asados/asados` on PythonAnywhere (home dir
+  `asados` containing a git-cloned folder also named `asados` — a bit
+  confusing to read, but harmless), cloned from the same GitHub repo
+  (`nlopezk/asados`) this local copy pushes to — deploying an update
+  is `git pull` in a PythonAnywhere Bash console, then clicking
+  **Reload** on the Web tab. There is no CI/CD; this manual two-step
+  is the whole "deploy" workflow for now.
+- Dependencies live in a virtualenv at
+  `/home/asados/.virtualenvs/asados-venv` (created with
+  `mkvirtualenv --python=/usr/bin/python3.10 asados-venv`), referenced
+  from the Web tab's "Virtualenv" field.
+- The Web app is configured as **Manual configuration**, not
+  PythonAnywhere's Flask quick-start wizard (which would have
+  generated its own app skeleton and fought with this one).
+- The WSGI file PythonAnywhere generates (edited via the Web tab, not
+  a file in this repo) does two things beyond the usual
+  `sys.path.insert()`: it calls **`os.chdir('/home/asados/asados')`
+  before importing `app`**. This matters because `app.py` finds
+  `asados.db`/`secret_key.txt`/`schema.sql` via bare relative paths
+  (`"asados.db"`, not an absolute path) — without the `chdir`,
+  PythonAnywhere's WSGI process could run from some other working
+  directory (e.g. the home directory) and the live site would silently
+  look for, or even create, `asados.db` in the wrong place.
+- `app.run(debug=True, ...)` at the bottom of `app.py` was **not**
+  changed for deployment, and doesn't need to be: PythonAnywhere's
+  WSGI server imports the `app` object directly and never calls
+  `app.run()` at all, so that line only ever affects local
+  `python app.py` runs.
+- `secret_key.txt` and `asados.db` are separate files on the
+  PythonAnywhere filesystem from the ones on any local dev machine —
+  expected and correct; never try to sync/share a secret key between
+  environments.
+- The live site was deliberately started with a **fresh, empty
+  database** (`init_db()` + one throwaway `testadmin` account) rather
+  than the ~195 asados that exist in the local dev DB — the user's
+  explicit call, to use the live deploy for testing first. Bringing
+  the real data over later means uploading the local `asados.db` file
+  directly via PythonAnywhere's Files tab (**not** running `init_db()`
+  again on the server, which would wipe it) — still pending as of this
+  writing.
+- The automatic per-asado backup (`backup_database()`, called from
+  `new_asado()` — see "Automatic backups" above) works identically in
+  production: backups land in `/home/asados/asados/backups/` on
+  PythonAnywhere's own persistent disk, no extra deployment config
+  needed for it.
 
 ## Architecture
 
@@ -124,11 +179,15 @@ yet, just one Flask app with a handful of routes:
 
 - `/login`, `/logout` — session-based auth (see below)
 - `/` (`index`) — lists all asados, newest first, with each one's
-  participants and points joined in. Accepts optional `?date=` and
-  `?user_id=` query params to filter the list (a plain GET form in
-  `index.html` auto-submits on change — no JS fetch needed), and
-  `?page=` to paginate (`INDEX_PAGE_SIZE` = 30/page, filters and page
-  compose together — page count is computed AFTER filtering)
+  participants and points joined in. Accepts optional `?date_from=`/
+  `?date_to=` (inclusive date range), `?year=`/`?month=` (match on just
+  that PART of the date via SQLite's `strftime`, independent of each
+  other — `month` alone means "that calendar month across every year"),
+  and `?user_id=` to filter the list (a plain GET form in `index.html`
+  auto-submits on change — no JS fetch needed for the dropdowns; the
+  date range uses Flatpickr, see below), and `?page=` to paginate
+  (`INDEX_PAGE_SIZE` = 30/page, filters and page compose together —
+  page count is computed AFTER filtering)
 - `/asado/new` (`new_asado`) — GET shows the form, POST inserts an
   `asados` row plus one `participations` row per selected participant
 - `/asado/<id>` (`view_asado`) — read-only detail page by default, with
@@ -166,14 +225,58 @@ yet, just one Flask app with a handful of routes:
   (see `admin_required` in `app.py`), lets an admin manage accounts
   from the browser instead of only via `create_user.py`
 
-Data model (`schema.sql`): `users` ← `participations` → `asados`, a
-classic many-to-many junction table. `users` has a `role` column
-(`admin`/`normal`) gating the `/config/users/*` routes, and a `name`
-column (display name, e.g. "Don Nicola") separate from the login
-`username`. `participations.points` is calculated once at insert time
-and frozen — it is never recalculated if weights/formula change later,
-so historical entries keep whatever points they were awarded under the
-rules at the time.
+Data model (`schema.sql`): `users` ← `participations` → `asados` ←
+`asado_tipo_carne`, all classic many-to-many junction tables. `users`
+has a `role` column (`admin`/`normal`) gating the `/config/users/*`
+routes, and a `name` column (display name, e.g. "Don Nicola") separate
+from the login `username`. `participations.points` is calculated once
+at insert time and frozen — it is never recalculated if weights/formula
+change later, so historical entries keep whatever points they were
+awarded under the rules at the time.
+
+### Tipo de Carne is multi-select — a junction table, not a CSV string
+An asado can have more than one Tipo de Carne (minimum one) — e.g. both
+"Cordero" and "Pollo" at the same event — via `asado_tipo_carne`
+(`asado_id`, `tipo_carne`, `tipo_carne_weight`), the same many-to-many
+pattern `participations` already uses for users, not a comma-joined
+string crammed into `asados.tipo_carne` (that column doesn't exist
+anymore). This was a deliberate choice over string concatenation: it
+lets each selected type's own weight be FROZEN individually (see the
+frozen-weights note above), so Base de Asados can show the complete
+picture of what was chosen, not just the final number.
+
+**Only the highest-weight selected type counts toward points — multiple
+types never stack or average.** `config.py`'s `get_shared_weights()`
+takes a LIST of Tipo de Carne now (not a single string) and returns
+`max()` of their weights as `"carne"`; the FORMULA itself is completely
+unchanged, still just one `carne` variable. `asados.tipo_carne_weight`
+stores that single winning max (parallel to `coccion_weight`/etc.,
+still one column, still what actually feeds the formula) — while
+`asado_tipo_carne` stores every selected type's OWN individual frozen
+weight, so a later look at an old asado can show e.g. "Cordero (1.0),
+Pollo (0.3)" and it's obvious *why* Cordero won, not just that it did.
+
+**Participants replace wholesale on edit, same as before — now Tipo de
+Carne does too.** `edit_asado()` deletes all of an asado's
+`asado_tipo_carne` rows and re-inserts fresh ones from the submitted
+form, exactly mirroring how it already handles `participations`. The
+`_asado_form.html` UI enforces a MINIMUM of one selected type (the ✕
+remove button hides itself once only one row is left — see
+`updateTipoCarneRemoveButtons()`), unlike participants, which are
+allowed to go down to zero.
+
+**Base de Asados / CSV concatenate multiple types with `"; "`
+(semicolon), not a comma.** `BASE_ASADOS_QUERY` does the joining AT THE
+SQL LEVEL, via a `GROUP_CONCAT` subquery aggregated per `asado_id` and
+then LEFT JOINed onto the per-participation rows — so `base_asados.html`
+and the CSV export both just print `row["tipo_carne"]` with zero Python
+string-joining logic of their own, automatically staying in sync. A
+comma was deliberately avoided even though `csv.writer` would quote it
+correctly (RFC 4180) — a comma sitting inside one CSV field still reads
+ambiguously to a human just glancing at the raw text, and semicolon
+avoids that entirely. `index.html`'s cards and `view_asado.html`'s
+read-only summary do their own equivalent "; ".join(...) in Python,
+since those aren't reading from `BASE_ASADOS_QUERY`.
 
 **The individual weights that fed into `points` are frozen too, not
 just the final number.** `asados.tipo_carne_weight`/`coccion_weight`/
@@ -428,6 +531,63 @@ override never applied. If a CSS rule targeting a specific tag/class
 seems to have no effect, verify the selector actually matches the
 current template markup before assuming the value itself needs
 tweaking.
+
+### Maps: OpenStreetMap + Leaflet, not Google Maps
+Chosen specifically to avoid requiring a Google Cloud billing account
+for a hobby project. Address autocomplete and reverse geocoding use
+Nominatim's free public API (debounced client-side to be respectful of
+rate limits), both called directly from the browser in
+`new_asado.html`. Don't swap this for Google Maps without discussing it
+— it changes the setup burden for the user significantly.
+
+### Home page date filter: Flatpickr, not two plain date inputs
+`index.html`'s "Fecha" filter is a single calendar with a highlighted
+range (click a start day, click an end day — like an airline booking
+site), via Flatpickr loaded from CDN (same per-page-scoped pattern as
+Leaflet). `monthSelectorType: "static"` is set deliberately — Flatpickr's
+default month picker is a native `<select>`, and that dropdown's OPEN
+popup is drawn by the OS in a context that doesn't reliably pick up our
+dark theme (rendered white-on-white regardless of CSS given to its
+`<option>`s, and native select popups can't even be screenshotted for
+testing — Playwright can't capture them, they're outside the page's
+rendered layer). `"static"` shows the month as plain text navigated by
+the `<` `>` arrows only (same as the year already works via a plain
+number input), sidestepping the whole problem instead of fighting it.
+Several other real gotchas were hit building this, worth knowing before
+touching it again:
+
+- **Theme overrides must live in `index.html`, not `static/style.css`.**
+  `style.css` loads in `<head>`, before Flatpickr's own CDN stylesheet
+  (which loads inside `{% block content %}`, later in the document) —
+  at equal CSS specificity, whichever rule appears LATER in the
+  document wins, so an override in `style.css` would silently lose to
+  Flatpickr's own default (light) theme. The fix was to put the
+  override `<style>` block directly in `index.html`, right after
+  Flatpickr's `<link>`, guaranteeing it loads after.
+- **The range-highlight colors need `!important`.** Flatpickr's own
+  CSS bundles `.selected`/`.startRange`/`.endRange`/`.inRange` (plus
+  `:hover`/`:focus`/edge-of-month variants) into one long
+  equal-specificity rule per state. Even loaded after it, a plain
+  override kept losing to it in testing — `!important` is the correct,
+  standard tool here (overriding a vendored library's bundled theme),
+  not a hack.
+- **`dateFormat` is BOTH the display format AND what Flatpickr uses to
+  *parse* `defaultDate`.** Setting `dateFormat: "d/m/Y"` for a nicer
+  display, while also feeding it ISO `"YYYY-MM-DD"` strings (from the
+  hidden inputs, to prefill the picker when a filter is already
+  active) made Flatpickr misparse its own prefill values into garbage
+  dates. The fix: keep `dateFormat: "Y-m-d"` (ISO, matching what's
+  actually read/written to the hidden `date_from`/`date_to` inputs),
+  and use `altInput: true` + `altFormat: "d/m/Y"` for the pretty
+  display instead — Flatpickr's own documented mechanism for exactly
+  this "internal format ≠ display format" split.
+- One side effect of `altInput`: Flatpickr turns the original
+  `#filter_date_range` into `type="hidden"` and creates a NEW element
+  for what's actually visible/clickable, which the `<label for=...>`
+  no longer points at. Fixed by renaming the new element's id and
+  repointing the label's `for` attribute right after initialization —
+  without this, clicking the "Fecha" label text wouldn't open the
+  calendar the way every other filter field's label opens its own input.
 
 ### Maps: OpenStreetMap + Leaflet, not Google Maps
 Chosen specifically to avoid requiring a Google Cloud billing account

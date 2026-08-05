@@ -18,7 +18,7 @@ import secrets                     # for generating unguessable CSRF tokens
 from flask import Flask, render_template, request, redirect, url_for, g, jsonify, session, Response
 from werkzeug.security import check_password_hash, generate_password_hash
 from config import (
-    calculate_points, get_shared_weights, get_rol_weight,
+    calculate_points, get_shared_weights, get_rol_weight, get_tipo_carne_weights,
     TIPO_CARNE_WEIGHTS, COCCION_WEIGHTS, SUPERFICIE_WEIGHTS,
     LOCAL_WEIGHTS, ROL_WEIGHTS, FORMULA, VARIABLE_LABELS,
 )
@@ -32,6 +32,14 @@ DATABASE = "asados.db"  # the SQLite database is just a single file on disk
 # than a full asado card.
 INDEX_PAGE_SIZE = 30
 BASE_ASADOS_PAGE_SIZE = 100
+
+# For the home page's "Mes" filter dropdown. Kept as a plain number
+# (label) rather than a Spanish month name, to save space in the filter
+# bar. Values stay zero-padded ("01".."12") on purpose — SQLite's
+# strftime('%m', ...) always returns a zero-padded month, so the
+# filter's WHERE clause can compare these values directly without any
+# extra padding logic.
+MESES = [(f"{m:02d}", str(m)) for m in range(1, 13)]
 
 
 def parse_page_number(value):
@@ -65,13 +73,25 @@ def parse_page_number(value):
 # CASCADE, so this can't currently happen through the app's own UI, but
 # a LEFT JOIN costs nothing and is the safer default for an "export
 # everything" view).
+#
+# tipo_carne is the odd one out here: an asado can have MULTIPLE meat
+# types (asado_tipo_carne table), but this query's grain is one row per
+# PARTICIPATION — so the nested subquery below GROUP_CONCATs every
+# selected type for an asado into one "Cordero; Pollo" string FIRST
+# (per asado_id), and only THEN that single pre-joined string gets
+# LEFT JOINed onto each participation row, same as any other asado-level
+# column here. The inner "ORDER BY id" before GROUP_CONCAT keeps the
+# types listed in the order they were originally selected/saved, not
+# arbitrary — GROUP_CONCAT has no ORDER BY of its own in the SQLite
+# version this app targets, so a pre-sorted subquery is the accepted way
+# to get consistent ordering out of it.
 BASE_ASADOS_QUERY = """
     SELECT
         participations.id AS participation_id,
         participations.asado_id AS asado_id,
         asados.date AS date,
         asados.nombre AS nombre,
-        asados.tipo_carne AS tipo_carne,
+        tipos_carne.tipo_carne_list AS tipo_carne,
         asados.tipo_carne_weight AS tipo_carne_weight,
         asados.coccion AS coccion,
         asados.coccion_weight AS coccion_weight,
@@ -92,6 +112,11 @@ BASE_ASADOS_QUERY = """
     FROM participations
     LEFT JOIN asados ON participations.asado_id = asados.id
     LEFT JOIN users ON participations.user_id = users.id
+    LEFT JOIN (
+        SELECT asado_id, GROUP_CONCAT(tipo_carne, '; ') AS tipo_carne_list
+        FROM (SELECT asado_id, tipo_carne FROM asado_tipo_carne ORDER BY id)
+        GROUP BY asado_id
+    ) AS tipos_carne ON tipos_carne.asado_id = asados.id
     ORDER BY asados.date DESC, participations.id
 """
 
@@ -499,11 +524,21 @@ def index():
     HOME PAGE: lists every asado, most recent first, along with a quick
     summary (who participated and how many points they got).
 
-    Supports two OPTIONAL filters, read from the URL's query string
-    (?date=YYYY-MM-DD&user_id=3) rather than form-submitted POST data —
-    this keeps the filtered view a normal, bookmarkable/shareable GET
-    URL, and lets the <select>/<input> below auto-submit their own form
-    on change (see index.html) without any JavaScript fetch() calls.
+    Supports several OPTIONAL filters, read from the URL's query string
+    (?date_from=...&date_to=...&year=...&month=...&user_id=3) rather
+    than form-submitted POST data — this keeps the filtered view a
+    normal, bookmarkable/shareable GET URL, and lets the
+    <select>/<input> fields below auto-submit their own form on change
+    (see index.html) without any JavaScript fetch() calls.
+
+    date_from/date_to are an inclusive RANGE (either end optional) —
+    NOT the same thing as year/month, which match on a PART of the
+    date via SQLite's strftime() regardless of the rest of it. That
+    means year and month combine independently: year alone -> every
+    asado in that year; month alone -> every asado that ever happened
+    in that calendar month, across ALL years (e.g. "every December we've
+    ever had"); both together -> that specific month of that year. All
+    active filters AND together, same as date_from/date_to/user_id do.
 
     Also PAGINATED (?page=2), INDEX_PAGE_SIZE asados at a time, so a
     group with years of history doesn't render hundreds of cards on one
@@ -512,7 +547,10 @@ def index():
     """
     db = get_db()
 
-    date_filter = request.args.get("date", "").strip()
+    date_from_filter = request.args.get("date_from", "").strip()
+    date_to_filter = request.args.get("date_to", "").strip()
+    year_filter = request.args.get("year", "").strip()
+    month_filter = request.args.get("month", "").strip()
     user_filter = request.args.get("user_id", "").strip()
     page = parse_page_number(request.args.get("page"))
 
@@ -529,9 +567,21 @@ def index():
         conditions.append("participations.user_id = ?")
         params.append(user_filter)
 
-    if date_filter:
-        conditions.append("asados.date = ?")
-        params.append(date_filter)
+    if date_from_filter:
+        conditions.append("asados.date >= ?")
+        params.append(date_from_filter)
+
+    if date_to_filter:
+        conditions.append("asados.date <= ?")
+        params.append(date_to_filter)
+
+    if year_filter:
+        conditions.append("strftime('%Y', asados.date) = ?")
+        params.append(year_filter)
+
+    if month_filter:
+        conditions.append("strftime('%m', asados.date) = ?")
+        params.append(month_filter)
 
     where_clause = (" WHERE " + " AND ".join(conditions)) if conditions else ""
 
@@ -565,16 +615,40 @@ def index():
             """,
             (asado["id"],),
         ).fetchall()
-        asados_with_participants.append({"asado": asado, "participants": participants})
+        # An asado can have more than one Tipo de Carne (minimum one) —
+        # joined into one "Cordero; Pollo" string for the card display,
+        # same "; " separator used in Base de Asados/CSV.
+        tipos_carne = db.execute(
+            "SELECT tipo_carne FROM asado_tipo_carne WHERE asado_id = ? ORDER BY id",
+            (asado["id"],),
+        ).fetchall()
+        asados_with_participants.append({
+            "asado": asado,
+            "participants": participants,
+            "tipos_carne": "; ".join(row["tipo_carne"] for row in tipos_carne),
+        })
 
     # For the "Usuario" filter dropdown.
     registered_users = db.execute("SELECT id, username, name FROM users ORDER BY name").fetchall()
+
+    # For the "Año" filter dropdown — only years that actually have at
+    # least one asado, newest first, rather than hardcoding a range.
+    available_years = [
+        row["year"] for row in db.execute(
+            "SELECT DISTINCT strftime('%Y', date) AS year FROM asados ORDER BY year DESC"
+        ).fetchall()
+    ]
 
     return render_template(
         "index.html",
         asados=asados_with_participants,
         registered_users=registered_users,
-        selected_date=date_filter,
+        available_years=available_years,
+        meses=MESES,
+        selected_date_from=date_from_filter,
+        selected_date_to=date_to_filter,
+        selected_year=year_filter,
+        selected_month=month_filter,
         selected_user_id=user_filter,
         page=page,
         total_pages=total_pages,
@@ -595,14 +669,18 @@ def api_points():
     function that saves real data — so the preview can never drift out
     of sync, no matter how the formula changes later (new weights, new
     coefficients, or a completely restructured equation).
+
+    tipo_carne is read with getlist(), not get() — an asado can have
+    more than one Tipo de Carne selected at once (only the
+    highest-weight one actually counts, see calculate_points()).
     """
-    tipo_carne = request.args.get("tipo_carne", "")
+    tipo_carne_list = request.args.getlist("tipo_carne")
     coccion = request.args.get("coccion", "")
     superficie = request.args.get("superficie", "")
     local = request.args.get("local", "")
     rol = request.args.get("rol", "")
 
-    points = calculate_points(tipo_carne, coccion, superficie, local, rol)
+    points = calculate_points(tipo_carne_list, coccion, superficie, local, rol)
     return jsonify({"points": points})
 
 
@@ -623,7 +701,12 @@ def new_asado():
         date = request.form["date"]
         nombre = request.form["nombre"]
         description = request.form.get("description", "")  # .get() with default = optional field
-        tipo_carne = request.form["tipo_carne"]
+        # An asado can have more than one Tipo de Carne (minimum one) —
+        # getlist() reads every "tipo_carne" field the form submitted,
+        # not just the first. The blank-filter is defensive (the UI
+        # never lets you remove the last row or leave one unselected,
+        # but a tampered/malformed request shouldn't crash the route).
+        tipo_carne_list = [tc for tc in request.form.getlist("tipo_carne") if tc]
         coccion = request.form["coccion"]
         superficie = request.form["superficie"]
         local = request.form["local"]
@@ -637,25 +720,38 @@ def new_asado():
         total_weight = request.form.get("total_weight", type=float)
 
         # --- Step 2: insert the asado row and get its new auto-generated id ---
-        # Look up (and freeze) the 4 shared weights NOW, at creation
-        # time — see the comment on these columns in schema.sql for why
-        # this matters (config.py's weights could change later).
-        shared_weights = get_shared_weights(tipo_carne, coccion, superficie, local)
+        # Look up (and freeze) the shared weights NOW, at creation time
+        # — see the comment on these columns in schema.sql for why this
+        # matters (config.py's weights could change later). "carne" here
+        # is the MAX weight across every selected Tipo de Carne — the
+        # one that actually feeds the points formula.
+        shared_weights = get_shared_weights(tipo_carne_list, coccion, superficie, local)
 
         cursor = db.execute(
             """
             INSERT INTO asados
-                (date, nombre, description, tipo_carne, coccion,
+                (date, nombre, description, coccion,
                  superficie, local, location, latitude, longitude, people, total_weight,
                  tipo_carne_weight, coccion_weight, superficie_weight, local_weight)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (date, nombre, description, tipo_carne, coccion,
+            (date, nombre, description, coccion,
              superficie, local, location, latitude, longitude, people, total_weight,
              shared_weights["carne"], shared_weights["coccion"],
              shared_weights["superficie"], shared_weights["local"]),
         )
         asado_id = cursor.lastrowid  # the id SQLite just assigned to this new row
+
+        # Freeze EVERY selected Tipo de Carne's own weight too, not just
+        # the winning max above — see schema.sql's asado_tipo_carne
+        # table for why (full audit trail: which types were chosen, and
+        # each one's own weight, not just the final number that won).
+        tipo_carne_weights = get_tipo_carne_weights(tipo_carne_list)
+        for tc in tipo_carne_list:
+            db.execute(
+                "INSERT INTO asado_tipo_carne (asado_id, tipo_carne, tipo_carne_weight) VALUES (?, ?, ?)",
+                (asado_id, tc, tipo_carne_weights[tc]),
+            )
 
         # --- Step 3: handle participants ---
         # The form now sends a REGISTERED user's id (from a dropdown,
@@ -683,7 +779,7 @@ def new_asado():
             # differ between people even though they were at the SAME
             # asado — freeze rol_weight here for the same reason as
             # shared_weights above.
-            points = calculate_points(tipo_carne, coccion, superficie, local, rol)
+            points = calculate_points(tipo_carne_list, coccion, superficie, local, rol)
             rol_weight = get_rol_weight(rol)
 
             db.execute(
@@ -721,6 +817,7 @@ def new_asado():
         "new_asado.html",
         asado=None,
         existing_participants=[],
+        existing_tipos_carne=[],
         form_action=url_for("new_asado"),
         submit_label="Añadir Asado",
         **asado_form_context(db),
@@ -766,11 +863,22 @@ def view_asado(asado_id):
     ).fetchall()
     existing_participants = [{"user_id": p["user_id"], "rol": p["rol"]} for p in participants]
 
+    # Every Tipo de Carne selected for this asado (minimum one) — the
+    # list of raw names prefills the edit form's repeatable rows, and
+    # the "; "-joined string is what the read-only summary above it shows.
+    tipo_carne_rows = db.execute(
+        "SELECT tipo_carne FROM asado_tipo_carne WHERE asado_id = ? ORDER BY id",
+        (asado_id,),
+    ).fetchall()
+    existing_tipos_carne = [row["tipo_carne"] for row in tipo_carne_rows]
+
     return render_template(
         "view_asado.html",
         asado=asado,
         participants=participants,
         existing_participants=existing_participants,
+        existing_tipos_carne=existing_tipos_carne,
+        tipos_carne_display="; ".join(existing_tipos_carne),
         form_action=url_for("edit_asado", asado_id=asado_id),
         submit_label="Guardar Cambios",
         success=request.args.get("success"),
@@ -814,7 +922,7 @@ def edit_asado(asado_id):
     date = request.form["date"]
     nombre = request.form["nombre"]
     description = request.form.get("description", "")
-    tipo_carne = request.form["tipo_carne"]
+    tipo_carne_list = [tc for tc in request.form.getlist("tipo_carne") if tc]
     coccion = request.form["coccion"]
     superficie = request.form["superficie"]
     local = request.form["local"]
@@ -824,23 +932,33 @@ def edit_asado(asado_id):
     people = request.form.get("people", type=int)
     total_weight = request.form.get("total_weight", type=float)
 
-    shared_weights = get_shared_weights(tipo_carne, coccion, superficie, local)
+    shared_weights = get_shared_weights(tipo_carne_list, coccion, superficie, local)
 
     db.execute(
         """
         UPDATE asados
-        SET date = ?, nombre = ?, description = ?, tipo_carne = ?, coccion = ?,
+        SET date = ?, nombre = ?, description = ?, coccion = ?,
             superficie = ?, local = ?, location = ?, latitude = ?, longitude = ?,
             people = ?, total_weight = ?,
             tipo_carne_weight = ?, coccion_weight = ?, superficie_weight = ?, local_weight = ?
         WHERE id = ?
         """,
-        (date, nombre, description, tipo_carne, coccion, superficie, local,
+        (date, nombre, description, coccion, superficie, local,
          location, latitude, longitude, people, total_weight,
          shared_weights["carne"], shared_weights["coccion"],
          shared_weights["superficie"], shared_weights["local"],
          asado_id),
     )
+
+    # Replace selected Tipo de Carne types wholesale, same pattern (and
+    # same reasoning) as participants below.
+    db.execute("DELETE FROM asado_tipo_carne WHERE asado_id = ?", (asado_id,))
+    tipo_carne_weights = get_tipo_carne_weights(tipo_carne_list)
+    for tc in tipo_carne_list:
+        db.execute(
+            "INSERT INTO asado_tipo_carne (asado_id, tipo_carne, tipo_carne_weight) VALUES (?, ?, ?)",
+            (asado_id, tc, tipo_carne_weights[tc]),
+        )
 
     # Replace participants wholesale (see docstring above).
     db.execute("DELETE FROM participations WHERE asado_id = ?", (asado_id,))
@@ -860,7 +978,7 @@ def edit_asado(asado_id):
         if user_row is None:
             continue
 
-        points = calculate_points(tipo_carne, coccion, superficie, local, rol)
+        points = calculate_points(tipo_carne_list, coccion, superficie, local, rol)
         rol_weight = get_rol_weight(rol)
 
         db.execute(
@@ -890,11 +1008,12 @@ def delete_asado(asado_id):
     if asado is None:
         return "Asado no encontrado.", 404
 
-    # Participations FIRST — schema.sql declares participations.asado_id
-    # as a FOREIGN KEY, and get_db() enforces that (PRAGMA foreign_keys
-    # = ON), so deleting the asado row first would fail with an
-    # IntegrityError while participations still reference it.
+    # Participations and asado_tipo_carne FIRST — schema.sql declares
+    # both asado_id columns as FOREIGN KEYs, and get_db() enforces that
+    # (PRAGMA foreign_keys = ON), so deleting the asado row first would
+    # fail with an IntegrityError while either still references it.
     db.execute("DELETE FROM participations WHERE asado_id = ?", (asado_id,))
+    db.execute("DELETE FROM asado_tipo_carne WHERE asado_id = ?", (asado_id,))
     db.execute("DELETE FROM asados WHERE id = ?", (asado_id,))
     db.commit()
 

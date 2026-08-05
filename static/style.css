@@ -309,6 +309,32 @@ hr {
     background-color: var(--color-error-border);
 }
 
+.tipo-carne-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+    align-items: center;
+}
+
+.tipo-carne-row select {
+    flex: 1;
+}
+
+.remove-tipo-carne-btn {
+    background-color: var(--color-error-bg);
+    border: 1px solid var(--color-error-border);
+    color: var(--color-error-text);
+    border-radius: 6px;
+    padding: 0 10px;
+    font-size: 1em;
+    line-height: 1.8;
+    flex: 0 0 auto;
+}
+
+.remove-tipo-carne-btn:hover {
+    background-color: var(--color-error-border);
+}
+
 /* Baseline for any <button> that ISN'T .primary-button/.secondary-button
    (e.g. "+ Añadir otro participante" in _asado_form.html) — without
    this, an unstyled <button> falls back to the browser's native white
@@ -597,6 +623,18 @@ button:hover {
     align-self: center;
 }
 
+/* The Fecha filter's visible input is a readonly calendar trigger
+   (see index.html) — a text-entry cursor would be misleading since
+   typing does nothing; a pointer cursor signals "click to open." */
+.filter-field input[readonly] {
+    cursor: pointer;
+}
+
+/* Flatpickr's own theme overrides live in index.html, NOT here — they
+   have to load AFTER flatpickr's CDN stylesheet to win the cascade
+   (see the comment above that <link> in index.html for why), and this
+   file loads too early (in <head>) for that to work. */
+
 /* --- "Base de Asados" spreadsheet-style table ---
    One row per participation, deliberately dense/gridded like a
    spreadsheet rather than styled like the rest of the app. */
@@ -656,10 +694,11 @@ button:hover {
 }
 
 /* --- Mobile responsiveness ---
-   On small screens, stack the participant row inputs vertically
-   instead of side by side, so nothing gets cramped. */
+   On small screens, stack the participant/tipo-carne row inputs
+   vertically instead of side by side, so nothing gets cramped. */
 @media (max-width: 480px) {
-    .participant-row {
+    .participant-row,
+    .tipo-carne-row {
         flex-direction: column;
         align-items: stretch;
     }

@@ -33,7 +33,7 @@ from datetime import date, timedelta
 
 from config import (
     TIPO_CARNE_WEIGHTS, COCCION_WEIGHTS, SUPERFICIE_WEIGHTS, LOCAL_WEIGHTS,
-    ROL_WEIGHTS, get_shared_weights, get_rol_weight, calculate_points,
+    ROL_WEIGHTS, get_shared_weights, get_rol_weight, get_tipo_carne_weights, calculate_points,
 )
 
 DATABASE = "asados.db"
@@ -77,15 +77,21 @@ def seed_random_asados(count):
     total_participations = 0
 
     for _ in range(count):
-        tipo_carne = random.choice(list(TIPO_CARNE_WEIGHTS.keys()))
+        # 1 to 3 Tipo de Carne per asado (minimum one, same rule the
+        # real form enforces), no duplicates within the same asado.
+        tipo_carne_list = random.sample(
+            list(TIPO_CARNE_WEIGHTS.keys()), random.randint(1, 3)
+        )
         coccion = random.choice(list(COCCION_WEIGHTS.keys()))
         superficie = random.choice(list(SUPERFICIE_WEIGHTS.keys()))
         local = random.choice(list(LOCAL_WEIGHTS.keys()))
 
-        # Same lookup helper app.py uses — keeps the "weights are looked
-        # up and frozen once, at creation time" behavior consistent for
-        # seeded data too (see the comment on these columns in schema.sql).
-        shared_weights = get_shared_weights(tipo_carne, coccion, superficie, local)
+        # Same lookup helpers app.py uses — keeps the "weights are
+        # looked up and frozen once, at creation time" behavior
+        # consistent for seeded data too (see the comment on these
+        # columns in schema.sql). "carne" ends up as the MAX weight
+        # across tipo_carne_list, same rule as a real submission.
+        shared_weights = get_shared_weights(tipo_carne_list, coccion, superficie, local)
 
         # Location is optional in the real form too, so leave it empty
         # about a third of the time rather than always filling it in.
@@ -99,20 +105,29 @@ def seed_random_asados(count):
         cursor = conn.execute(
             """
             INSERT INTO asados
-                (date, nombre, description, tipo_carne, coccion,
+                (date, nombre, description, coccion,
                  superficie, local, location, latitude, longitude, people, total_weight,
                  tipo_carne_weight, coccion_weight, superficie_weight, local_weight)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 random_date_within_last_years(), nombre, "Asado de prueba generado automáticamente.",
-                tipo_carne, coccion, superficie, local, location, latitude, longitude,
+                coccion, superficie, local, location, latitude, longitude,
                 random.randint(4, 20), round(random.uniform(2.0, 12.0), 1),
                 shared_weights["carne"], shared_weights["coccion"],
                 shared_weights["superficie"], shared_weights["local"],
             ),
         )
         asado_id = cursor.lastrowid
+
+        # Freeze each selected Tipo de Carne's own weight too (see
+        # schema.sql's asado_tipo_carne table).
+        tipo_carne_weights = get_tipo_carne_weights(tipo_carne_list)
+        for tc in tipo_carne_list:
+            conn.execute(
+                "INSERT INTO asado_tipo_carne (asado_id, tipo_carne, tipo_carne_weight) VALUES (?, ?, ?)",
+                (asado_id, tc, tipo_carne_weights[tc]),
+            )
 
         # Between 1 participant and everyone you have registered, each
         # user appearing at most once (random.sample never repeats).
@@ -122,7 +137,7 @@ def seed_random_asados(count):
         for user_id in participant_ids:
             rol = random.choice(list(ROL_WEIGHTS.keys()))
             rol_weight = get_rol_weight(rol)
-            points = calculate_points(tipo_carne, coccion, superficie, local, rol)
+            points = calculate_points(tipo_carne_list, coccion, superficie, local, rol)
 
             conn.execute(
                 """

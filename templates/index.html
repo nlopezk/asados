@@ -15,17 +15,169 @@
     <p class="error-message">{{ error }}</p>
 {% endif %}
 
+<!-- Flatpickr: a small, dependency-free date picker — used here for its
+     "range" mode, a single calendar where clicking a start day then an
+     end day highlights everything in between (like an airline booking
+     site), instead of two separate plain date inputs. Loaded from a
+     public CDN, same pattern as Leaflet elsewhere in this app. The
+     Spanish locale file makes the calendar's month/weekday names match
+     the rest of the UI's language. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
+
+<!-- These theme overrides MUST come after the flatpickr <link> above,
+     not in static/style.css — style.css loads in <head>, earlier than
+     this page's own <link>, so at equal CSS specificity flatpickr's
+     own (light-themed) rules would load LATER and win the cascade,
+     silently overriding a dark-theme override placed any earlier.
+     Keeping this block right here, right after the library's own
+     stylesheet, guarantees the load order needed for these to win. -->
+<style>
+    .flatpickr-calendar {
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+        font-family: 'Inter', -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+
+    .flatpickr-calendar.arrowTop:before {
+        border-bottom-color: var(--color-border);
+    }
+
+    .flatpickr-calendar.arrowTop:after {
+        border-bottom-color: var(--color-surface);
+    }
+
+    .flatpickr-months,
+    .flatpickr-weekdays {
+        background: var(--color-surface);
+    }
+
+    .flatpickr-month {
+        color: var(--color-text);
+        fill: var(--color-text);
+    }
+
+    /* monthSelectorType: "static" (see the flatpickr() call below) means
+       the month renders as plain text (.cur-month), not a <select> — so
+       there's no dropdown/<option> popup to theme at all here, sidestepping
+       a real cross-browser problem: a native <select> popup is drawn by
+       the OS in a context that doesn't reliably pick up our CSS custom
+       properties, and it rendered with a white background/near-white
+       text no matter what color we gave its <option>s. Both .cur-month
+       and .cur-year need an explicit color (not just inherited from
+       .flatpickr-month below) and !important — flatpickr's own CSS sets
+       an explicit dark text color on these at equal specificity. */
+    .flatpickr-current-month .cur-month,
+    .flatpickr-current-month input.cur-year {
+        color: var(--color-text) !important;
+        background: transparent;
+    }
+
+    span.flatpickr-weekday {
+        background: var(--color-surface);
+        color: var(--color-text-muted);
+    }
+
+    .flatpickr-day {
+        color: var(--color-text);
+        border-radius: 4px;
+    }
+
+    .flatpickr-day.prevMonthDay,
+    .flatpickr-day.nextMonthDay {
+        color: var(--color-text-muted);
+        opacity: 0.5;
+    }
+
+    .flatpickr-day:hover {
+        background: var(--color-surface-alt);
+        border-color: var(--color-surface-alt);
+    }
+
+    .flatpickr-day.today {
+        border-color: var(--color-accent-text);
+    }
+
+    /* The two endpoint days (start/end of the range) — filled solid.
+       !important here: flatpickr's own CSS bundles this exact state
+       (.selected/.startRange/.endRange, plus :hover/:focus/edge-of-month
+       variants) into one long equal-specificity rule that kept winning
+       over a plain override regardless of load order — !important is
+       the standard, accepted way to reliably override a vendored
+       library's bundled theme colors, not a hack fighting our own CSS. */
+    .flatpickr-day.selected,
+    .flatpickr-day.startRange,
+    .flatpickr-day.endRange {
+        background: var(--color-accent) !important;
+        border-color: var(--color-accent) !important;
+        color: white !important;
+    }
+
+    /* Everything BETWEEN the two endpoints — the "highlighted range"
+       look this whole picker was added for. The box-shadow trick
+       (rather than a plain background) is flatpickr's own documented
+       approach for visually joining adjacent day cells into one
+       continuous band instead of separate highlighted squares with
+       gaps between them. !important for the same reason as
+       .selected/.startRange/.endRange above — flatpickr bundles this
+       exact state into its own equal-specificity rule. */
+    .flatpickr-day.inRange {
+        background: var(--color-accent-soft) !important;
+        border-color: var(--color-accent-soft) !important;
+        box-shadow: -5px 0 0 var(--color-accent-soft), 5px 0 0 var(--color-accent-soft) !important;
+        color: var(--color-text) !important;
+    }
+
+    .flatpickr-prev-month svg,
+    .flatpickr-next-month svg {
+        fill: var(--color-text);
+    }
+
+    .flatpickr-prev-month:hover svg,
+    .flatpickr-next-month:hover svg {
+        fill: var(--color-accent-text);
+    }
+</style>
+
 <!-- FILTERS: a plain GET form so the filtered view is just a normal,
-     bookmarkable URL (?date=...&user_id=...) — app.py's index() route
-     reads those two query params to narrow the SQL query. Each field
-     auto-submits the form on change (onchange="this.form.submit()"),
-     so picking a filter updates the list immediately without needing
-     a separate "Filtrar" button. -->
+     bookmarkable URL (?date_from=...&date_to=...&year=...&month=...&user_id=...)
+     — app.py's index() route reads these query params to narrow the SQL
+     query. Each field auto-submits the form on change
+     (onchange="this.form.submit()"), so picking a filter updates the
+     list immediately without needing a separate "Filtrar" button.
+     Desde/Hasta are an inclusive date RANGE (either side optional);
+     Año/Mes match on just that PART of the date, independent of each
+     other — e.g. Mes alone shows that calendar month across every year. -->
 <form method="GET" action="{{ url_for('index') }}" class="filter-form">
     <div class="filter-field">
-        <label for="filter_date">Fecha</label>
-        <input type="date" id="filter_date" name="date" value="{{ selected_date }}"
-               onchange="this.form.submit()">
+        <label for="filter_date_range">Fecha</label>
+        <!-- The visible input is just the calendar trigger/display —
+             it never gets submitted (no "name" attribute). The two
+             hidden inputs below it are what actually go in the form,
+             filled in by JS once a full range is picked. -->
+        <input type="text" id="filter_date_range" placeholder="Todas las fechas" readonly>
+        <input type="hidden" id="filter_date_from" name="date_from" value="{{ selected_date_from }}">
+        <input type="hidden" id="filter_date_to" name="date_to" value="{{ selected_date_to }}">
+    </div>
+    <div class="filter-field">
+        <label for="filter_year">Año</label>
+        <select id="filter_year" name="year" onchange="this.form.submit()">
+            <option value="">Todos</option>
+            {% for year in available_years %}
+                <option value="{{ year }}" {% if selected_year == year %}selected{% endif %}>{{ year }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-field">
+        <label for="filter_month">Mes</label>
+        <select id="filter_month" name="month" onchange="this.form.submit()">
+            <option value="">Todos</option>
+            {% for value, label in meses %}
+                <option value="{{ value }}" {% if selected_month == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
     </div>
     <div class="filter-field">
         <label for="filter_user">Usuario</label>
@@ -38,7 +190,7 @@
             {% endfor %}
         </select>
     </div>
-    {% if selected_date or selected_user_id %}
+    {% if selected_date_from or selected_date_to or selected_year or selected_month or selected_user_id %}
         <a href="{{ url_for('index') }}" class="filter-clear">Limpiar filtros ✕</a>
     {% endif %}
 </form>
@@ -46,10 +198,10 @@
 {% if asados|length == 0 %}
     <!-- Jinja2 (Flask's templating language) lets us use if/for
          directly inside HTML, using special curly-brace-percent tags. -->
-    {% if selected_date or selected_user_id %}
+    {% if selected_date_from or selected_date_to or selected_year or selected_month or selected_user_id %}
         <p class="empty-state">Ningún asado coincide con estos filtros.</p>
     {% else %}
-        <p class="empty-state">No asados yet. <a href="{{ url_for('new_asado') }}">Add the first one!</a></p>
+        <p class="empty-state">Sin Asados. <a href="{{ url_for('new_asado') }}">Agrega!</a></p>
     {% endif %}
 {% endif %}
 
@@ -60,7 +212,7 @@
             <h3><a href="{{ url_for('view_asado', asado_id=item.asado.id) }}">{{ item.asado.nombre }}</a></h3>
             <p class="asado-meta">
                 📅 {{ item.asado.date }} &nbsp;|&nbsp;
-                🥩 {{ item.asado.tipo_carne }} &nbsp;|&nbsp;
+                🥩 {{ item.tipos_carne }} &nbsp;|&nbsp;
                 🔥 {{ item.asado.coccion }} on {{ item.asado.superficie }} &nbsp;|&nbsp;
                 📍 {{ item.asado.local }}
             </p>
@@ -81,19 +233,71 @@
 
 {% if total_pages > 1 %}
     <!-- PAGINATION: preserves the current filters in each link (page
-         only changes date/user_id stays put) via url_for's kwargs —
+         only changes, every filter stays put) via url_for's kwargs —
          Flask/Werkzeug drops any kwarg whose value is none from the
          resulting URL, so an unset filter just doesn't appear in it. -->
     <nav class="pagination">
         {% if page > 1 %}
-            <a href="{{ url_for('index', page=page-1, date=selected_date or none, user_id=selected_user_id or none) }}"
+            <a href="{{ url_for('index', page=page-1, date_from=selected_date_from or none, date_to=selected_date_to or none, year=selected_year or none, month=selected_month or none, user_id=selected_user_id or none) }}"
                class="secondary-button">← Anterior</a>
         {% endif %}
         <span class="pagination-status">Página {{ page }} de {{ total_pages }}</span>
         {% if page < total_pages %}
-            <a href="{{ url_for('index', page=page+1, date=selected_date or none, user_id=selected_user_id or none) }}"
+            <a href="{{ url_for('index', page=page+1, date_from=selected_date_from or none, date_to=selected_date_to or none, year=selected_year or none, month=selected_month or none, user_id=selected_user_id or none) }}"
                class="secondary-button">Siguiente →</a>
         {% endif %}
     </nav>
 {% endif %}
+
+<script>
+    // Prefill the calendar if a range is already active (e.g. coming
+    // back from a pagination link that preserved the filter).
+    const dateFromInput = document.getElementById("filter_date_from");
+    const dateToInput = document.getElementById("filter_date_to");
+    const initialRange = [dateFromInput.value, dateToInput.value].filter(Boolean);
+
+    const datePicker = flatpickr("#filter_date_range", {
+        mode: "range",
+        locale: "es",
+        // "static" instead of the default month DROPDOWN: the dropdown's
+        // open popup is a native OS control that (at least on Windows
+        // Chrome) doesn't reliably pick up our dark theme — rendered
+        // with a white background and near-white text regardless of the
+        // CSS overrides below. "static" shows the month as plain text
+        // (navigated with the < > arrows only, same as the year already
+        // works), sidestepping the native-popup theming problem
+        // entirely instead of fighting it with CSS.
+        monthSelectorType: "static",
+        // dateFormat is the REAL/internal format — must stay ISO,
+        // because it's also what flatpickr uses to PARSE defaultDate
+        // below (which we feed it as "YYYY-MM-DD", straight from the
+        // hidden inputs' values). altInput/altFormat give the user a
+        // prettier d/m/Y display WITHOUT changing that internal format
+        // — using dateFormat itself for display (an earlier version of
+        // this code did) made flatpickr try to re-parse "2026-08-05"
+        // AS "d/m/Y" on page reload and produce a garbled date.
+        dateFormat: "Y-m-d",
+        altInput: true,
+        altFormat: "d/m/Y",
+        defaultDate: initialRange.length ? initialRange : undefined,
+        onChange: function (selectedDates, dateStr, instance) {
+            // Only a COMPLETE range (start + end both picked) is a
+            // real filter — one date alone is just "still choosing."
+            if (selectedDates.length === 2) {
+                dateFromInput.value = instance.formatDate(selectedDates[0], "Y-m-d");
+                dateToInput.value = instance.formatDate(selectedDates[1], "Y-m-d");
+                document.querySelector(".filter-form").submit();
+            }
+        },
+    });
+
+    // altInput makes flatpickr turn OUR #filter_date_range into
+    // type="hidden" and create a brand-new element for what's actually
+    // visible/clickable — which the <label for="filter_date_range">
+    // above no longer points at. Without this, clicking the "Fecha"
+    // label text wouldn't open the calendar the way every other
+    // filter field's label opens its own input.
+    datePicker.altInput.id = "filter_date_range_display";
+    document.querySelector('label[for="filter_date_range"]').setAttribute("for", "filter_date_range_display");
+</script>
 {% endblock %}

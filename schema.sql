@@ -8,6 +8,7 @@
 -- Drop tables first if they already exist, so we can re-run this file
 -- safely during development without errors. (In production you would NOT
 -- do this, since it deletes all existing data!)
+DROP TABLE IF EXISTS asado_tipo_carne;
 DROP TABLE IF EXISTS participations;
 DROP TABLE IF EXISTS asados;
 DROP TABLE IF EXISTS users;
@@ -42,7 +43,12 @@ CREATE TABLE asados (
     date TEXT NOT NULL,                -- stored as 'YYYY-MM-DD' text (SQLite has no native date type)
     nombre TEXT NOT NULL,              -- the fun/creative name of the asado
     description TEXT,                  -- optional (no NOT NULL constraint), can be empty
-    tipo_carne TEXT NOT NULL,          -- e.g. "Vacío", "Chorizo", etc.
+    -- Tipo de Carne is NOT a column here — an asado can have MULTIPLE
+    -- meat types (see the asado_tipo_carne table below), so the list of
+    -- types themselves lives there. tipo_carne_weight below is still a
+    -- single number, though: whichever selected type has the HIGHEST
+    -- weight is the one that actually feeds the points formula (a
+    -- deliberate rule — see asado_tipo_carne's comment for the reasoning).
     coccion TEXT NOT NULL,             -- e.g. "A las brasas", "Ahumado"
     superficie TEXT NOT NULL,          -- e.g. "Parrilla", "Plancha", "Disco"
     local TEXT NOT NULL,               -- e.g. "Casa", "Restaurante", "Quincho"
@@ -59,10 +65,35 @@ CREATE TABLE asados (
     -- change later, old entries keep a record of what weight actually
     -- produced their points, instead of only being reconstructable by
     -- re-looking-up the (possibly since-changed) current weights.
+    -- tipo_carne_weight specifically is the MAX across every selected
+    -- type in asado_tipo_carne, not any one type's own weight.
     tipo_carne_weight REAL,
     coccion_weight REAL,
     superficie_weight REAL,
     local_weight REAL
+);
+
+-- ---------------------------------------------------------------------
+-- ASADO_TIPO_CARNE TABLE  (another "junction" table, same idea as
+-- participations below, just linking asados to MEAT TYPES instead of
+-- USERS)
+-- One row per (asado, tipo de carne) pair — an asado can have more than
+-- one meat type (minimum one), e.g. both "Cordero" and "Pollo" at the
+-- same event. Each row freezes THAT type's own weight at creation time,
+-- for the same reason points/weights are frozen everywhere else in this
+-- app: `asados.tipo_carne_weight` only stores the WINNING (highest)
+-- weight, since only the biggest one actually feeds the points formula
+-- — but keeping every selected type's own weight here means Base de
+-- Asados/CSV can still show the complete picture of what was chosen and
+-- why one weight won, not just the final number.
+-- ---------------------------------------------------------------------
+CREATE TABLE asado_tipo_carne (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    asado_id INTEGER NOT NULL,
+    tipo_carne TEXT NOT NULL,          -- e.g. "Vacío", "Chorizo", etc.
+    tipo_carne_weight REAL NOT NULL,   -- THIS type's own frozen weight (not necessarily the max)
+
+    FOREIGN KEY (asado_id) REFERENCES asados (id)
 );
 
 -- ---------------------------------------------------------------------

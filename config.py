@@ -75,7 +75,22 @@ ROL_WEIGHTS = {
 }
 
 
-def get_shared_weights(tipo_carne, coccion, superficie, local):
+def get_tipo_carne_weights(tipo_carne_list):
+    """
+    Looks up the weight for EVERY selected "Tipo de Carne" (an asado can
+    have more than one, minimum one — e.g. both "Cordero" and "Pollo" at
+    the same event), returned as a {category_name: weight} dict so the
+    caller can freeze each one individually (see schema.sql's
+    asado_tipo_carne table) while ALSO knowing which one is the max.
+
+    .get(key, default) looks up the weight; if a category isn't found in
+    our dictionary (e.g. a typo), it falls back to 1 instead of crashing
+    the whole app. This is a safety net for Phase 1.
+    """
+    return {tc: TIPO_CARNE_WEIGHTS.get(tc, 1) for tc in tipo_carne_list}
+
+
+def get_shared_weights(tipo_carne_list, coccion, superficie, local):
     """
     Looks up the 4 weights that are shared by every participant of the
     SAME asado (everything except Rol, which is per-participant — see
@@ -88,12 +103,17 @@ def get_shared_weights(tipo_carne, coccion, superficie, local):
     entry's stored points, even though the points themselves stay
     frozen.
 
-    .get(key, default) looks up the weight; if the category isn't found
-    in our dictionary (e.g. a typo), it falls back to 1 instead of
-    crashing the whole app. This is a safety net for Phase 1.
+    "carne" specifically is the MAX weight across every selected Tipo de
+    Carne in tipo_carne_list (a deliberate rule: multiple meat types
+    don't stack or average, only the single biggest one counts toward
+    points) — max(..., default=1) falls back the same safe way as the
+    .get(key, default) lookups below if tipo_carne_list somehow ends up
+    empty (shouldn't happen — the form requires at least one — but this
+    avoids a crash rather than assuming it can't).
     """
+    tipo_carne_weights = get_tipo_carne_weights(tipo_carne_list)
     return {
-        "carne": TIPO_CARNE_WEIGHTS.get(tipo_carne, 1),
+        "carne": max(tipo_carne_weights.values(), default=1),
         "coccion": COCCION_WEIGHTS.get(coccion, 1),
         "superficie": SUPERFICIE_WEIGHTS.get(superficie, 1),
         "local": LOCAL_WEIGHTS.get(local, 1),
@@ -107,7 +127,7 @@ def get_rol_weight(rol):
     return ROL_WEIGHTS.get(rol, 1)
 
 
-def calculate_points(tipo_carne, coccion, superficie, local, rol):
+def calculate_points(tipo_carne_list, coccion, superficie, local, rol):
     """
     Calculates the Points for ONE participant of ONE asado, by
     EVALUATING the FORMULA string above as real math.
@@ -118,13 +138,16 @@ def calculate_points(tipo_carne, coccion, superficie, local, rol):
     text — so editing FORMULA above is the ONLY change ever needed,
     anywhere in the project, no matter how you restructure the algebra.
 
-    Parameters are the CATEGORY NAMES (strings, e.g. "Vacío"), and this
-    function looks up their numeric weight from the dictionaries above
-    before evaluating the formula.
+    tipo_carne_list is a LIST of category names (an asado can have more
+    than one meat type — only the highest-weight one counts, see
+    get_shared_weights() above); coccion/superficie/local/rol are each a
+    single CATEGORY NAME (string, e.g. "Disco"). This function looks up
+    their numeric weight from the dictionaries above before evaluating
+    the formula.
 
     Returns a float (the calculated points).
     """
-    variables = get_shared_weights(tipo_carne, coccion, superficie, local)
+    variables = get_shared_weights(tipo_carne_list, coccion, superficie, local)
     variables["rol"] = get_rol_weight(rol)
 
     # eval() runs a STRING as if it were real Python code. We give it a

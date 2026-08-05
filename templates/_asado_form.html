@@ -13,8 +13,26 @@
       asado                 - None (create) or the existing asado row (edit), for prefilling
       existing_participants - list of {user_id, rol} dicts to prefill participant rows
                                (empty list for create -> renders one blank row)
+      existing_tipos_carne  - list of tipo_carne strings to prefill Tipo de Carne rows
+                               (empty list for create -> renders one blank row)
     Plus the usual *_options / weights / registered_users, same as before.
 -->
+
+{% macro tipo_carne_row(selected="") %}
+<div class="tipo-carne-row">
+    <!-- An asado can have MORE THAN ONE Tipo de Carne (minimum one) —
+         only the highest-weight one actually feeds the points formula
+         (see updateTipoCarneHints()/config.py's get_shared_weights),
+         but every selected one is still saved and shown. -->
+    <select name="tipo_carne" required>
+        {% for option in tipo_carne_options %}
+            <option value="{{ option }}" {% if selected == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+    </select>
+    <span class="weight-hint tipo-carne-weight-hint"></span>
+    <button type="button" class="remove-tipo-carne-btn" onclick="removeTipoCarneRow(this)" title="Quitar tipo de carne">✕</button>
+</div>
+{% endmacro %}
 
 {% macro participant_row(user_id="", rol="") %}
 <div class="participant-row">
@@ -59,14 +77,25 @@
          option is currently selected, so the user sees the impact of
          their choice immediately. -->
 
-    <label for="tipo_carne">Tipo de Carne
-        <span class="weight-hint" id="hint-tipo_carne"></span>
-    </label>
-    <select id="tipo_carne" name="tipo_carne" required>
-        {% for option in tipo_carne_options %}
-            <option value="{{ option }}" {% if asado and asado.tipo_carne == option %}selected{% endif %}>{{ option }}</option>
-        {% endfor %}
-    </select>
+    <label>Tipo de Carne</label>
+    <div id="tipo-carne-container">
+        {% if existing_tipos_carne %}
+            {% for tc in existing_tipos_carne %}
+                {{ tipo_carne_row(tc) }}
+            {% endfor %}
+        {% else %}
+            {{ tipo_carne_row() }}
+        {% endif %}
+    </div>
+
+    <!-- Same hidden-<template> trick as participants below: a safe
+         source to clone a BLANK row from, regardless of how many
+         (possibly prefilled) rows already exist above. -->
+    <template id="tipo-carne-row-template">
+        {{ tipo_carne_row() }}
+    </template>
+
+    <button type="button" onclick="addTipoCarneRow()">+ Añadir otro tipo de carne</button>
 
     <label for="coccion">Tipo de Cocción
         <span class="weight-hint" id="hint-coccion"></span>
@@ -179,6 +208,71 @@
     const WEIGHTS = {{ weights|tojson }};
 
     // -----------------------------------------------------------------
+    // TIPO DE CARNE ROWS (repeatable, minimum ONE — unlike participants,
+    // which are allowed to go down to zero)
+    // -----------------------------------------------------------------
+    function addTipoCarneRow() {
+        const template = document.getElementById("tipo-carne-row-template");
+        const newRow = template.content.firstElementChild.cloneNode(true);
+
+        document.getElementById("tipo-carne-container").appendChild(newRow);
+        wireTipoCarneRow(newRow);
+        updateTipoCarneRemoveButtons();
+        updateTipoCarneHints();
+        updatePointsSummary();
+    }
+
+    // Unlike removeParticipantRow(), this refuses to go below one row —
+    // "Tipo de Carne" has a minimum of one, per how this app's points
+    // formula/config.py expects at least one category to look a weight
+    // up from. updateTipoCarneRemoveButtons() (called after every
+    // add/remove) additionally HIDES the ✕ button entirely once only
+    // one row is left, so there's no dead click to begin with.
+    function removeTipoCarneRow(button) {
+        const container = document.getElementById("tipo-carne-container");
+        if (container.querySelectorAll(".tipo-carne-row").length <= 1) {
+            return;
+        }
+        button.closest(".tipo-carne-row").remove();
+        updateTipoCarneRemoveButtons();
+        updateTipoCarneHints();
+        updatePointsSummary();
+    }
+
+    function wireTipoCarneRow(row) {
+        row.querySelector("select[name='tipo_carne']").addEventListener("change", function () {
+            updateTipoCarneHints();
+            updatePointsSummary();
+        });
+    }
+
+    function updateTipoCarneRemoveButtons() {
+        const rows = document.querySelectorAll(".tipo-carne-row");
+        const onlyOneLeft = rows.length <= 1;
+        rows.forEach(function (row) {
+            row.querySelector(".remove-tipo-carne-btn").style.display = onlyOneLeft ? "none" : "";
+        });
+    }
+
+    // Shows each row's own weight, AND marks whichever one is currently
+    // the MAX with a star — that's the one actually feeding the points
+    // formula (see config.py's get_shared_weights: multiple Tipo de
+    // Carne don't stack or average, only the single biggest counts).
+    function updateTipoCarneHints() {
+        const rows = document.querySelectorAll(".tipo-carne-row");
+        const rowWeights = Array.from(rows).map(function (row) {
+            return WEIGHTS.tipo_carne[row.querySelector("select[name='tipo_carne']").value];
+        });
+        const maxWeight = Math.max.apply(null, rowWeights);
+
+        rows.forEach(function (row, index) {
+            const hint = row.querySelector(".tipo-carne-weight-hint");
+            const isMax = rowWeights[index] === maxWeight;
+            hint.textContent = "(peso: " + rowWeights[index] + ")" + (isMax ? " ★ mayor" : "");
+        });
+    }
+
+    // -----------------------------------------------------------------
     // PARTICIPANT ROWS
     // -----------------------------------------------------------------
     function addParticipantRow() {
@@ -212,10 +306,12 @@
     // LIVE POINTS PREVIEW
     // -----------------------------------------------------------------
 
-    // Updates the small "(weight: X)" text next to each of the 4
-    // shared dropdowns (tipo_carne, coccion, superficie, local).
+    // Updates the small "(weight: X)" text next to each of the 3
+    // single-select shared dropdowns (coccion, superficie, local) —
+    // Tipo de Carne is handled separately by updateTipoCarneHints()
+    // above, since it's a repeatable field, not a single <select>.
     function updateWeightHints() {
-        ["tipo_carne", "coccion", "superficie", "local"].forEach(function (field) {
+        ["coccion", "superficie", "local"].forEach(function (field) {
             const select = document.getElementById(field);
             const hint = document.getElementById("hint-" + field);
             const weight = WEIGHTS[field][select.value];
@@ -249,7 +345,13 @@
     }
 
     function updatePointsSummary() {
-        const carne = document.getElementById("tipo_carne").value;
+        // Every selected Tipo de Carne, not just one — the server (via
+        // config.py's get_shared_weights) takes the MAX weight among
+        // them, but ALL of them get sent so that logic stays in exactly
+        // one place instead of also duplicating "which one is biggest"
+        // here in JS.
+        const tiposCarne = Array.from(document.querySelectorAll("select[name='tipo_carne']"))
+            .map(function (select) { return select.value; });
         const coccion = document.getElementById("coccion").value;
         const superficie = document.getElementById("superficie").value;
         const local = document.getElementById("local").value;
@@ -290,11 +392,17 @@
 
             // Ask the SERVER for the real points value for THIS
             // participant's specific selections (including their Rol).
-            const url = "/api/points?tipo_carne=" + encodeURIComponent(carne) +
-                "&coccion=" + encodeURIComponent(coccion) +
+            // tipo_carne is repeated once per selected type — Flask's
+            // request.args.getlist("tipo_carne") on the other end reads
+            // every one of them, matching how the form itself submits
+            // multiple same-named fields.
+            let url = "/api/points?coccion=" + encodeURIComponent(coccion) +
                 "&superficie=" + encodeURIComponent(superficie) +
                 "&local=" + encodeURIComponent(local) +
                 "&rol=" + encodeURIComponent(rolSelect.value);
+            tiposCarne.forEach(function (tc) {
+                url += "&tipo_carne=" + encodeURIComponent(tc);
+            });
 
             fetch(url)
                 .then(function (response) { return response.json(); })
@@ -308,8 +416,10 @@
         });
     }
 
-    // Recalculate everything whenever a shared dropdown changes.
-    ["tipo_carne", "coccion", "superficie", "local"].forEach(function (field) {
+    // Recalculate everything whenever a single-select shared dropdown
+    // changes (Tipo de Carne's own rows are wired individually by
+    // wireTipoCarneRow(), since there can be more than one of them).
+    ["coccion", "superficie", "local"].forEach(function (field) {
         document.getElementById(field).addEventListener("change", function () {
             updateWeightHints();
             updatePointsSummary();
@@ -317,13 +427,16 @@
     });
 
     // Wire up whichever rows are already on the page — one blank row
-    // for a new asado, or one row PER EXISTING PARTICIPANT when
-    // editing (see existing_participants above).
+    // for a new asado, or one row PER EXISTING selection when editing
+    // (see existing_participants/existing_tipos_carne above).
+    document.querySelectorAll(".tipo-carne-row").forEach(wireTipoCarneRow);
     document.querySelectorAll(".participant-row").forEach(wireParticipantRow);
+    updateTipoCarneRemoveButtons();
 
     // Run once on page load so the hints/summary aren't blank before
     // the user touches anything.
     updateWeightHints();
+    updateTipoCarneHints();
     updatePointsSummary();
 
     // =================================================================

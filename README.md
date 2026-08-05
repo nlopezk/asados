@@ -2,6 +2,12 @@
 
 A Flask + SQLite web app to track "asado" events, participants, and points — now with login.
 
+**Live (testing) deployment**: https://asados.pythonanywhere.com —
+currently running with a fresh/empty test database, not the real
+history from local dev yet. See `CLAUDE.md`'s "Phase 6" section for
+how the deployment is wired up and how to ship an update
+(`git pull` + Reload on PythonAnywhere's Web tab).
+
 > **Using an AI assistant (Claude Code, etc.) on this project?** See
 > [`CLAUDE.md`](./CLAUDE.md) first — it explains the reasoning behind
 > several design decisions (the points formula, the map choice, the
@@ -97,3 +103,8 @@ git add .
 git commit -m "describe what you changed"
 git push
 ```
+
+workon asados-venv
+cd ~/asados
+
+venv path /home/asados/.virtualenvs/asados-venv
