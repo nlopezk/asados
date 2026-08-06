@@ -114,7 +114,7 @@
     const latInput = document.getElementById("latitude");
     const lonInput = document.getElementById("longitude");
 
-    {% if location_required %}
+    // {% if location_required %}
     // location_required: block submitting the enclosing form until
     // latitude/longitude actually have values — typing free text
     // without ever picking a suggestion or a map point would otherwise
@@ -132,7 +132,7 @@
             }
         });
     }
-    {% endif %}
+    // {% endif %}
 
     // "Debounce" = wait until the user pauses typing before searching,
     // instead of firing a request on every single keystroke. This is
