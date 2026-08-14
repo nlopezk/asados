@@ -15,7 +15,7 @@ Phase 4 (Summary & stats) from the `Phases` roadmap file.
 - Simple leaderboard (Phase 4).
 - Dashboard mockup with a KPI (Phase 4).
 
-## [Unreleased]
+## [0.11.1] - 2026-08-13
 ### Fixed
 - Silenced 6 false-positive VSCode warnings in `_location_picker.html`
   caused by its embedded-JS checker misreading a Jinja `{% if %}`/
@@ -26,6 +26,25 @@ Phase 4 (Summary & stats) from the `Phases` roadmap file.
   real complexity to Flask's own recommended pattern for injecting
   server data into a `<script>` tag, just to quiet an editor-only
   false positive.)
+### Changed
+- The navigation bar collapses into a "☰" dropdown menu on screens
+  narrower than 1025px, instead of wrapping its links into a multi-row
+  clump. On a phone the navbar now takes 63px instead of 216px — it
+  had been eating ~31% of the visible screen (~38% at 320px) before
+  you scrolled at all. Desktop is untouched: above 1024px it's the
+  same single row of links as always.
+- Desktop pages use noticeably more of the screen's width — the main
+  content area went from a flat 700px cap to 900px, and Base de
+  Asados/Ubicaciones (the two spreadsheet-style pages) opt into an
+  even wider 1500px cap. Mobile is untouched either way, since these
+  are just upper caps.
+- Base de Asados/Ubicaciones' tables now scroll VERTICALLY with the
+  page itself, instead of inside their own small, separately-scrolling
+  box. Horizontal scroll (for the widest tables) stays contained to
+  the table itself, same as before. Trade-off: the column header no
+  longer stays pinned in place while scrolling through a long table —
+  CSS can't do both a page-scrolling table AND a sticky header AND
+  horizontal scroll at once; that would need a JS-driven header.
 
 ## [0.11.0] - 2026-08-04
 ### Added

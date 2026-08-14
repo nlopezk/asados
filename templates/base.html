@@ -34,7 +34,25 @@
              read Flask's "g" object directly, no need to pass it manually
              from every single route. -->
         {% if g.username %}
-            <div class="navbar-right">
+            <!-- The ☰ button is HIDDEN on wide screens by CSS (see
+                 .nav-toggle in style.css) and only appears once the
+                 screen gets too narrow to fit the links in one row.
+                 There is only ONE copy of the links below, shared by
+                 both presentations — a second, phone-only copy of the
+                 same menu would be one more place to forget to update
+                 when a new section is added.
+                 aria-expanded/aria-controls tell screen readers that
+                 this button opens the menu below it, and whether it's
+                 currently open; toggleNav() keeps aria-expanded in
+                 sync with the actual visual state. -->
+            <button type="button"
+                    class="nav-toggle"
+                    id="nav-toggle"
+                    onclick="toggleNav()"
+                    aria-expanded="false"
+                    aria-controls="navbar-right"
+                    aria-label="Menú">☰</button>
+            <div class="navbar-right" id="navbar-right">
                 <a href="{{ url_for('new_asado') }}" class="nav-link">Añadir Asado</a>
                 <a href="{{ url_for('base_asados') }}" class="nav-link">📋 Base de Asados</a>
                 <a href="{{ url_for('activity_log_page') }}" class="nav-link">🕓 Actividad</a>
@@ -46,7 +64,35 @@
         {% endif %}
     </nav>
 
-    <main class="container">
+    {% if g.username %}
+    <script>
+        // Opens/closes the phone menu by toggling ONE class on the
+        // links container — all the actual showing/hiding lives in
+        // style.css (.navbar-right.open), so this JS never touches
+        // inline styles. That matters because the desktop layout is
+        // pure CSS: if this set element.style.display directly, that
+        // inline value would then also apply after resizing back to a
+        // wide screen, and would override the stylesheet's desktop
+        // rule — leaving the menu stuck hidden (or stuck as a
+        // dropdown) on a PC. A class can simply be ignored by the
+        // desktop CSS instead.
+        function toggleNav() {
+            const menu = document.getElementById("navbar-right");
+            const button = document.getElementById("nav-toggle");
+            const isOpen = menu.classList.toggle("open");
+            // Keep the accessibility state honest, not just the visuals.
+            button.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        }
+    </script>
+    {% endif %}
+
+    <!-- container_extra_class lets a page opt into the wider layout
+         (see .container-wide in style.css) — only base_asados.html and
+         ubicaciones.html do, since their spreadsheet tables genuinely
+         benefit from the extra width; every other page just gets the
+         default block content (empty), leaving .container's normal,
+         more readable width untouched. -->
+    <main class="container {% block container_extra_class %}{% endblock %}">
         <!-- This is a placeholder block. Child templates
              insert their own HTML content here. -->
         {% block content %}{% endblock %}

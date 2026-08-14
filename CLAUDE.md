@@ -100,6 +100,109 @@ before considering it done — this app's whole layout language (flex +
 is what made the rest of the app responsive almost for free; keep
 using that pattern rather than fixed widths.
 
+**The navbar has two presentations from ONE set of links: a
+horizontal row above 1024px, a "☰" dropdown at/below it.** Previously
+there was only the row, and below ~1025px it wrapped into a two- and
+three-row clump of pills — measured at **216px tall on a 375px phone
+(≈31% of the visible screen, ≈38% at 320px) before any content
+appeared at all**; it's 63px now in both presentations. The links
+exist exactly once in `base.html` (a phone-only duplicate menu would
+be a second place to forget when adding a section); `.nav-toggle` +
+the `@media (max-width: 1024px)` block in style.css do all the
+switching, and `toggleNav()` in `base.html` only ever toggles a single
+`.open` class. Three things here are load-bearing and easy to undo by
+accident:
+- **The breakpoint is measured, not conventional.** The navbar content
+  genuinely needs 1026px (title 116px + links/username 845px + 40px
+  padding + gap), verified by walking a real browser down width by
+  width: still one clean 63px row at 1025px, degrading to 100px at
+  1000px as the longer labels wrap their own text. An initial,
+  plausible-sounding 860px guess was WRONG for exactly this reason —
+  it left every width between ~1025px and 860px quietly squeezed. **If
+  you add or rename a nav link, re-measure**; that number moves with
+  the labels. It is also deliberately unrelated to the app's other
+  480px breakpoint, which answers "is this a phone?" (right question
+  for stacking form rows), not "do these links still fit?".
+- **`.navbar-right`/`.nav-username` were moved UP next to the other
+  navbar rules, and must stay above that media query.** They used to
+  sit ~400 lines lower. Since `.navbar-right { display: none }` inside
+  the media query has the *same specificity* as the base rule's
+  `display: flex`, source order alone decided it — and the base rule,
+  being later, won. The result was a menu that stayed stubbornly
+  visible on phones no matter what the media query said. Being inside
+  a `@media` block grants no extra priority whatsoever.
+- **`toggleNav()` toggles a CLASS, never `element.style.display`.** An
+  inline style would persist after the viewport widened back past the
+  breakpoint and would outrank the stylesheet's desktop rule, leaving
+  the menu stuck hidden (or stuck as a dropdown) on a PC. A class can
+  simply be ignored by the desktop CSS instead.
+
+The dropdown is deliberately in normal flow (not `position:
+absolute`/`fixed`), so it pushes content down while open rather than
+floating over it — easier to follow on a phone, and impossible to
+accidentally scroll content behind. Known cosmetic edge case, left
+alone on purpose: resizing a *desktop* window from narrow-and-open to
+wide leaves `aria-expanded="true"` on the now-hidden button until the
+next page load. The visual layout is correct throughout, and a resize
+listener wasn't worth adding for it.
+
+**Desktop content width: two tiers, via `--content-max-width`/
+`--content-max-width-wide` (style.css) and an opt-in `.container-wide`
+class.** `.container`'s original flat 700px cap (in `base.html`,
+wrapping every page's `{% block content %}`) looked fine on a phone
+but left a LOT of empty space on the sides of a normal desktop
+monitor — especially noticeable on Base de Asados' 21-column table and
+Ubicaciones' spreadsheet, which could genuinely use more room. Fixed
+by giving `.container` a wider default (900px) and letting specific
+pages opt into an even wider cap (1500px) via a new
+`{% block container_extra_class %}` in `base.html` — only
+`base_asados.html`/`ubicaciones.html` set this block to
+`container-wide`; every other page keeps the moderate 900px default
+(a super-wide `.asado-form` would just stretch its `width: 100%`
+inputs into awkwardly long single-line fields, so forms deliberately
+stay at the narrower tier). **Neither tier affects mobile** — below
+whichever cap applies, `.container`'s own `width: 100%` already fills
+the screen; a bigger cap only matters once the viewport is wider than
+it, which a phone never is. `/ubicaciones`' "Nueva Ubicación" form
+needed one more fix on top: since it lives on a now-`container-wide`
+page but is a normal vertical form (not a table), its own
+`width: 100%` inputs would otherwise stretch across the full 1500px
+container — capped independently via a `.form-narrow` class (480px)
+on that one `<form>`.
+
+**Base de Asados/Ubicaciones' tables now scroll with the PAGE, not
+inside their own small boxed window.** `.spreadsheet-wrapper` used to
+cap itself at `max-height: 70vh` with its own `overflow-y: auto` — a
+genuinely separate, small scrolling region nested inside the page,
+which felt cramped combined with the narrow container above. Removed
+that height cap; the wrapper now just grows to fit its content, so the
+page's own scroll takes over. `overflow-x: auto` stays (removing it
+isn't an option — the table is legitimately wider than any reasonable
+viewport), and it's STILL contained to just the table/wrapper, not the
+whole page (verified via Playwright: `document.body.scrollWidth` stays
+exactly at the viewport width at 1600px, 375px, and a 320px stress
+test — no page-level horizontal scrollbar, only the table itself
+scrolls sideways).
+
+**Trade-off, and why it's unavoidable with plain CSS**: the column
+header (`thead th`) no longer stays pinned to the top of the screen
+while scrolling through a long table — a `position: sticky` on it was
+removed rather than left in as dead code. `position: sticky` only
+sticks relative to the nearest ancestor whose overflow isn't
+`visible`. `.spreadsheet-wrapper` NEEDS `overflow-x: auto` for
+horizontal scroll, and per how CSS overflow is specified, that alone
+makes the wrapper (not the page/viewport) the sticky containing block
+for anything inside it — regardless of whether the wrapper is actually
+capped in height. So "the header sticks to the wrapper's own scroll"
+and "the header sticks to the page's scroll" are mutually exclusive
+once horizontal scroll is required on the same element; the earlier
+version only had a sticky-feeling header because the wrapper WAS the
+scrolling box back then. Getting a sticky header back on a page-
+scrolling table would need a JS-driven fake header (a `position: fixed`
+clone whose horizontal scroll offset is kept in sync via a scroll
+listener) — real, nontrivial complexity that wasn't worth adding for
+this.
+
 **Phase 6 (deploy): live on PythonAnywhere's free tier**, not
 Render/Railway/Fly.io. The deciding factor was SQLite: this app stores
 its whole database as a single `asados.db` file, and Render's and

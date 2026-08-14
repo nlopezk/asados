@@ -28,6 +28,14 @@
     CLAUDE.md for why (multiple simultaneous map-picker instances on
     one page isn't something this component supports yet).
 
+    This page opts into the wider layout (.container-wide, see
+    base.html/style.css) for "Ubicaciones Existentes" below — but
+    "Nueva Ubicación" is a plain vertical form (.asado-form), and its
+    inputs are width:100% of whatever contains them, so left alone
+    they'd stretch to the FULL wide container and look oversized for a
+    single-line field. ".form-narrow" caps just that form's own width,
+    independent of the page's wider container.
+
     "Ubicaciones Existentes" is a compact, spreadsheet-style TABLE
     (same .spreadsheet-table/.spreadsheet-wrapper classes Base de
     Asados already uses) rather than one big stacked card per location
@@ -42,6 +50,8 @@
     <form> inside the table itself.
 -->
 
+{% block container_extra_class %}container-wide{% endblock %}
+
 {% block content %}
 <h2>Ubicaciones Guardadas</h2>
 
@@ -53,7 +63,7 @@
 {% endif %}
 
 <h3>Nueva Ubicación</h3>
-<form method="POST" action="{{ url_for('create_location') }}" class="asado-form">
+<form method="POST" action="{{ url_for('create_location') }}" class="asado-form form-narrow">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="new_location_name">Nombre</label>
     <input type="text" id="new_location_name" name="name" placeholder="Ej: Casa de Nico" required>

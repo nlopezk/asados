@@ -8,7 +8,15 @@
     asado's shared details (date, nombre, etc.) alongside the one
     participant's own rol/points. This shape is what makes it exportable
     as a normal CSV: one line per person-at-an-asado.
+
+    Opts into the wider layout (see base.html's container_extra_class
+    block / .container-wide in style.css) — this table's 21 columns
+    genuinely benefit from the extra horizontal room on desktop; the
+    cap only ever matters above --content-max-width-wide, so mobile is
+    unaffected.
 -->
+
+{% block container_extra_class %}container-wide{% endblock %}
 
 {% block content %}
 <h2>Base de Asados</h2>

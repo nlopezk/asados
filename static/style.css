@@ -64,6 +64,15 @@
     --color-success-bg: #2c3624;  /* muted olive-green, keeps the woody palette instead of a bright green */
     --color-success-border: #465438;
     --color-success-text: #c3d9a0;
+
+    /* Content width caps — see .container/.container-wide below. Two
+       tiers: most pages (cards, forms, the activity log) read better
+       at a moderate width, but the two spreadsheet-style pages
+       (Base de Asados, Ubicaciones) genuinely benefit from a lot more
+       horizontal room. Neither affects mobile: below the cap, width:
+       100% already takes over regardless of what the cap is. */
+    --content-max-width: 900px;
+    --content-max-width-wide: 1500px;
 }
 
 /* Generic show/hide utility (JS toggles this class) — used for the
@@ -168,14 +177,163 @@ hr {
     background-color: rgba(255, 255, 255, 0.25);
 }
 
+/* The ☰ hamburger button. Hidden by default — i.e. the DESKTOP state
+   is the plain, always-visible row of links, and the button only
+   turns on inside the narrow-screen media query further down. Doing
+   it in that direction (rather than hiding it on desktop) means the
+   full navbar is what you get if the media query never matches for
+   any reason.
+   It needs its own background/border/color because the global bare
+   "button" rule further down styles buttons for the page's wood
+   surfaces — light-bordered and surface-colored — which looks wrong
+   sitting on the navbar's burgundy fill. */
+.nav-toggle {
+    display: none;
+    background-color: rgba(255, 255, 255, 0.15);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    /* Sized to comfortably clear the ~44px minimum touch target the
+       nav links themselves were already bumped to meet. */
+    padding: 8px 14px;
+    font-size: 1.3em;
+    line-height: 1;
+}
+
+.nav-toggle:hover {
+    background-color: rgba(255, 255, 255, 0.25);
+}
+
+/* .navbar-right and .nav-username used to be defined much further
+   down this file, far away from the rest of the navbar rules. They
+   were moved up here deliberately, and the move FIXED A REAL BUG, not
+   just tidiness: the media query below sets ".navbar-right { display:
+   none }", which has exactly the same specificity as this rule's
+   "display: flex". When two rules of equal specificity both apply,
+   the one written LATER in the file wins — so with the base rule
+   sitting 400 lines below the media query, the menu stayed visible on
+   phones no matter what the media query said. Being inside a @media
+   block grants NO extra priority; only specificity and source order
+   count. Keep these above the media query. */
+.navbar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.nav-username {
+    color: white;
+    font-size: 0.9em;
+    opacity: 0.9;
+}
+
+/* --- Navbar: collapsed "☰" presentation on narrow screens ---
+   Note the breakpoint: 1024px, NOT the 480px used by the app's other
+   mobile rules at the bottom of this file. Those two numbers answer
+   different questions on purpose. 480px is roughly "is this a
+   phone?" — the right question for stacking form rows. This one is
+   "do the nav links still FIT on one line?", and that has nothing to
+   do with what device you're on.
+
+   1024 isn't a guess: the navbar's own content was MEASURED in a
+   browser (title 116px + the links/username 845px + the navbar's own
+   40px padding + a gap ≈ 1026px), and the layout was then walked down
+   width by width to confirm it degrades at exactly that point — at
+   1025px it's still one clean 63px-tall row, at 1000px the longer
+   labels start wrapping their own text and the navbar jumps to 100px
+   tall. So anything at or below 1024px gets the dropdown. This is
+   also why a plausible-sounding 860px was wrong: everything between
+   ~1025px and 860px (a small laptop, a tablet, a half-width desktop
+   window) would still have been quietly squeezed. If you ever add or
+   rename a nav link, re-measure — that 1026px moves with the labels.
+
+   Everything here is a narrow-screen OVERRIDE — the desktop navbar
+   above is untouched and stays a plain horizontal row, which is why
+   this costs nothing on a PC. */
+@media (max-width: 1024px) {
+    /* Lets .navbar-right drop onto its own line below the title and
+       the ☰ button, instead of trying to share their row. */
+    .navbar {
+        flex-wrap: wrap;
+        row-gap: 0;
+    }
+
+    .nav-toggle {
+        display: block;
+    }
+
+    /* Closed by default on every page load. Deliberately NOT
+       position: absolute/fixed — an in-flow dropdown pushes the page
+       content down while open, which on a phone is easier to
+       understand (and impossible to accidentally scroll "behind")
+       than a panel floating over the content. */
+    .navbar-right {
+        display: none;
+    }
+
+    /* .open is added/removed by toggleNav() in base.html.
+       flex-basis: 100% is what actually forces this onto its own row:
+       .navbar is a wrapping flex container, so a child demanding the
+       full line width can't sit beside the title. */
+    .navbar-right.open {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        flex-basis: 100%;
+        gap: 6px;
+        margin-top: 10px;
+    }
+
+    /* In the dropdown the links are full-width rows, so they read as
+       a menu list rather than as loose floating pills. Left-aligned
+       text (instead of the row's natural centering) keeps the labels
+       lined up under each other and easy to scan down. */
+    .navbar-right.open .nav-link {
+        display: block;
+        text-align: left;
+        padding: 12px 14px;
+        font-size: 0.95em;
+    }
+
+    /* The username isn't a link, so it gets a quiet divider above it
+       instead of a button background — it labels who's logged in,
+       and shouldn't look tappable. */
+    .navbar-right.open .nav-username {
+        padding: 8px 14px 2px;
+        border-top: 1px solid rgba(255, 255, 255, 0.25);
+        margin-top: 4px;
+    }
+}
+
 /* --- Layout container ---
    max-width keeps lines readable on wide desktop screens,
    while width: 100% lets it shrink fully on mobile. */
 .container {
-    max-width: 700px;
+    max-width: var(--content-max-width);
     width: 100%;
     margin: 0 auto;
     padding: 20px;
+}
+
+/* Opt-in wider variant for the two spreadsheet-style pages (Base de
+   Asados, Ubicaciones — see base.html's container_extra_class block).
+   The combined ".container.container-wide" selector (rather than just
+   ".container-wide") guarantees this wins over .container's own
+   max-width regardless of which rule happens to load later in the
+   file. Mobile is untouched either way: below the cap, .container's
+   own "width: 100%" already fills the screen — a bigger cap only ever
+   matters once the viewport is WIDER than it. */
+.container.container-wide {
+    max-width: var(--content-max-width-wide);
+}
+
+/* Caps a form's own width when it sits inside a .container-wide page
+   (currently just "Nueva Ubicación" on /ubicaciones) — .asado-form's
+   inputs are width:100% of whatever contains them, so without this a
+   single-line "Nombre" field would stretch across the full wide
+   container instead of staying a sensible, readable width. */
+.form-narrow {
+    max-width: 480px;
 }
 
 /* --- Footer: version tracker + a small personal dedication --- */
@@ -183,7 +341,7 @@ hr {
    with anything above it, just a quiet "here's what's running" plus
    a short line that matters to the person who built this. */
 .app-footer {
-    max-width: 700px;
+    max-width: var(--content-max-width);
     margin: 0 auto;
     padding: 10px 20px 18px;
     text-align: center;
@@ -538,18 +696,6 @@ button:hover {
     margin-top: 0;
 }
 
-.navbar-right {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.nav-username {
-    color: white;
-    font-size: 0.9em;
-    opacity: 0.9;
-}
-
 .error-message {
     background: var(--color-error-bg);
     border: 1px solid var(--color-error-border);
@@ -757,13 +903,17 @@ button:hover {
    One row per participation, deliberately dense/gridded like a
    spreadsheet rather than styled like the rest of the app. */
 .spreadsheet-wrapper {
-    overflow-x: auto;  /* lets the wide table scroll instead of squeezing columns */
-    /* max-height + overflow-y makes THIS element (not the whole page)
-       the scrolling container — required for "thead th { position:
-       sticky; top: 0 }" below to actually stick while scrolling
-       through a full page of rows, instead of just sitting there. */
-    max-height: 70vh;
-    overflow-y: auto;
+    /* Horizontal scroll ONLY — the table's own width can genuinely
+       exceed even the wide container, so this stays. An earlier
+       version also capped this element's HEIGHT (max-height: 70vh +
+       overflow-y: auto), which made a long table scroll inside its
+       own small boxed window instead of the page itself scrolling —
+       felt cramped and unlike how the rest of the app scrolls.
+       Removing the height cap lets the wrapper grow to fit every row,
+       so the PAGE scrolls normally; the sticky header below now sticks
+       to the top of the viewport as you scroll, not to the top of a
+       tiny inner box. */
+    overflow-x: auto;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 8px;
@@ -792,8 +942,19 @@ button:hover {
 
 .spreadsheet-table thead th {
     background-color: var(--color-surface-alt);
-    position: sticky; /* header stays visible while scrolling a long table */
-    top: 0;
+    /* NOT position:sticky (an earlier version had this, "stuck" to
+       .spreadsheet-wrapper while IT had its own capped height/
+       overflow-y:auto — a real nested scroll container back then).
+       Since the wrapper's height is no longer capped (see its own
+       comment: the PAGE scrolls now, not a small inner box), there's
+       no scroll container left for the header to stick WITHIN — and
+       .spreadsheet-wrapper's overflow-x:auto (needed for horizontal
+       scroll) unavoidably disqualifies the page/viewport itself from
+       being that scroll container too, per how CSS position:sticky is
+       specified. Getting page-level scroll AND a sticky header back
+       at the same time would need a JS-driven header (a fixed-position
+       clone whose horizontal scroll is manually kept in sync) — real
+       added complexity that wasn't asked for here. */
     text-transform: uppercase;
     letter-spacing: 0.05em;
     font-size: 0.85em;
@@ -927,27 +1088,17 @@ button:hover {
         align-items: stretch;
     }
 
-    /* Without this, the 4 nav links + username + logout in
-       .navbar-right stayed on one line and overflowed the screen
-       width, pushing "Salir" off-screen entirely instead of wrapping. */
-    .navbar {
-        flex-wrap: wrap;
-        row-gap: 8px;
-    }
-
-    .navbar-right {
-        flex-wrap: wrap;
-        gap: 8px;
-    }
-
-    /* .nav-link's normal padding (7px 12px) measures out to a ~36px
-       tap target — under the ~44px minimum recommended for touch.
-       Only bumped on small screens; the desktop navbar doesn't need
-       the extra height. */
-    .nav-link {
-        padding: 10px 14px;
-        font-size: 0.95em;
-    }
+    /* NOTE: the navbar rules that used to live here (flex-wrap on
+       .navbar/.navbar-right so the links wrapped onto extra rows, and
+       a tap-target padding bump on .nav-link) were removed when the
+       ☰ dropdown was added — see the 1024px block near the top of
+       this file, which now handles every screen narrower than that
+       (so it always applies here too). Those
+       rules made the links WRAP into a multi-row clump that ate a
+       large chunk of a phone screen; that's exactly what the dropdown
+       replaced, so leaving them here would only fight it. The tap
+       target is still handled: .navbar-right.open .nav-link uses
+       12px 14px padding, comfortably above the ~44px minimum. */
 
     /* The map picker's normal size (90% width, 350px fixed height,
        16px padding) leaves very little room to tap a precise spot on
