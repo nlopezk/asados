@@ -16,6 +16,16 @@ Phase 4 (Summary & stats) from the `Phases` roadmap file.
 - Dashboard mockup with a KPI (Phase 4).
 
 ## [Unreleased]
+### Fixed
+- Silenced 6 false-positive VSCode warnings in `_location_picker.html`
+  caused by its embedded-JS checker misreading a Jinja `{% if %}`/
+  `{% endif %}` pair inside a `<script>` block as broken JavaScript —
+  purely cosmetic, never affected the running app. (A similar set of
+  4 warnings remains in `_asado_form.html`'s `{{ weights|tojson }}`
+  line — left as-is on purpose, since "fixing" it would mean adding
+  real complexity to Flask's own recommended pattern for injecting
+  server data into a `<script>` tag, just to quiet an editor-only
+  false positive.)
 
 ## [0.11.0] - 2026-08-04
 ### Added

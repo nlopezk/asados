@@ -116,4 +116,5 @@ python create_user.py augusto "augusto" "Augusto" admin
 python create_user.py cristian "cristian" "CDC" admin
 python create_user.py raul "raul" "Raul" admin
 python create_user.py nicog "nicog" "Nico G." admin
+python create_user.py checo "checo" "Checo" admin
 python seed_random_asados.py 150
