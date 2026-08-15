@@ -68,14 +68,33 @@ Phase 5 – Make it responsive. Improve CSS/layout so it works well on phones, s
 Phase 6 – Deploy. Put it online (e.g. Render, Railway, Fly.io — all have free tiers) so others can actually use it from their phones.
 Phase 7+ – Advanced. Photo uploads, notifications, a proper mobile app wrapper (e.g. Capacitor) or React Native, richer stats/dashboards, etc.
 
-**Currently at the end of Phase 3 + Phase 5 + Phase 6** (login +
-edit/delete + mobile responsiveness + deployment all exist; Phase 4's
-stats/leaderboard is the only thing still outstanding — Phases 5 and 6
-were deliberately done out of order, ahead of Phase 4, at the user's
-request). Phase 3 deliberately deviated from its own description
-above: editing is open to **every** logged-in user (not "only your own
-entries"), while deleting is **admin-only** — see the "Edit/delete
-permissions" note below.
+**Currently at v1.0.0: Phases 1, 2, 3, 5 and 6 are done, and Phase 4 is
+half done.** Phase 4's leaderboard shipped as the "Resumen" page (see
+its own section below); what's still outstanding from Phase 4 is a
+dashboard/KPI view and any charting (Chart.js was floated in the
+roadmap and has never been added — there is no charting library in this
+project). Phases 5 and 6 were deliberately done out of order, ahead of
+Phase 4, at the user's request. Phase 3 deliberately deviated from its
+own description above: editing is open to **every** logged-in user (not
+"only your own entries"), while deleting is **admin-only** — see the
+"Edit/delete permissions" note below.
+
+**v1.0.0 also marks the first release holding the group's REAL data** —
+232 asados / 262 participations imported from the historical
+spreadsheet, replacing the randomly-seeded test data. Two consequences
+worth knowing before touching anything data-related:
+- **Local `asados.db` is now real, irreplaceable data.** Before this,
+  wiping it via `init_db()` cost nothing. It now costs the group's
+  whole history, and `backups/` is the only copy (same disk — see
+  "Automatic backups"). Never run `init_db()` casually again.
+- **Imported points were frozen exactly as the spreadsheet had already
+  calculated them**, not recalculated through `config.py`. That's the
+  same freezing rule the app already follows everywhere else, and it's
+  why the historical numbers are internally consistent even though
+  `config.py`'s weights have since been edited (`Bifes Vacuno` 0.7→1,
+  `Chuleta de Cerdo` 0.3→0.7, `Kanka` 0.8→1, `Horno de barro` 0.3→0).
+  A `config beta.py` sitting untracked in the repo root holds the OLD
+  weights as the user's own backup — it is NOT read by anything.
 
 **Phase 5 (mobile responsiveness) turned out to need very little new
 work** — the app was already close to fully responsive as a side
@@ -101,28 +120,40 @@ is what made the rest of the app responsive almost for free; keep
 using that pattern rather than fixed widths.
 
 **The navbar has two presentations from ONE set of links: a
-horizontal row above 1024px, a "☰" dropdown at/below it.** Previously
+horizontal row above 1125px, a "☰" dropdown at/below it.** Previously
 there was only the row, and below ~1025px it wrapped into a two- and
 three-row clump of pills — measured at **216px tall on a 375px phone
 (≈31% of the visible screen, ≈38% at 320px) before any content
 appeared at all**; it's 63px now in both presentations. The links
 exist exactly once in `base.html` (a phone-only duplicate menu would
 be a second place to forget when adding a section); `.nav-toggle` +
-the `@media (max-width: 1024px)` block in style.css do all the
+the `@media (max-width: 1125px)` block in style.css do all the
 switching, and `toggleNav()` in `base.html` only ever toggles a single
-`.open` class. Three things here are load-bearing and easy to undo by
-accident:
-- **The breakpoint is measured, not conventional.** The navbar content
-  genuinely needs 1026px (title 116px + links/username 845px + 40px
-  padding + gap), verified by walking a real browser down width by
-  width: still one clean 63px row at 1025px, degrading to 100px at
-  1000px as the longer labels wrap their own text. An initial,
-  plausible-sounding 860px guess was WRONG for exactly this reason —
-  it left every width between ~1025px and 860px quietly squeezed. **If
-  you add or rename a nav link, re-measure**; that number moves with
-  the labels. It is also deliberately unrelated to the app's other
-  480px breakpoint, which answers "is this a phone?" (right question
-  for stacking form rows), not "do these links still fit?".
+`.open` class.
+
+**On-screen order (both presentations share it): Añadir Asado,
+Resumen, Base de Asados, Ubicaciones, Config, username, Actividad,
+Salir.** Añadir Asado leads because it's the one ACTION among
+otherwise purely navigational links (see `.nav-link-add` below);
+Actividad sits after the username deliberately, since it's a "look
+something up" page rather than a place you're likely headed straight
+from login, and putting the two logout-adjacent items (Actividad,
+Salir) at the tail keeps the front of the row for the pages used most.
+
+Three things here are load-bearing and easy to undo by accident:
+- **The breakpoint is measured, not conventional, and it MOVES when
+  the links do.** It started at 1026px (six links), then had to be
+  re-measured to ~1151px the moment a seventh link ("🏆 Resumen") was
+  added — walking a real browser width by width found the exact
+  boundary at 1125px (still one clean 63px row) vs. 1124px (jumps to
+  100px as labels wrap). Left at the old number, every width between
+  the new and old breakpoints would have silently gone back to the
+  squeezed, wrapping navbar this was built to eliminate. **If you add,
+  remove, or rename a nav link, re-measure and update the number** —
+  don't just eyeball a new value. It is also deliberately unrelated to
+  the app's other 480px breakpoint, which answers "is this a phone?"
+  (right question for stacking form rows), not "do these links still
+  fit?".
 - **`.navbar-right`/`.nav-username` were moved UP next to the other
   navbar rules, and must stay above that media query.** They used to
   sit ~400 lines lower. Since `.navbar-right { display: none }` inside
@@ -145,6 +176,84 @@ alone on purpose: resizing a *desktop* window from narrow-and-open to
 wide leaves `aria-expanded="true"` on the now-hidden button until the
 next page load. The visual layout is correct throughout, and a resize
 listener wasn't worth adding for it.
+
+**The navbar highlights whatever section you're currently in**, via a
+`.nav-current` class assigned in `base.html` by comparing
+`request.endpoint` (Flask's name for the view function handling the
+current request — injected into every template automatically, same as
+`g`) against small per-link lists (`home_endpoints`,
+`ubicaciones_endpoints`, `config_endpoints`, `base_asados_endpoints`).
+Several sections needed a LIST rather than one endpoint: Base de
+Asados also covers its own CSV export route, Ubicaciones/Config also
+cover their create/edit/delete POST routes, and "home" covers both the
+listing page and clicking into one asado's read-only detail page. This
+is deliberately an endpoint check, not a URL-path check — matching on
+`request.path` would have broken the moment a route took a variable,
+e.g. `/asado/<id>`. "Salir" never gets `.nav-current`: it's an action
+that ends the session, not a section you're "in", so highlighting it
+would be misleading regardless of the current route.
+
+The highlight itself is a `box-shadow: inset 0 -Npx 0 0 var(--color-gold)`
+underline, not a background-color change — `:hover` already uses
+background-color for its own feedback, so reusing it for "current" too
+would have made a hovered-but-not-current link look identical to a
+resting current one. `box-shadow` over `border-bottom` specifically
+because it respects the pill's own `border-radius` for free and adds
+no layout height (a real border would either poke a square corner past
+the rounded pill or need extra properties to avoid it, and would nudge
+the current link a few pixels out of vertical alignment with its
+neighbours). `.nav-link-add` needs its own follow-up rule for this
+(scoped off the general one via `:not(.nav-link-add)`) so the
+underline layers onto its green fill instead of the whitened
+background every other current link gets.
+
+**Gotcha hit twice while writing the `request.endpoint` comment block
+above the nav in `base.html`: never spell out Jinja's own tag
+delimiters as literal characters inside an HTML comment.** Jinja parses
+its delimiters regardless of HTML comments — it has no concept of them
+at all, they're purely an HTML-level idea — so writing out the literal
+delimiter characters as descriptive prose ("write a set tag like
+[the actual delimiter characters] set [...] [the actual delimiter
+characters]") gets parsed as a real tag and breaks the template with a
+`TemplateSyntaxError` on the next request. If this ever needs
+describing again in a comment, spell it out in words ("curly-percent")
+rather than typing the actual characters.
+
+**`.nav-link-add` ("Añadir Asado") is the one navbar link with its own
+fill** (`--color-green`/`--color-green-hover`, defined at `:root` next
+to the other palette variables) instead of the shared translucent
+white every other `.nav-link` uses — a deliberate, muted "old money"
+hunter green (billiard felt, not a bright success-green) since it's
+the one ACTION sitting among otherwise purely navigational links, and
+it needed to read as different WITHOUT introducing a third accent hue
+that fights the burgundy/gold palette. Same "dark fill, white text on
+top" rule as `--color-accent` everywhere else in this app.
+
+**Every link-styled component that sets its own `color` must repeat
+that rule under `:visited` too — a real bug this app shipped, not a
+style preference.** The browser's own `a:visited` rule has specificity
+`(0,1,1)` (one element + one pseudo-class), which BEATS a plain single
+class like `.nav-link` or `.secondary-button` at `(0,1,0)`. The
+project's own `a:visited { color: var(--color-accent-text) }` (see
+above) was therefore silently overriding `.nav-link`'s white the
+moment a link had been clicked once — every navbar link turned a
+brick-orange that was nearly illegible against the burgundy navbar
+fill, and `.secondary-button`/`.primary-button` links (Exportar CSV,
+Cancelar, pagination arrows) had the same latent bug. **Can't fix this
+by deleting the global rule** — without it, browsers fall back to
+their own default purple `a:visited`, which sits at the same
+specificity and can't be beaten by a plain `a { }` selector either. The
+actual fix is each component repeating `:visited` explicitly
+(`.nav-link, .nav-link:visited { color: white; }` is `(0,2,0)`, which
+wins) — that's why `.nav-link`, `.nav-link-add`, `.nav-title`,
+`.secondary-button`, and `.primary-button` all now do this. **If you
+add a new link-styled component and its color mysteriously changes
+after being clicked once, this is why — add `:visited` to it, don't
+touch the global rule.** `:visited` colors can never be read back via
+`getComputedStyle()` (browsers deliberately lie about them, to block
+history-sniffing attacks), so the only real way to verify a fix like
+this is a rendered screenshot taken after actually visiting the link,
+not a DOM/style assertion.
 
 **Desktop content width: two tiers, via `--content-max-width`/
 `--content-max-width-wide` (style.css) and an opt-in `.container-wide`
@@ -356,6 +465,9 @@ yet, just one Flask app with a handful of routes:
   `/ubicaciones/<id>/edit` (any logged-in user), `/ubicaciones/<id>/delete`
   (admin-only) — manage the reusable pool of saved locations; see the
   "Recurring locations" section below
+- `/resumen` (`resumen_page`) — "Resumen": the standings/position
+  table, ONE ROW PER USER. Filters by `?year=`/`?semester=` and sorts
+  by `?sort=`/`?dir=`; see the "Resumen" section below
 
 Data model (`schema.sql`): `users` ← `participations` → `asados` ←
 `asado_tipo_carne`, all classic many-to-many junction tables. `users`
@@ -585,6 +697,72 @@ uses `@login_required`, not `@admin_required`. Deliberate: since ANY
 user can already edit ANY asado (see "Edit/delete permissions" below),
 this log is what makes that openness accountable to the group, not
 something that itself needs restricting on top of it.
+
+### Resumen — the standings table, and why its "Suma" columns don't add up
+`/resumen` (`resumen_page` in app.py + `resumen.html`) is a
+leaderboard: one row per user, aggregating every participation that
+matches the filters.
+
+**Mind the GRAIN — this app now has three different table shapes, and
+they are not interchangeable.** `index` is one row per ASADO,
+`base_asados` is one row per PARTICIPATION, `resumen` is one row per
+USER (a `GROUP BY users.id` over participations). Don't try to reuse
+`BASE_ASADOS_QUERY` here; it answers a different question.
+
+**The five "Suma ..." columns are sums of frozen WEIGHTS, and they
+deliberately do NOT decompose Puntos Totales.** They can't: `config.py`'s
+`FORMULA` is `(0.6*carne + 0.4*coccion) * superficie * local * rol` —
+multiplicative, so `superficie`/`local`/`rol` SCALE the result rather
+than contributing any fixed, separable share of it. Summing them
+answers "what KIND of asados has this person been at?" (a high Suma
+Superficie means mostly parrilla rather than horno de barro), which is
+genuinely useful, but it is not "where their points came from". Only
+`SUM(participations.points)` is the real scored total. Someone looking
+at five numeric columns sitting next to a total will reasonably assume
+they add up to it, so **this is spelled out on the page itself**
+(`.resumen-note`), not just in the code — if you add or rename a column
+here, keep that note accurate.
+
+**Sorting is server-side, via a whitelist dict — and that dict is a
+security boundary, not a convenience.** SQL placeholders (`?`) work for
+VALUES, never for identifiers or expressions, so the ORDER BY column
+has to be concatenated into the query string. Concatenating the raw
+`?sort=` param would be a textbook SQL injection hole.
+`RESUMEN_SORT_COLUMNS` maps a URL key to one of nine hard-coded SQL
+expressions, so only those nine can ever reach the database; anything
+else falls back to the default. `?dir=` is likewise resolved to one of
+two literals by an if/else. **Never interpolate either param directly**,
+and route any new sortable column through the same dict. (Covered by
+tests that fire `1; DROP TABLE users--` and friends at it.)
+
+Sorting was kept server-side rather than done with a JS table-sorter
+for the same reason `config.py`'s FORMULA is a single evaluated string:
+a browser-side sorter would be a SECOND sorting implementation, with
+its own text-vs-number comparison rules, free to disagree with the
+server's. As a bonus, a sorted/filtered view is a plain bookmarkable
+GET URL that works with the back button.
+
+**Users with zero participations in the filtered period are omitted,
+not shown as a row of zeros** — the `JOIN` does this naturally, and a
+standings table listing people who weren't there is noise. Note this
+means the row count changes with the filters.
+
+The filter form carries the current `sort`/`dir` in hidden inputs, and
+each header link carries the current `year`/`semester` — so changing
+one control never silently resets the other. If you add a third
+control, it needs to be carried in both directions too.
+
+**`.resumen-wrapper` caps the table's width to 1180px inside the
+1500px `.container-wide` tier** (10 short-value columns don't need the
+same full width Base de Asados' 21 columns genuinely do) — and pairs
+that `max-width` with `margin: 0 auto`. **The `margin: 0 auto` isn't
+optional and was missed on the first pass**: `max-width` alone only
+pulls in a block element's RIGHT edge; a block's default is to sit
+flush against its container's left edge, so without the auto margins
+the table sat pinned left with a lopsided empty gap on the right
+instead of centered. Any time you cap a block narrower than its
+container on this app's wide pages, centering needs both properties
+together, not just the cap.
 
 ### Recurring locations — a quick-fill pool, deliberately NOT linked to asados
 `locations` (schema.sql) holds a small, user-curated pool of named
@@ -949,6 +1127,50 @@ rate limits), both called directly from the browser in
 - `secret_key.txt` is auto-generated on first run and is
   gitignored — it must never be committed (it signs session cookies;
   committing it would let anyone forge login sessions).
+
+## The v1.0.0 audit — what it found, and what to re-check
+
+A full pass over the code, schema, templates and docs before cutting
+1.0. Recorded here because the *categories* of bug it found are the
+ones most likely to come back:
+
+- **An unauthenticated route hiding in plain sight.** `/api/points`
+  had no `@login_required` while all 19 other routes did. It reads and
+  writes nothing, so nothing leaked — but "every route is protected"
+  had quietly stopped being true. **When you add a route, the decorator
+  is part of adding it.** A quick way to re-check the whole set: list
+  every `@app.route` and confirm each has `login_required` or
+  `admin_required` (only `/login` and `/logout` legitimately don't).
+- **HTML tables tie cells to headers by ORDER, nothing else.** Base de
+  Asados had "Cantidad Carne (kg)" showing the Rol weight and "Peso
+  Rol" showing kilos of meat, because its `<th>` list got reordered
+  without the `<td>` list moving with it. Nothing errors — the data is
+  just silently mislabeled. **If you reorder that table, re-verify the
+  two lists position by position.** Note the CSV export keeps a
+  separate column list on purpose (see the Base de Asados notes above),
+  so it was unaffected — but that also means it needs checking
+  independently.
+- **Foreign keys are not indexed automatically.** SQLite indexes
+  PRIMARY KEY and UNIQUE columns only; every `WHERE asado_id = ?` was a
+  full scan. Four indexes now exist at the bottom of `schema.sql`. Any
+  new foreign key should get one too.
+- **Docs rot faster than code.** README still called the app "Phase 3"
+  and listed leaderboards and deployment as unbuilt, months after both
+  shipped. It's rewritten; keep it in sync when a feature lands.
+- **This repo is PUBLIC and the data is personal.** `Base Histórica.csv`
+  (real home addresses + GPS coordinates for the whole group) was
+  sitting untracked but un-ignored, one `git add .` away from being
+  published. It's in `.gitignore` now, alongside `asados.db` for the
+  same reason. **Before any `git add .`, check `git status` for data
+  files** — the group's addresses are not yours to publish.
+
+Verified clean, and worth NOT re-litigating: no SQL injection (the
+three f-string queries interpolate only hard-coded fragments and a
+whitelisted sort column — all user values go through `?` placeholders);
+no XSS surface (Jinja autoescaping is on everywhere, no `|safe`
+anywhere); CSRF covers every POST; admin-only routes reject normal
+users; the CSV formula-injection sanitizer works; and points written by
+the app match `config.py`'s formula exactly.
 
 ## Gotchas already hit once (avoid repeating)
 

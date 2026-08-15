@@ -224,3 +224,31 @@ CREATE TABLE locations (
 
     FOREIGN KEY (created_by) REFERENCES users (id) ON DELETE SET NULL
 );
+
+-- ---------------------------------------------------------------------
+-- INDEXES
+-- ---------------------------------------------------------------------
+-- SQLite automatically indexes PRIMARY KEYs and UNIQUE columns (that's
+-- why users.username already has one), but NOT foreign-key columns —
+-- declaring "FOREIGN KEY (asado_id) REFERENCES asados (id)" creates no
+-- index at all. Without these, every "WHERE asado_id = ?" lookup is a
+-- full scan of the whole table.
+--
+-- That matters most for the queries this app runs in a LOOP: index()
+-- fetches each asado's participants and tipo_carne with a separate
+-- query per asado (see its own comment there), so a single page view
+-- of 30 asados runs 60 of these lookups. At the current scale (a few
+-- hundred rows) the difference is imperceptible either way — these
+-- exist so that stays true as the group's history grows, and because
+-- an index on a foreign key is close to free: SQLite keeps it updated
+-- on write, and these tables are read far more often than written.
+--
+-- Deliberately NOT indexed: asados.date. Filtering/sorting by date is
+-- common here, but SQLite can only use one index per table per query,
+-- and the date filters are usually combined with a participant filter
+-- that's better served by the participations indexes below. Worth
+-- revisiting only if the asados table ever gets genuinely large.
+CREATE INDEX idx_participations_asado_id ON participations (asado_id);
+CREATE INDEX idx_participations_user_id ON participations (user_id);
+CREATE INDEX idx_asado_tipo_carne_asado_id ON asado_tipo_carne (asado_id);
+CREATE INDEX idx_activity_log_changes_log_id ON activity_log_changes (log_id);

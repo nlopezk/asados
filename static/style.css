@@ -58,6 +58,14 @@
        body text color or large fill; matches the book's Metallic
        chapter both in hue and in its explicit warning not to overdo it. */
     --color-gold: #a3865c;
+    /* Deep hunter green — used in exactly ONE place: the "Añadir Asado"
+       navbar button (.nav-link-add), the single ACTION among otherwise
+       purely navigational links. Muted and dark on purpose, so it reads
+       as old-money billiard felt rather than a bright "success" green
+       that would fight the burgundy. Like --color-accent, this is a
+       FILL with white text on top, never text on a wood surface. */
+    --color-green: #3e5e39;
+    --color-green-hover: #4d7346;
     --color-error-bg: #4a231e;
     --color-error-border: #7a3a2e;
     --color-error-text: #ffb49a;
@@ -127,6 +135,22 @@ a:hover {
     color: var(--color-accent-text-hover);
 }
 
+/* WATCH THE SPECIFICITY ON THIS ONE. "a:visited" is (0,1,1) — one
+   element plus one pseudo-class — which is HIGHER than a plain single
+   class like ".nav-link" or ".secondary-button" at (0,1,0). So this
+   rule silently overrides any component class that sets its own color,
+   the moment the link has been visited. That's a real bug this app
+   shipped: the white navbar links turned brick-orange (nearly
+   unreadable against the burgundy navbar) as soon as you'd clicked
+   them once, and the same applied to .secondary-button/.primary-button
+   links.
+   It can't just be deleted — browsers' own UA stylesheet has an
+   "a:visited { color: #551A8B }" (purple) at this same specificity,
+   which a plain "a { }" rule can't beat. So the fix is the other
+   direction: any component class that sets its own link color must
+   ALSO claim :visited explicitly (".nav-link, .nav-link:visited { }"
+   is (0,2,0) and wins). If you add a new link-styled component and its
+   color mysteriously changes after clicking, this is why. */
 a:visited {
     color: var(--color-accent-text);
 }
@@ -155,7 +179,12 @@ hr {
     align-items: center;
 }
 
-.nav-title {
+/* Each of these repeats itself as ":visited" on purpose — see the long
+   note on the global "a:visited" rule above. Without it, every navbar
+   link turned the accent brick-orange once clicked, which against the
+   burgundy navbar was barely legible. */
+.nav-title,
+.nav-title:visited {
     color: white;
     font-family: 'EB Garamond', Georgia, serif;
     font-size: 1.55em;
@@ -164,7 +193,8 @@ hr {
     text-decoration: none;
 }
 
-.nav-link {
+.nav-link,
+.nav-link:visited {
     color: white;
     background-color: rgba(255, 255, 255, 0.15);
     padding: 7px 12px;
@@ -175,6 +205,78 @@ hr {
 
 .nav-link:hover {
     background-color: rgba(255, 255, 255, 0.25);
+    color: white; /* :hover is (0,2,0) too, but be explicit rather than rely on inheriting from above */
+}
+
+/* "Añadir Asado" — the one ACTION in a navbar that's otherwise all
+   navigation, so it gets its own fill instead of the shared translucent
+   white. Deep hunter green: it stays inside the "old money" register
+   the rest of the palette works in (think worn billiard felt or a
+   Barbour jacket, not a bright "success green"), and it's the one hue
+   far enough from both the burgundy fill and the brass trim to read as
+   deliberate rather than as a third accent competing with them. Follows
+   the same rule as the rest of the app's reds: a dark FILL with white
+   text on top, never a light green as text on a dark surface. */
+.nav-link-add,
+.nav-link-add:visited {
+    background-color: var(--color-green);
+    color: white;
+}
+
+.nav-link-add:hover {
+    background-color: var(--color-green-hover);
+    color: white;
+}
+
+/* --- "Current section" highlight (.nav-current) ---
+   Applied by base.html wherever request.endpoint matches the section
+   you're actually viewing (see the long comment above the navbar
+   there for how the endpoint groups work).
+
+   Uses the brass/gold trim already used for the navbar's own bottom
+   border (--color-gold — a deliberately SPARING accent, per the
+   book's Metallic chapter, see the top of this file) as a bottom
+   "underline", rather than reusing background color for the
+   indicator. That distinction matters: background-color is already
+   how :hover gives its feedback, so if "current" reused it too, a
+   hovered-but-not-current link and a resting current link would look
+   identical — you'd lose the "this is where I am" signal the moment
+   you moved the mouse anywhere near it. box-shadow (not border-bottom)
+   is what draws the gold line: it naturally follows the pill's own
+   border-radius (a real border-bottom pokes a square corner out past
+   a rounded pill unless you also fight the radius), and unlike
+   border-bottom it adds no layout height, so the current link can't
+   sit a few pixels lower than its neighbours.
+
+   :not(.nav-link-add) keeps this rule off "Añadir Asado" — it needs
+   the SAME gold underline but must keep ITS OWN green fill, not the
+   whitened background below (mixing white into the green would just
+   muddy it), so it gets its own follow-up rule instead. */
+.nav-link.nav-current:not(.nav-link-add),
+.nav-link.nav-current:not(.nav-link-add):visited {
+    box-shadow: inset 0 -3px 0 0 var(--color-gold);
+    background-color: rgba(255, 255, 255, 0.26);
+}
+
+.nav-link.nav-current:not(.nav-link-add):hover {
+    background-color: rgba(255, 255, 255, 0.34);
+}
+
+.nav-link-add.nav-current,
+.nav-link-add.nav-current:visited {
+    box-shadow: inset 0 -3px 0 0 var(--color-gold);
+}
+
+/* The logo doubles as the "home" link (see home_endpoints in
+   base.html) but isn't a pill like the other nav items — no
+   background to tint, so it gets the same gold underline on its own,
+   with a little padding-bottom so the line sits clear of the
+   Garamond's descenders (the tail on a lowercase "g", etc.) instead
+   of cutting through them. */
+.nav-title.nav-current,
+.nav-title.nav-current:visited {
+    box-shadow: inset 0 -4px 0 0 var(--color-gold);
+    padding-bottom: 4px;
 }
 
 /* The ☰ hamburger button. Hidden by default — i.e. the DESKTOP state
@@ -228,29 +330,33 @@ hr {
 }
 
 /* --- Navbar: collapsed "☰" presentation on narrow screens ---
-   Note the breakpoint: 1024px, NOT the 480px used by the app's other
+   Note the breakpoint: 1125px, NOT the 480px used by the app's other
    mobile rules at the bottom of this file. Those two numbers answer
    different questions on purpose. 480px is roughly "is this a
    phone?" — the right question for stacking form rows. This one is
    "do the nav links still FIT on one line?", and that has nothing to
    do with what device you're on.
 
-   1024 isn't a guess: the navbar's own content was MEASURED in a
-   browser (title 116px + the links/username 845px + the navbar's own
-   40px padding + a gap ≈ 1026px), and the layout was then walked down
-   width by width to confirm it degrades at exactly that point — at
-   1025px it's still one clean 63px-tall row, at 1000px the longer
-   labels start wrapping their own text and the navbar jumps to 100px
-   tall. So anything at or below 1024px gets the dropdown. This is
-   also why a plausible-sounding 860px was wrong: everything between
-   ~1025px and 860px (a small laptop, a tablet, a half-width desktop
-   window) would still have been quietly squeezed. If you ever add or
-   rename a nav link, re-measure — that 1026px moves with the labels.
+   1125 isn't a guess or a convention — it's measured, and it MOVES
+   WHEN THE LINKS DO. The navbar was walked down width by width in a
+   real browser: one clean 63px-tall row at 1126px, and at 1125px the
+   longer labels start wrapping their own text and it jumps to 100px
+   tall. So the dropdown takes over at exactly that point.
+
+   This has already been re-measured once, which is the whole reason
+   it's documented this way: the number was 1024px with six links, and
+   adding "🏆 Resumen" pushed the content requirement from ~1026px to
+   ~1151px. Had the breakpoint been left at 1024, every width between
+   ~1125px and 1024px would have silently gone back to the squeezed,
+   text-wrapping navbar this was built to eliminate. **If you add or
+   rename a nav link, re-measure and update this number.** (An early
+   version of this block guessed 860px and was wrong for the same
+   underlying reason — measure the content, don't assume a device.)
 
    Everything here is a narrow-screen OVERRIDE — the desktop navbar
    above is untouched and stays a plain horizontal row, which is why
    this costs nothing on a PC. */
-@media (max-width: 1024px) {
+@media (max-width: 1125px) {
     /* Lets .navbar-right drop onto its own line below the title and
        the ☰ button, instead of trying to share their row. */
     .navbar {
@@ -623,7 +729,11 @@ button:hover {
     background-color: var(--color-border);
 }
 
-.primary-button {
+/* :visited for the same reason as .secondary-button above — defensive
+   here, since this class is mostly used on real <button>s (which have
+   no :visited state at all), but it does land on <a> tags too. */
+.primary-button,
+.primary-button:visited {
     background-color: var(--color-accent);
     color: white;
     border: none;
@@ -771,7 +881,11 @@ button:hover {
    especially for buttons sitting on their own (Exportar CSV, Anterior/
    Siguiente, Eliminar Asado) rather than next to a filled primary-button
    for contrast. */
-.secondary-button {
+/* :visited repeated here for the same reason as .nav-link — this class
+   lands on <a> tags (Exportar CSV, Cancelar, pagination arrows), and
+   without it they turned accent-orange once clicked. */
+.secondary-button,
+.secondary-button:visited {
     background-color: var(--color-surface-alt);
     color: var(--color-text);
     border: 1px solid var(--color-accent-text);
@@ -910,9 +1024,11 @@ button:hover {
        own small boxed window instead of the page itself scrolling —
        felt cramped and unlike how the rest of the app scrolls.
        Removing the height cap lets the wrapper grow to fit every row,
-       so the PAGE scrolls normally; the sticky header below now sticks
-       to the top of the viewport as you scroll, not to the top of a
-       tiny inner box. */
+       so the PAGE scrolls normally. Note the cost of that, spelled out
+       on .spreadsheet-table thead th below: the column header can no
+       longer stay pinned while scrolling — overflow-x here makes THIS
+       element the sticky containing block regardless of its height, so
+       page-scroll and a sticky header are mutually exclusive. */
     overflow-x: auto;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -1064,6 +1180,117 @@ button:hover {
     max-width: 220px;
 }
 
+/* --- "Resumen" standings table (sortable headers) ---
+   Reuses .spreadsheet-table wholesale (same dense, gridded look) and
+   only adds what's specific to being SORTABLE and to being a ranking. */
+
+/* The header's <a> has to fill the whole cell, not just sit inside it
+   as a word — otherwise only the text itself is clickable and the rest
+   of the header cell looks sortable but isn't, which reads as a broken
+   control. display:block + the negative-margin/matching-padding trick
+   makes the link cover the cell's full padded area, so the entire <th>
+   is one target. Inherits color/size rather than taking the global <a>
+   accent color: these are table headers that happen to be clickable,
+   not links to somewhere else. */
+.resumen-table thead th .sort-link {
+    display: block;
+    margin: -5px -7px;
+    padding: 5px 7px;
+    color: inherit;
+    font: inherit;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.resumen-table thead th .sort-link:hover {
+    background-color: var(--color-border);
+    color: var(--color-text);
+}
+
+/* The ↕/▲/▼ marker. Always present (as a dimmed ↕ on inactive columns)
+   rather than appearing only on the sorted one — if it only showed up
+   on hover or when active, nothing would tell you the OTHER columns
+   can be clicked at all. Kept dim so the active column's arrow still
+   stands out at a glance. */
+.resumen-table thead th .sort-arrow {
+    margin-left: 5px;
+    opacity: 0.35;
+    font-size: 0.9em;
+}
+
+.resumen-table thead th.sorted-column {
+    /* The currently-sorted column, tinted so it's obvious which one the
+       table is ordered by without having to read the arrows. */
+    background-color: var(--color-accent);
+    color: white;
+}
+
+.resumen-table thead th.sorted-column .sort-arrow {
+    opacity: 1;
+}
+
+.resumen-table thead th.sorted-column .sort-link:hover {
+    background-color: var(--color-accent-hover);
+    color: white;
+}
+
+/* Numbers read better right-aligned in a stats table (digits line up
+   by place value, so magnitudes are comparable down the column) —
+   overrides the left-align .spreadsheet-table sets for every cell.
+   :not(:nth-child(2)) leaves Usuario, the one text column, alone.
+
+   The HEADER has to move with the data, not just the data: with only
+   10 columns in a wide container the cells get roomy, and a
+   left-aligned "SUMA COCCIÓN" sitting above right-aligned numbers put
+   the label and its own values at opposite ends of the same cell —
+   readable, but you had to hunt for which header belonged to which
+   column. Aligning both to the same edge is the normal spreadsheet
+   convention and fixes it without touching any widths. */
+.resumen-table tbody td:not(:nth-child(2)),
+.resumen-table thead th:not(:nth-child(2)) {
+    text-align: right;
+}
+
+/* Caps the standings table so it doesn't stretch across the full
+   1500px .container-wide tier on a big monitor. Base de Asados
+   genuinely needs every pixel (21 columns), but this table has 10 and
+   its values are short numbers, so filling the whole width just
+   spread the same content further apart. Sized a little above the
+   table's natural requirement so nothing is squeezed; below this
+   width it behaves normally, and .spreadsheet-wrapper's own
+   overflow-x still handles anything narrower.
+
+   margin: 0 auto is NOT optional here — max-width alone only shrinks
+   an element's right edge inward (a block element's default is to sit
+   flush against its container's LEFT edge), leaving the table pinned
+   left with a lopsided gap of empty space on the right instead of
+   centered within .container-wide. auto margins on both sides is what
+   actually centers a width-capped block. */
+.resumen-wrapper {
+    max-width: 1180px;
+    margin: 0 auto;
+}
+
+.resumen-rank-header,
+.resumen-rank {
+    width: 1%; /* shrink-to-fit: this column never needs more than 2-3 digits */
+    color: var(--color-text-muted);
+}
+
+/* Puntos Totales is the actual scored result and the default sort —
+   the one number the eye should land on first. */
+.resumen-total {
+    font-weight: 600;
+    color: var(--color-accent-text);
+}
+
+.resumen-note {
+    margin-top: 10px;
+    font-size: 0.82em;
+    color: var(--color-text-muted);
+    line-height: 1.45;
+}
+
 /* --- Pagination (home page + Base de Asados) --- */
 .pagination {
     display: flex;
@@ -1091,7 +1318,7 @@ button:hover {
     /* NOTE: the navbar rules that used to live here (flex-wrap on
        .navbar/.navbar-right so the links wrapped onto extra rows, and
        a tap-target padding bump on .nav-link) were removed when the
-       ☰ dropdown was added — see the 1024px block near the top of
+       ☰ dropdown was added — see the 1125px block near the top of
        this file, which now handles every screen narrower than that
        (so it always applies here too). Those
        rules made the links WRAP into a multi-row clump that ate a

@@ -48,54 +48,71 @@
             <thead>
                 <tr>
                     <th>ID Part.</th>
+                    <th>Nombre</th>
+                    <th>Rol</th>
                     <th>ID Asado</th>
                     <th>Fecha</th>
                     <th>Nombre Asado</th>
                     <th>Tipo Carne</th>
-                    <th>Peso T.Carne</th>
                     <th>Cocción</th>
-                    <th>Peso Cocc.</th>
                     <th>Superficie</th>
-                    <th>Peso Superf.</th>
                     <th>Local</th>
-                    <th>Peso Local</th>
+                    <th>Puntaje</th>
                     <th>Ubicación</th>
+                    <th>Personas</th>
+                    <th>Cantidad Carne (kg)</th>
+                    <th>Ptos. T.Carne</th>
+                    <th>Ptos. Cocc.</th>
+                    <th>Ptos. Superf.</th>
+                    <th>Ptos. Local</th>
+                    <th>Peso Rol</th>
                     <th>Lat.</th>
                     <th>Long.</th>
-                    <th>Personas</th>
-                    <th>Peso Total</th>
                     <th>Usuario</th>
-                    <th>Nombre</th>
-                    <th>Rol</th>
-                    <th>Peso Rol</th>
-                    <th>Puntos</th>
                 </tr>
             </thead>
             <tbody>
                 {% for row in rows %}
                     <tr>
                         <td>{{ row.participation_id }}</td>
+                        <td>{{ row.name }}</td>
+                        <td>{{ row.rol }}</td>
                         <td>{{ row.asado_id }}</td>
                         <td>{{ row.date }}</td>
                         <td>{{ row.nombre }}</td>
                         <td><span class="truncate-cell" title="{{ row.tipo_carne }}">{{ row.tipo_carne }}</span></td>
-                        <td>{{ row.tipo_carne_weight }}</td>
                         <td>{{ row.coccion }}</td>
-                        <td>{{ row.coccion_weight }}</td>
                         <td>{{ row.superficie }}</td>
-                        <td>{{ row.superficie_weight }}</td>
                         <td>{{ row.local }}</td>
-                        <td>{{ row.local_weight }}</td>
-                        <td><span class="truncate-cell-wide" title="{{ row.location }}">{{ row.location }}</span></td>
-                        <td>{{ row.latitude }}</td>
-                        <td>{{ row.longitude }}</td>
-                        <td>{{ row.people }}</td>
-                        <td>{{ row.total_weight }}</td>
-                        <td>{{ row.username }}</td>
-                        <td>{{ row.name }}</td>
-                        <td>{{ row.rol }}</td>
-                        <td>{{ row.rol_weight }}</td>
                         <td>{{ row.points }}</td>
+                        <td><span class="truncate-cell-wide" title="{{ row.location }}">{{ row.location }}</span></td>
+                        <!-- These four columns are nullable in the schema
+                             (an asado can be saved without a headcount,
+                             meat weight, or map pin). Printed raw, Jinja
+                             renders Python's None as the literal text
+                             "None" in the cell — so they go through the
+                             "blank_if_none" filter (see app.py) which
+                             shows an empty cell instead. Deliberately a
+                             filter and not "{{ x or '' }}": that would
+                             also blank out a real 0. -->
+                        <td>{{ row.people | blank_if_none }}</td>
+                        <!-- These two were SWAPPED against their own <th>
+                             labels: "Cantidad Carne (kg)" was showing
+                             rol_weight (0.7/0.8/1.0) and "Peso Rol" was
+                             showing kilograms of meat. Each <td> below must
+                             stay in the same position as its <th> above —
+                             an HTML table has no names tying a cell to its
+                             header, only ORDER, so reordering one list
+                             without the other silently mislabels data. -->
+                        <td>{{ row.total_weight | blank_if_none }}</td>
+                        <td>{{ row.tipo_carne_weight }}</td>
+                        <td>{{ row.coccion_weight }}</td>
+                        <td>{{ row.superficie_weight }}</td>
+                        <td>{{ row.local_weight }}</td>
+                        <td>{{ row.rol_weight }}</td>
+                        <td>{{ row.latitude | blank_if_none }}</td>
+                        <td>{{ row.longitude | blank_if_none }}</td>
+                        <td>{{ row.username }}</td>
                     </tr>
                 {% endfor %}
             </tbody>

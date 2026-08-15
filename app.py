@@ -32,7 +32,7 @@ DATABASE = "asados.db"  # the SQLite database is just a single file on disk
 # version is cut (see CLAUDE.md). Nothing ties these three together
 # automatically; forgetting to bump this is a real, easy-to-repeat
 # mistake, so check it specifically before tagging a new release.
-VERSION = "0.11.1"
+VERSION = "1.0.0"
 
 # How many rows to show per page before showing a "next" arrow, on the
 # home page and on Base de Asados respectively. Base de Asados can show
@@ -49,6 +49,49 @@ ACTIVITY_LOG_PAGE_SIZE = 30
 # filter's WHERE clause can compare these values directly without any
 # extra padding logic.
 MESES = [(f"{m:02d}", str(m)) for m in range(1, 13)]
+
+# For the Resumen page's "Semestre" filter. The cut is by CALENDAR half:
+# 1st = January 1 through June 30, 2nd = July 1 through December 31.
+# Values are matched against SQLite's strftime('%m', date), which always
+# returns a zero-padded month ("01".."12") — so a plain string
+# comparison against '06'/'07' works correctly here (all values are the
+# same width, making lexical and numeric order identical). Same
+# zero-padding reasoning as MESES above.
+SEMESTRES = [
+    ("1", "1° (ene–jun)"),
+    ("2", "2° (jul–dic)"),
+]
+
+# ---------------------------------------------------------------------
+# "RESUMEN" (standings table) — allowed sort columns
+# ---------------------------------------------------------------------
+# Maps the ?sort= value in the URL to the SQL expression to ORDER BY.
+# This mapping is a SECURITY BOUNDARY, not just a convenience: the sort
+# column can't be parameterized with a "?" placeholder the way values
+# are everywhere else in this file (SQL placeholders work for values,
+# never for identifiers/expressions), so it HAS to be concatenated into
+# the query string. Concatenating the raw query param would be a
+# straightforward SQL injection hole. Looking the user's input up as a
+# KEY here means only these nine hard-coded expressions can ever reach
+# the database — anything else falls back to the default. Never replace
+# this with the raw ?sort= value, and keep any new column going through
+# this same dict.
+RESUMEN_SORT_COLUMNS = {
+    "usuario": "users.name",
+    "participaciones": "COUNT(participations.id)",
+    "carne": "SUM(asados.tipo_carne_weight)",
+    "coccion": "SUM(asados.coccion_weight)",
+    "superficie": "SUM(asados.superficie_weight)",
+    "local": "SUM(asados.local_weight)",
+    "rol": "SUM(participations.rol_weight)",
+    "promedio": "AVG(participations.points)",
+    "total": "SUM(participations.points)",
+}
+
+# Sorted by total points, highest first — it's a standings table, so the
+# leader belongs on top before anyone touches a header.
+RESUMEN_DEFAULT_SORT = "total"
+RESUMEN_DEFAULT_DIRECTION = "desc"
 
 
 def parse_page_number(value):
@@ -157,6 +200,27 @@ else:
     with open(SECRET_KEY_FILE, "w") as f:
         f.write(new_key)
     app.secret_key = new_key
+
+# --- Session cookie hardening ---------------------------------------
+# SameSite=Lax tells the browser not to send our session cookie along
+# with cross-site POSTs — the exact shape of a CSRF attack. Modern
+# browsers already treat an unspecified SameSite as Lax, so this
+# mostly makes the existing behavior EXPLICIT rather than depending on
+# a browser default that older browsers don't share. It's a second
+# layer behind validate_csrf_token() below, not a replacement for it.
+#
+# HTTPONLY (Flask's default, restated here so it's visible next to the
+# others) keeps JavaScript from reading the cookie, limiting the damage
+# an XSS bug could do.
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+# NOT set here on purpose: SESSION_COOKIE_SECURE = True would tell the
+# browser to send the cookie over HTTPS only. That's correct for the
+# PythonAnywhere deployment (it serves HTTPS) but would BREAK local
+# development, where you visit plain http://127.0.0.1:5000 — the
+# browser would refuse to send the cookie at all and login would
+# silently never stick. If this app ever gets a production-vs-dev
+# config split, turning it on for production is the right move.
 
 
 # ---------------------------------------------------------------------
@@ -298,6 +362,24 @@ def inject_csrf_token():
     (e.g. {{ csrf_token() }}) without every render_template() call
     needing to pass it explicitly."""
     return {"csrf_token": lambda: session.get("csrf_token", "")}
+
+
+@app.template_filter("blank_if_none")
+def blank_if_none(value):
+    """Renders a NULL database value as an empty cell instead of the
+    literal text "None".
+
+    Jinja prints Python's None as "None", which is what a nullable
+    column (asados.people/total_weight/latitude/longitude — all
+    genuinely optional on the form) looked like in Base de Asados: a
+    column of the word "None" wherever nobody had filled that field in.
+
+    A filter rather than the shorter "{{ value or '' }}" idiom on
+    purpose: "or" treats every falsy value the same, so a real,
+    deliberately-entered 0 (0 kg, or latitude 0) would also vanish.
+    This only ever blanks an actual None.
+    """
+    return "" if value is None else value
 
 
 @app.context_processor
@@ -846,9 +928,18 @@ def index():
 
 
 @app.route("/api/points")
+@login_required
 def api_points():
     """
     JSON API used ONLY by the live points preview in new_asado.html.
+
+    @login_required like every other route: this was missing until a
+    v1.0 audit caught it, making it the one endpoint in the whole app
+    reachable without an account. Nothing here reads or writes the
+    database, so nothing private leaked — but it did let an anonymous
+    caller probe the scoring weights by trying combinations, and an
+    unauthenticated endpoint is a liability regardless. The page that
+    uses it is itself behind a login, so requiring one costs nothing.
     The browser sends the current form selections as URL query
     parameters, and this route calls the EXACT SAME calculate_points()
     function that saves real data — so the preview can never drift out
@@ -1424,6 +1515,133 @@ def activity_log_page():
         entries=entries_with_changes,
         page=page,
         total_pages=total_pages,
+    )
+
+
+@app.route("/resumen")
+@login_required
+def resumen_page():
+    """
+    "Resumen": a standings/position table — ONE ROW PER USER, with their
+    totals across every participation that matches the current filters.
+
+    Note the GRAIN, since this app now has three different table shapes
+    and mixing them up is an easy mistake: index() is one row per ASADO,
+    base_asados() is one row per PARTICIPATION, and this is one row per
+    USER (a GROUP BY over participations). Don't try to reuse
+    BASE_ASADOS_QUERY here.
+
+    WHAT THE WEIGHT COLUMNS ARE, AND WHAT THEY ARE NOT
+    --------------------------------------------------
+    The five "Suma ..." columns are sums of the FROZEN WEIGHTS stored on
+    each row (asados.tipo_carne_weight/coccion_weight/superficie_weight/
+    local_weight and participations.rol_weight — see schema.sql), not a
+    breakdown of where a user's points came from. They CAN'T be that:
+    config.py's FORMULA is
+    "(0.6 * carne + 0.4 * coccion) * superficie * local * rol", which is
+    multiplicative, so an individual variable contributes no fixed,
+    separable share of the total — superficie doesn't ADD anything, it
+    SCALES whatever the carne/coccion part produced. So these columns
+    answer "what kind of asados has this person been at?" (high Suma
+    Superficie = mostly parrilla rather than horno de barro), which is a
+    genuinely useful descriptive stat. They deliberately do NOT sum to
+    "Puntos Totales", and no arrangement of them would — only
+    SUM(participations.points) is the real scored total.
+
+    Users with zero participations in the filtered period are omitted
+    entirely rather than listed as a row of zeros — the JOIN below does
+    this naturally, and a standings table listing people who weren't
+    there is noise, not information.
+
+    Filters (?year=&semester=) and sorting (?sort=&dir=) are all plain
+    GET query params, same bookmarkable-URL approach as index()'s
+    filters — so a sorted, filtered view can be linked/shared as-is, and
+    the <select>s can auto-submit without any JavaScript fetch().
+    """
+    db = get_db()
+
+    year_filter = request.args.get("year", "").strip()
+    semester_filter = request.args.get("semester", "").strip()
+
+    # Look the sort key up in the whitelist rather than trusting it —
+    # see RESUMEN_SORT_COLUMNS' own comment for why this specific lookup
+    # is what keeps the ORDER BY concatenation below safe.
+    sort_key = request.args.get("sort", "").strip()
+    if sort_key not in RESUMEN_SORT_COLUMNS:
+        sort_key = RESUMEN_DEFAULT_SORT
+    # Same idea for the direction: only two literal strings can ever
+    # reach the SQL, chosen by an if/else, never interpolated from input.
+    # Anything that isn't an explicit "asc" falls back to
+    # RESUMEN_DEFAULT_DIRECTION, so the default lives next to
+    # RESUMEN_DEFAULT_SORT at the top of this file rather than being
+    # hard-coded here (they're one decision: "how does this table sort
+    # before anyone touches it?").
+    requested_dir = request.args.get("dir", "").strip().lower()
+    direction = requested_dir if requested_dir in ("asc", "desc") else RESUMEN_DEFAULT_DIRECTION
+    direction_sql = "ASC" if direction == "asc" else "DESC"
+
+    conditions = []
+    params = []
+
+    if year_filter:
+        conditions.append("strftime('%Y', asados.date) = ?")
+        params.append(year_filter)
+
+    # 1st semester = months 01-06, 2nd = 07-12. "Ambos" is simply the
+    # absence of this filter (an empty value), exactly like every other
+    # filter in this app — no third "both" branch is needed, since not
+    # filtering IS "both".
+    if semester_filter == "1":
+        conditions.append("strftime('%m', asados.date) <= '06'")
+    elif semester_filter == "2":
+        conditions.append("strftime('%m', asados.date) >= '07'")
+
+    where_clause = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    # A plain JOIN (not the LEFT JOIN that BASE_ASADOS_QUERY uses): this
+    # query filters and aggregates ON asados columns, so a participation
+    # whose asado row was somehow missing has nothing to contribute to a
+    # standings row anyway.
+    rows = db.execute(
+        f"""
+        SELECT
+            users.id                            AS user_id,
+            users.name                          AS name,
+            COUNT(participations.id)            AS participations_count,
+            SUM(asados.tipo_carne_weight)       AS sum_tipo_carne,
+            SUM(asados.coccion_weight)          AS sum_coccion,
+            SUM(asados.superficie_weight)       AS sum_superficie,
+            SUM(asados.local_weight)            AS sum_local,
+            SUM(participations.rol_weight)      AS sum_rol,
+            AVG(participations.points)          AS avg_points,
+            SUM(participations.points)          AS total_points
+        FROM participations
+        JOIN users ON participations.user_id = users.id
+        JOIN asados ON participations.asado_id = asados.id
+        {where_clause}
+        GROUP BY users.id, users.name
+        ORDER BY {RESUMEN_SORT_COLUMNS[sort_key]} {direction_sql}, users.name ASC
+        """,
+        params,
+    ).fetchall()
+
+    # Same "only years that actually have an asado" approach as index(),
+    # rather than hardcoding a range of years.
+    available_years = [
+        row["year"] for row in db.execute(
+            "SELECT DISTINCT strftime('%Y', date) AS year FROM asados ORDER BY year DESC"
+        ).fetchall()
+    ]
+
+    return render_template(
+        "resumen.html",
+        rows=rows,
+        available_years=available_years,
+        semestres=SEMESTRES,
+        selected_year=year_filter,
+        selected_semester=semester_filter,
+        sort_key=sort_key,
+        direction=direction,
     )
 
 

@@ -27,8 +27,34 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+    <!-- CURRENT-SECTION HIGHLIGHT: request.endpoint is Flask's name for
+         whichever view function is handling THIS request (e.g.
+         "new_asado", "resumen_page") — Flask injects the "request"
+         object into every Jinja template automatically, no need to
+         pass it from each route. Each list assigned below groups
+         every endpoint that belongs to one nav destination, since
+         several sections are more than one route: Base de Asados
+         also covers its own CSV export, Ubicaciones/Config also cover
+         their create/edit/delete POST routes, and "home" covers both
+         the listing AND clicking into a single asado's detail page.
+         This is a plain "in" check against a list, not string-matching
+         the URL path — matching on request.path would have broken the
+         moment a route took a variable like "/asado/<id>".
+         NOTE: never spell out Jinja's own tag delimiters as literal
+         characters in prose inside an HTML comment. Jinja parses its
+         delimiters REGARDLESS of HTML comments (it has no concept of
+         them, they're purely an HTML-level idea) — so writing the
+         delimiters out as descriptive text is itself parsed as a
+         real, broken tag. Exactly that mistake broke this block twice
+         while it was being written; say "curly-percent" or similar in
+         words instead if this ever needs describing again. -->
+    {% set home_endpoints = ['index', 'view_asado'] %}
+    {% set ubicaciones_endpoints = ['locations_page', 'create_location', 'edit_location', 'delete_location'] %}
+    {% set config_endpoints = ['config_page', 'create_user_route', 'delete_user_route', 'update_profile'] %}
+    {% set base_asados_endpoints = ['base_asados', 'base_asados_csv'] %}
     <nav class="navbar">
-        <a href="{{ url_for('index') }}" class="nav-title">🔥 Asados</a>
+        <a href="{{ url_for('index') }}"
+           class="nav-title {% if request.endpoint in home_endpoints %}nav-current{% endif %}">🔥 Asados</a>
         <!-- g.username is set on every request by load_logged_in_user()
              in app.py — None if nobody is logged in. Jinja templates can
              read Flask's "g" object directly, no need to pass it manually
@@ -52,13 +78,30 @@
                     aria-expanded="false"
                     aria-controls="navbar-right"
                     aria-label="Menú">☰</button>
+            <!-- Order here is the order they appear on screen, in both
+                 presentations (the desktop row and the ☰ dropdown share
+                 this one list). "Añadir Asado" leads because it's the
+                 only ACTION among otherwise purely navigational links —
+                 which is also why it alone gets .nav-link-add's green
+                 fill instead of the shared translucent white. -->
             <div class="navbar-right" id="navbar-right">
-                <a href="{{ url_for('new_asado') }}" class="nav-link">Añadir Asado</a>
-                <a href="{{ url_for('base_asados') }}" class="nav-link">📋 Base de Asados</a>
-                <a href="{{ url_for('activity_log_page') }}" class="nav-link">🕓 Actividad</a>
-                <a href="{{ url_for('locations_page') }}" class="nav-link">📍 Ubicaciones</a>
-                <a href="{{ url_for('config_page') }}" class="nav-link">⚙️ Config</a>
+                <a href="{{ url_for('new_asado') }}"
+                   class="nav-link nav-link-add {% if request.endpoint == 'new_asado' %}nav-current{% endif %}">Añadir Asado</a>
+                <a href="{{ url_for('resumen_page') }}"
+                   class="nav-link {% if request.endpoint == 'resumen_page' %}nav-current{% endif %}">🏆 Resumen</a>
+                <a href="{{ url_for('base_asados') }}"
+                   class="nav-link {% if request.endpoint in base_asados_endpoints %}nav-current{% endif %}">📋 Base de Asados</a>
+                <a href="{{ url_for('locations_page') }}"
+                   class="nav-link {% if request.endpoint in ubicaciones_endpoints %}nav-current{% endif %}">📍 Ubicaciones</a>
+                <a href="{{ url_for('config_page') }}"
+                   class="nav-link {% if request.endpoint in config_endpoints %}nav-current{% endif %}">⚙️ Config</a>
                 <span class="nav-username">👤 {{ g.name }}</span>
+                <a href="{{ url_for('activity_log_page') }}"
+                   class="nav-link {% if request.endpoint == 'activity_log_page' %}nav-current{% endif %}">🕓 Actividad</a>
+                <!-- "Salir" deliberately never gets nav-current — it isn't
+                     a section you're IN, it's an action that ends the
+                     session, so highlighting it as "current" would be
+                     misleading regardless of which route you're on. -->
                 <a href="{{ url_for('logout') }}" class="nav-link">Salir</a>
             </div>
         {% endif %}

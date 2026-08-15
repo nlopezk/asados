@@ -36,8 +36,8 @@ TIPO_CARNE_WEIGHTS = {
     "Corte de Vacuno (Lomo, Tira, Vacío)": 1,
     "Cordero": 1,
     "Corte de Cerdo": 0.7,
-    "Bifes Vacuno o similar": 0.7,
-    "Chuleta de Cerdo o similar": 0.3,
+    "Bifes Vacuno o similar": 1,
+    "Chuleta de Cerdo o similar": 0.7,
     "Pollo": 0.3,
     "Embutidos (Chori, Morcilla)": 0.3,
     "Hamburguesa casera": 0.3,
@@ -55,10 +55,10 @@ COCCION_WEIGHTS = {
 SUPERFICIE_WEIGHTS = {
     "Parrilla": 1,
     "Espada estática": 1,
-    "Kanka": 0.8,
+    "Kanka": 1,
     "Plancha o Sartén": 0.7,
     "Disco": 0.5,
-    "Horno de barro": 0.3,
+    "Horno de barro": 0,
 }
 
 # --- Multipliers for "Local" (where it happened) -----------------------

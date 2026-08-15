@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+<!--
+    resumen.html = "Resumen": the standings / position table.
+
+    ONE ROW PER USER — a different grain from the app's other two
+    tables, and worth keeping straight: index.html is one card per
+    ASADO, base_asados.html is one row per PARTICIPATION, this is one
+    row per USER (a GROUP BY, built in resumen_page() in app.py).
+
+    Opts into the wider layout (see base.html's container_extra_class
+    block / .container-wide in style.css) — 10 columns is well past
+    what the default 900px tier holds comfortably. As always the cap
+    only applies above --content-max-width-wide, so mobile is
+    unaffected.
+-->
+
+{% block container_extra_class %}container-wide{% endblock %}
+
+{% block content %}
+<h2>Resumen</h2>
+
+<!-- FILTERS: a plain GET form, same bookmarkable-URL approach as the
+     home page's filters (?year=...&semester=...) — app.py's
+     resumen_page() reads these query params to narrow the SQL. Both
+     fields auto-submit on change, so there's no separate "Filtrar"
+     button to press.
+
+     Note there is no explicit "Ambos" OPTION for Semestre — the empty
+     "Ambos" entry IS that state, because not filtering by semester is
+     exactly what "both halves of the year" means. Adding a third real
+     value would have meant a third branch in the route doing nothing.
+
+     The hidden sort/dir inputs carry the CURRENT sort through a filter
+     change. Without them, changing the year would silently throw away
+     whichever column you'd sorted by and snap back to the default —
+     the two controls are independent, and re-filtering shouldn't
+     re-sort. (The reverse direction is handled in the headers below,
+     which carry the filters into their own links.) -->
+<form method="GET" action="{{ url_for('resumen_page') }}" class="filter-form">
+    <div class="filter-field">
+        <label for="filter_year">Año</label>
+        <select id="filter_year" name="year" onchange="this.form.submit()">
+            <option value="">Todos</option>
+            {% for year in available_years %}
+                <option value="{{ year }}" {% if selected_year == year %}selected{% endif %}>{{ year }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-field">
+        <label for="filter_semester">Semestre</label>
+        <select id="filter_semester" name="semester" onchange="this.form.submit()">
+            <option value="">Ambos</option>
+            {% for value, label in semestres %}
+                <option value="{{ value }}" {% if selected_semester == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <input type="hidden" name="sort" value="{{ sort_key }}">
+    <input type="hidden" name="dir" value="{{ direction }}">
+    {% if selected_year or selected_semester %}
+        <a href="{{ url_for('resumen_page', sort=sort_key, dir=direction) }}" class="filter-clear">Limpiar filtros ✕</a>
+    {% endif %}
+</form>
+
+{% if rows|length == 0 %}
+    {% if selected_year or selected_semester %}
+        <p class="empty-state">Ninguna participación coincide con estos filtros.</p>
+    {% else %}
+        <p class="empty-state">Todavía no hay participaciones registradas.</p>
+    {% endif %}
+{% else %}
+    <!-- SORTABLE HEADERS, done as plain links rather than JavaScript.
+
+         Each <th> is an <a> back to this same page carrying the sort
+         key it represents, so sorting is just a normal GET — which
+         means a sorted view is bookmarkable/shareable, works with the
+         browser's back button, and (most importantly) the ACTUAL
+         sorting happens in SQL, in one place. A JS table-sorter would
+         have had to re-implement comparisons for a mix of text and
+         numeric columns in the browser, i.e. a second sorting
+         implementation that could disagree with the server's — the
+         same "never let the same logic live in two places" reasoning
+         that made config.py's FORMULA a single evaluated string
+         instead of Python plus hand-written JS.
+
+         Clicking the column you're already sorted by flips the
+         direction; clicking any other column starts it at the
+         direction that's most useful for that column's type — see
+         resumen_sort_link below.
+
+         Every link also carries the current year/semester filters, so
+         re-sorting never silently clears the filter you set. -->
+
+    {#- One macro instead of ten near-identical <a href> lines. "loop"
+        variables aside, Jinja macros are just functions: this one takes
+        the column's sort key and its visible label and renders the
+        whole <th>, including the ▲/▼ marker on whichever column is
+        currently active.
+
+        next_dir picks what THIS link should do when clicked:
+          - if it's the column already being sorted, flip the direction
+          - otherwise start descending for the numeric columns (biggest
+            first is what you want from a standings table) and ascending
+            for Usuario (A-Z is what you want from a name).
+        default_dir is passed per column below rather than guessed from
+        the key, so adding a column can't silently inherit the wrong
+        default. -#}
+    {% macro sort_header(key, label, default_dir='desc') %}
+        {% set is_active = (sort_key == key) %}
+        {% set next_dir = ('asc' if direction == 'desc' else 'desc') if is_active else default_dir %}
+        <th class="{% if is_active %}sorted-column{% endif %}">
+            <a class="sort-link"
+               href="{{ url_for('resumen_page', sort=key, dir=next_dir, year=selected_year or none, semester=selected_semester or none) }}">
+                {{ label }}<span class="sort-arrow">{% if is_active %}{{ '▲' if direction == 'asc' else '▼' }}{% else %}↕{% endif %}</span>
+            </a>
+        </th>
+    {% endmacro %}
+
+    <div class="spreadsheet-wrapper resumen-wrapper">
+        <table class="spreadsheet-table resumen-table">
+            <thead>
+                <tr>
+                    <!-- "#" is the position within the CURRENT sort, so
+                         it deliberately isn't sortable itself — it's
+                         generated by the loop below, not a stored
+                         value, and there's nothing meaningful to order
+                         by it. -->
+                    <th class="resumen-rank-header">#</th>
+                    {{ sort_header('usuario', 'Usuario', 'asc') }}
+                    {{ sort_header('carne', 'Suma T.Carne') }}
+                    {{ sort_header('coccion', 'Suma Cocción') }}
+                    {{ sort_header('superficie', 'Suma Superf.') }}
+                    {{ sort_header('local', 'Suma Local') }}
+                    {{ sort_header('rol', 'Suma Rol') }}
+                    {{ sort_header('promedio', 'Prom. x Part.') }}
+                    {{ sort_header('participaciones', 'Particip.') }}
+                    {{ sort_header('total', 'Puntos Totales') }}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                    <tr>
+                        <td class="resumen-rank">{{ loop.index }}</td>
+                        <td>{{ row.name }}</td>
+                        <!-- round(2) on the sums as well as the averages:
+                             these are sums of decimal weights (0.3, 0.7,
+                             0.8...), and floating-point addition can
+                             otherwise surface artifacts like
+                             2.9000000000000004 in the table. -->
+                        <td>{{ row.sum_tipo_carne | round(2) }}</td>
+                        <td>{{ row.sum_coccion | round(2) }}</td>
+                        <td>{{ row.sum_superficie | round(2) }}</td>
+                        <td>{{ row.sum_local | round(2) }}</td>
+                        <td>{{ row.sum_rol | round(2) }}</td>
+                        <td>{{ row.avg_points | round(2) }}</td>
+                        <td>{{ row.participations_count }}</td>
+                        <td class="resumen-total">{{ row.total_points | round(2) }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Spelled out on the page itself, not just in the code comments:
+         the five "Suma" columns are sums of the frozen WEIGHTS behind
+         each participation, and because config.py's formula multiplies
+         rather than adds those variables, they genuinely cannot be a
+         breakdown of Puntos Totales (superficie/local/rol SCALE the
+         result, they don't contribute a fixed share of it). They're
+         useful as "what kind of asados has this person been at?" —
+         but someone would reasonably expect five columns next to a
+         total to add UP to that total, so it's worth saying plainly
+         where they can see it. See resumen_page() in app.py. -->
+    <p class="resumen-note">
+        Las columnas “Suma” totalizan los pesos congelados de cada participación
+        (Tipo de Carne, Cocción, Superficie, Local y Rol). Sirven para ver
+        <em>qué tipo</em> de asados hizo cada uno, pero no suman los Puntos
+        Totales: la fórmula multiplica esas variables en vez de sumarlas, así que
+        Superficie, Local y Rol escalan el resultado en lugar de aportar una
+        parte fija. Los puntos reales son siempre la columna “Puntos Totales”.
+    </p>
+{% endif %}
+{% endblock %}

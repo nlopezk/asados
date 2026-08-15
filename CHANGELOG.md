@@ -10,10 +10,111 @@ and when.
 
 ## Next Features (ideas, not yet built)
 Roughly in the order they came up, not necessarily the order they'll
-ship. "Simple leaderboard" and "Dashboard mockup with a KPI" are both
-Phase 4 (Summary & stats) from the `Phases` roadmap file.
-- Simple leaderboard (Phase 4).
-- Dashboard mockup with a KPI (Phase 4).
+ship.
+- Dashboard mockup with a KPI (the rest of Phase 4 — the leaderboard
+  half shipped in 1.0.0 as "Resumen").
+- Migrate the real local database to the live PythonAnywhere site
+  (upload `asados.db` via the Files tab — never run `init_db()` there).
+- Offsite backups (e.g. periodically pulling `backups/` down to a NAS)
+  — the current backups protect against bad data, not against losing
+  the hosting account.
+
+## [1.0.0] - 2026-08-14 — "Primera versión completa"
+First version with the group's **real history** in it (232 asados,
+262 participations, imported from the historical spreadsheet) rather
+than test data, and the first full audit pass over the whole codebase.
+Phases 1, 2, 3, 5 and 6 of the roadmap are done, and Phase 4's
+leaderboard half shipped here as "Resumen".
+
+### Added
+- **Historical data import**: the group's real asado history (Jan–Aug
+  2026) replaced the ~149 randomly-generated test asados. Points and
+  weights were imported EXACTLY as originally calculated in the
+  spreadsheet rather than recalculated, so past scores are untouched by
+  any later weight change — the same "frozen" rule the app already
+  follows. Total points reconciled exactly against the source.
+- **9 recurring locations** seeded into Ubicaciones from the imported
+  history (the addresses that came up 4+ times), so the places the
+  group actually uses are one dropdown pick away.
+- Database **indexes** on every foreign key (`participations.asado_id`,
+  `participations.user_id`, `asado_tipo_carne.asado_id`,
+  `activity_log_changes.log_id`). SQLite indexes primary keys and
+  UNIQUE columns automatically but never foreign keys, so these lookups
+  were full table scans — invisible at today's size, but the home page
+  runs two of them per asado shown.
+- Explicit `SameSite=Lax` / `HttpOnly` on the session cookie — mostly
+  making the existing browser-default behavior explicit, as a second
+  layer behind the CSRF token check.
+
+### Fixed
+- **`/api/points` required no login** — the only endpoint in the app
+  reachable without an account. It reads and writes nothing, so no data
+  was exposed, but it did let an anonymous caller probe the scoring
+  weights. Now `@login_required` like every other route.
+- **Base de Asados showed two columns under the wrong headers**:
+  "Cantidad Carne (kg)" was displaying the Rol weight (0.7/0.8/1.0) and
+  "Peso Rol" was displaying kilograms of meat. An HTML table ties cells
+  to headers by ORDER only, so reordering the headers without reordering
+  the cells silently mislabels data. (The CSV export was unaffected —
+  it keeps its own separate, still-correct column list.)
+- The navbar now highlights whichever section you're currently in
+  (a gold underline, same trim color as the navbar's own bottom
+  border) — in both the desktop row and the phone dropdown.
+- Base de Asados showed the literal word "None" in every empty
+  Personas / Cantidad Carne / Lat. / Long. cell (those columns are
+  genuinely optional). They render as blank cells now.
+
+### Changed
+- **README rewritten** — it still described the app as "Phase 3" and
+  listed leaderboards and deployment as not-yet-built, both of which
+  had shipped. Now documents every page, the deploy steps, and the
+  three places a version number has to be bumped.
+- `Base Histórica.csv` added to `.gitignore`. **This repo is public**
+  and that file holds real home addresses and GPS coordinates for the
+  whole group — the same reason `asados.db` was already ignored.
+- `__pycache__/*.pyc` files finally untracked (`git rm --cached`).
+  They'd been committed before `.gitignore` covered them, and gitignore
+  never retroactively untracks files git already knows about.
+
+### Fixed (also in this release)
+- Resumen's standings table was flush against the left edge of its
+  wide container instead of centered — a follow-on bug from capping
+  its width narrower than the page, missing the `margin: 0 auto` that
+  actually centers a width-capped block.
+- Every navbar link (and `.secondary-button`/`.primary-button` links
+  like "Exportar CSV") turned a hard-to-read brick-orange once clicked
+  — the app's global `a:visited` rule was silently overriding those
+  components' own white/text color, since `:visited` beats a plain
+  class in CSS specificity. Fixed by having each component repeat its
+  color under `:visited` too, rather than removing the global rule
+  (which would have fallen back to the browser's own default purple
+  visited-link color instead).
+
+### Changed (also in this release)
+- "Añadir Asado" is now a distinct muted green in the navbar — the one
+  ACTION among otherwise purely navigational links.
+- Navbar order is now: Añadir Asado, Resumen, Base de Asados,
+  Ubicaciones, Config, username, Actividad, Salir.
+- The navbar's collapse breakpoint moved from 1024px to 1125px,
+  re-measured after adding the "🏆 Resumen" link (seven links need
+  ~1151px, up from ~1026px). Left at 1024 it would have silently
+  reintroduced the squeezed navbar between ~1125px and 1024px.
+
+### Added — the Resumen page
+- "Resumen" (`/resumen`): a standings/position table — one row per
+  user, with their summed Tipo de Carne / Cocción / Superficie / Local
+  / Rol weights, average points per participation, participation
+  count, and total points. Sorted by total points by default; every
+  column header is clickable to re-sort (click again to flip the
+  direction), and sorting is a plain GET so a sorted view is a
+  shareable URL. Filters by Año and Semestre (1° = ene–jun,
+  2° = jul–dic, "Ambos" = no filter). No schema change — this reads
+  the existing frozen weights/points.
+  Note: the five "Suma" columns deliberately do NOT add up to Puntos
+  Totales, and can't — the points formula multiplies those variables
+  rather than adding them, so Superficie/Local/Rol scale the result
+  instead of contributing a fixed share. They're there to show what
+  KIND of asados someone has been at. This is stated on the page too.
 
 ## [0.11.1] - 2026-08-13
 ### Fixed

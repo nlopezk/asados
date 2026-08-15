@@ -1,6 +1,21 @@
+# --- Real data: never commit ----------------------------------------
+# This repo is PUBLIC. Everything in this section contains the group's
+# actual personal data — real names, home addresses, and exact GPS
+# coordinates — so none of it belongs on GitHub.
 asados.db
 backups/
+# The historical spreadsheet the existing asados were imported from
+# (see CHANGELOG 1.0.0). Same personal data as asados.db, just in a
+# different file format — it is deliberately kept LOCALLY as the
+# provenance record of that import, and deliberately not tracked.
+Base Histórica.csv
+
+# --- Secrets ---------------------------------------------------------
+# Signs the session cookies. Committing this would let anyone forge a
+# login session for the live site.
 secret_key.txt
+
+# --- Python / editor noise -------------------------------------------
 __pycache__/
 *.pyc
 venv/
