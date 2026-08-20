@@ -12,12 +12,27 @@ and when.
 Roughly in the order they came up, not necessarily the order they'll
 ship.
 - Dashboard mockup with a KPI (the rest of Phase 4 — the leaderboard
-  half shipped in 1.0.0 as "Resumen").
-- Migrate the real local database to the live PythonAnywhere site
-  (upload `asados.db` via the Files tab — never run `init_db()` there).
+  half shipped in 1.0.0 as "Resumen"; the Looker Studio export in
+  1.1.0 is a real path to this one without adding a JS charting
+  library to the app itself).
 - Offsite backups (e.g. periodically pulling `backups/` down to a NAS)
   — the current backups protect against bad data, not against losing
   the hosting account.
+
+## [1.1.0] - 2026-08-20
+### Added
+- **Looker Studio / Google Sheets export** (`/export/base-asados.csv`):
+  the same data as the existing "Exportar CSV" button, but reachable
+  without logging in — gated by a long random token in the URL instead
+  (`export_token.txt`, auto-generated on first run, gitignored exactly
+  like `secret_key.txt`). Meant to be fetched by a Google Sheet's
+  `=IMPORTDATA(...)`, which then Looker Studio reads via its ordinary,
+  built-in Sheets connector — no SQLite connector exists for Looker
+  Studio, so this is the bridge. See `CLAUDE.md` for the full setup
+  steps and the reasoning behind the token-over-login design.
+- Both CSV routes (the existing login-gated one and the new token-gated
+  one) now share one response-building function, so there is exactly
+  one place that decides what "the CSV export" contains.
 
 ## [1.0.1] - 2026-08-19
 Data correction release — no application code changed, only the

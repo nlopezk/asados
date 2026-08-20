@@ -14,7 +14,7 @@ import os
 import csv
 import io
 import functools
-import secrets                     # for generating unguessable CSRF tokens
+import secrets                     # unguessable CSRF tokens + the export-token comparison
 from flask import Flask, render_template, request, redirect, url_for, g, jsonify, session, Response
 from werkzeug.security import check_password_hash, generate_password_hash
 from config import (
@@ -32,7 +32,7 @@ DATABASE = "asados.db"  # the SQLite database is just a single file on disk
 # version is cut (see CLAUDE.md). Nothing ties these three together
 # automatically; forgetting to bump this is a real, easy-to-repeat
 # mistake, so check it specifically before tagging a new release.
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 
 # How many rows to show per page before showing a "next" arrow, on the
 # home page and on Base de Asados respectively. Base de Asados can show
@@ -200,6 +200,35 @@ else:
     with open(SECRET_KEY_FILE, "w") as f:
         f.write(new_key)
     app.secret_key = new_key
+
+# ---------------------------------------------------------------------
+# EXPORT TOKEN (for the Looker Studio / Google Sheets CSV feed)
+# ---------------------------------------------------------------------
+# Same auto-generate-once-then-reuse pattern as SECRET_KEY_FILE above,
+# for a completely different purpose: this token guards
+# /export/base-asados.csv (see its own section near base_asados_csv()
+# below), a CSV endpoint meant to be fetched by Google Sheets'
+# IMPORTDATA() — which can't log in, so it can't use the normal
+# session-cookie auth every other route relies on. A long random token
+# in the URL is the standard way to let an external, non-interactive
+# fetcher in without a real login system.
+#
+# export_token.txt is gitignored, exactly like secret_key.txt — it
+# guards the same real personal data (names, addresses, points) via a
+# path that skips the login page entirely, so treat it with the same
+# care: never commit it, never paste it somewhere public. Rotating it
+# is just deleting the file and restarting the app (or reloading, on
+# PythonAnywhere) — a fresh token is generated the same way a fresh
+# secret key would be.
+EXPORT_TOKEN_FILE = "export_token.txt"
+
+if os.path.exists(EXPORT_TOKEN_FILE):
+    with open(EXPORT_TOKEN_FILE, "r") as f:
+        EXPORT_TOKEN = f.read().strip()
+else:
+    EXPORT_TOKEN = os.urandom(24).hex()
+    with open(EXPORT_TOKEN_FILE, "w") as f:
+        f.write(EXPORT_TOKEN)
 
 # --- Session cookie hardening ---------------------------------------
 # SameSite=Lax tells the browser not to send our session cookie along
@@ -1424,11 +1453,21 @@ def sanitize_csv_cell(value):
     return value
 
 
-@app.route("/base-asados/csv")
-@login_required
-def base_asados_csv():
-    """Exports ALL rows (ignoring pagination — this is a full download,
-    not a scrolled-through page) as a downloadable CSV file."""
+def build_base_asados_csv_response():
+    """
+    Builds the actual CSV Response — the header row, every sanitized
+    cell, the BOM prefix, the attachment headers. Shared by BOTH CSV
+    routes below (the login-gated one a browser downloads from, and the
+    token-gated one Google Sheets fetches) so there is exactly ONE
+    place that decides what "the CSV export" contains — same reasoning
+    as BASE_ASADOS_QUERY itself being the one place that decides what
+    "Base de Asados" means, or config.py's FORMULA being the one place
+    the points formula is written. Two copies of this column list would
+    eventually drift (the same lesson as index()/edit_asado()'s
+    "reorder the headers, forget the cells" bug from the 1.0.0 audit —
+    a second identical copy is just a second chance to make that
+    mistake).
+    """
     db = get_db()
     rows = db.execute(BASE_ASADOS_QUERY).fetchall()
 
@@ -1457,7 +1496,8 @@ def base_asados_csv():
     # "﻿" is a UTF-8 BOM (byte-order mark). Excel on Windows needs
     # it to correctly detect UTF-8 and render accented characters
     # (ñ, ó, í, etc.) instead of garbling them — invisible in every
-    # other program that opens this file.
+    # other program that opens this file, including Google Sheets'
+    # own IMPORTDATA() parser.
     csv_data = "﻿" + output.getvalue()
 
     return Response(
@@ -1465,6 +1505,59 @@ def base_asados_csv():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=base_asados.csv"},
     )
+
+
+@app.route("/base-asados/csv")
+@login_required
+def base_asados_csv():
+    """Exports ALL rows (ignoring pagination — this is a full download,
+    not a scrolled-through page) as a downloadable CSV file."""
+    return build_base_asados_csv_response()
+
+
+# ---------------------------------------------------------------------
+# /export/base-asados.csv — the same CSV, for Google Sheets/Looker Studio
+# ---------------------------------------------------------------------
+# WHY THIS ROUTE EXISTS, AND WHY IT'S SHAPED THE WAY IT IS:
+#
+# Looker Studio (formerly Google Data Studio) has no SQLite connector
+# at all — it only talks to things like Google Sheets, BigQuery, or a
+# handful of specific databases. The bridge is: this endpoint serves
+# the exact same CSV as base_asados_csv() above, a Google Sheet cell
+# runs =IMPORTDATA() against this URL (Sheets refreshes that on its
+# own every couple of hours, and instantly on demand), and Looker
+# Studio connects to that Sheet with its ordinary, built-in Sheets
+# connector. Nothing new on the Looker Studio side, nothing new in
+# Google Cloud — the only new piece is this one route.
+#
+# It CANNOT use @login_required like every other route (deliberately,
+# not an oversight — see the audit note in CLAUDE.md about routes
+# missing that decorator): Sheets' IMPORTDATA() has no way to fill in a
+# username/password or carry a session cookie, it just fetches a URL.
+# So this route is gated by EXPORT_TOKEN instead — a long random
+# secret in the query string, checked with secrets.compare_digest()
+# rather than "!=" specifically because this token is a single,
+# long-lived secret guarding real personal data (names, addresses,
+# points) over a path with NO login at all; that's a meaningfully
+# higher bar than the CSRF token's plain "!=" comparison elsewhere in
+# this file, which is per-session, short-lived, and only ever
+# compared against requests that already carry a valid login cookie.
+# compare_digest() takes the same amount of time regardless of how
+# much of the token matches, which is what actually defeats a
+# timing-based guessing attack — a plain "!=" leaks a few nanoseconds
+# of extra time per correct leading character, in principle enough to
+# brute-force the token character by character given enough requests.
+#
+# A missing or wrong token gets a bare 403 with no CSV body — never a
+# 200 with partial or dummy data, and never a different error message
+# for "missing" vs "wrong" (either would help an attacker narrow down
+# what's going on).
+@app.route("/export/base-asados.csv")
+def base_asados_csv_export():
+    submitted = request.args.get("token", "")
+    if not secrets.compare_digest(submitted, EXPORT_TOKEN):
+        return "Acceso denegado: token inválido o ausente.", 403
+    return build_base_asados_csv_response()
 
 
 @app.route("/actividad")

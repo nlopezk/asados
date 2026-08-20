@@ -70,6 +70,7 @@ As_app/
 ├── CHANGELOG.md            <- What changed, per version
 ├── Phases                  <- The original roadmap this was built against
 ├── secret_key.txt          <- Auto-generated on first run. NEVER commit (gitignored)
+├── export_token.txt        <- Auto-generated. Guards /export/base-asados.csv. NEVER commit (gitignored)
 ├── asados.db               <- The database itself (gitignored)
 ├── backups/                <- Automatic + manual DB snapshots (gitignored)
 ├── templates/              <- HTML pages (Jinja2)
@@ -103,7 +104,11 @@ As_app/
 - **Resumen** (`/resumen`) — the standings table, one row per user, with
   filters (year, semester) and sortable columns.
 - **Base de Asados** (`/base-asados`) — flat spreadsheet view (one row per
-  participation) with a full CSV export.
+  participation) with a full CSV export, plus a token-gated version of
+  that same export (`/export/base-asados.csv?token=...`) meant for
+  Google Sheets `IMPORTDATA()` → Looker Studio dashboards. See
+  `CLAUDE.md`'s "Looker Studio / Google Sheets export" section for
+  setup steps and why it's token-gated instead of login-gated.
 - **Ubicaciones** (`/ubicaciones`) — a reusable pool of saved places to
   quick-fill the asado form, so a recurring spot doesn't need retyping.
 - **Registro de Actividad** (`/actividad`) — who created, edited, or deleted

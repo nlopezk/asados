@@ -478,6 +478,10 @@ yet, just one Flask app with a handful of routes:
 - `/base-asados/csv` (`base_asados_csv`) — same rows as above, streamed
   back as a downloadable CSV (UTF-8 with a BOM prefix, so accented
   characters open correctly in Excel on Windows)
+- `/export/base-asados.csv` (`base_asados_csv_export`) — the SAME CSV,
+  gated by `?token=` instead of login (see its own section below) —
+  meant for Google Sheets' `IMPORTDATA()`, as the bridge to Looker
+  Studio
 - `/config` (`config_page`) — "Configuración" page; every logged-in
   user can edit their own `name`/password here (`POST /config/profile`)
 - `/config/users/create`, `/config/users/<id>/delete` — admin-only
@@ -956,8 +960,73 @@ someone opens `base_asados.csv` in Excel/Sheets. Applied generically by
 type (only `str` values are touched — numeric columns pass through
 untouched), so new columns added to `BASE_ASADOS_QUERY` are covered
 automatically as long as they're written out via the same
-`sanitize_csv_cell(value) for value in (...)` pattern in
-`base_asados_csv()`.
+`sanitize_csv_cell(value) for value in (...)` pattern used by
+`build_base_asados_csv_response()` (see the next section — both CSV
+routes share that one function).
+
+### Looker Studio / Google Sheets export — a token-gated CSV, not a DB connector
+Looker Studio (formerly Google Data Studio) has no SQLite connector at
+all — it only talks to things like Google Sheets, BigQuery, or a
+handful of specific databases. Rather than migrate the app off SQLite
+(a hosting/architecture change, not a reporting one — and disproportionate
+for a friend-group hobby app), the bridge is: `/export/base-asados.csv`
+serves the same data as the existing "Exportar CSV" button, a Google
+Sheet cell runs `=IMPORTDATA("https://.../export/base-asados.csv?token=...")`
+against it (Sheets refreshes that on its own every couple of hours, and
+instantly on demand), and Looker Studio connects to that Sheet with its
+ordinary, built-in Sheets connector. The only new code is the one route
+— no Google Cloud project, no service account, no OAuth setup, keeping
+the project's "one dependency in `requirements.txt`" ethos intact.
+
+**Both CSV routes share one function, `build_base_asados_csv_response()`**
+— the header row, sanitization, BOM prefix, everything. This is the
+same "one place decides the shape" pattern as `BASE_ASADOS_QUERY` and
+`config.py`'s `FORMULA`: two independent copies of a 21-column list
+would eventually drift, and the 1.0.0 audit already found exactly that
+failure mode once (see "Base de Asados showed two columns under the
+wrong headers" below) — a second copy is a second chance to make the
+same mistake.
+
+**Why a TOKEN instead of the normal login** — this is the one
+deliberate exception to "every route is protected," and it's
+deliberate for a real reason: Google Sheets' `IMPORTDATA()` can't fill
+in a username/password or carry a session cookie, it just fetches a
+URL. A long random secret in the query string is the standard way to
+let a non-interactive fetcher in without a real login system — the
+same pattern most no-code integrations (Zapier, Make, etc.) use.
+
+**Why `secrets.compare_digest()` here specifically, when the CSRF
+check elsewhere in this file just uses `!=`.** `EXPORT_TOKEN` is a
+single, long-lived secret guarding real personal data (names,
+addresses, points) over a path with literally no login at all — a
+meaningfully higher bar than the CSRF token, which is per-session,
+short-lived, and only ever compared against requests that already
+carry a valid login cookie. `compare_digest()` takes the same amount
+of time regardless of how much of the token matches; a plain `!=`
+leaks a few nanoseconds of extra time per correct leading character,
+in principle enough to brute-force the token one character at a time
+given enough requests. Not needed for the CSRF token (too short-lived,
+too low-value a target to be worth the attack); worth it here.
+
+**`export_token.txt` is gitignored, exactly like `secret_key.txt`**,
+and guards the same class of data via a path that skips login entirely
+— generated once (same `os.urandom(24).hex()` pattern as the secret
+key) and reused on every restart. **Rotating it is deleting the file
+and restarting the app** (or Reloading, on PythonAnywhere) — the old
+URL in your Sheet formula stops working the moment you do, and you'd
+paste the new token in. Do this if the token ever leaks (shared in a
+screenshot, a chat log, etc.).
+
+**Setting it up**: after deploying, get the live token with
+`cat export_token.txt` in a PythonAnywhere Bash console (or locally,
+in the project root) — it's LOCAL to each environment, exactly like
+the secret key, so the dev token and the live token are different
+values on purpose. Then in a Google Sheet:
+`=IMPORTDATA("https://asados.pythonanywhere.com/export/base-asados.csv?token=PASTE_HERE")`.
+Point Looker Studio's Google Sheets connector at that sheet. Never
+paste the token itself into the Sheet's visible cells if the Sheet
+might ever be shared — put the formula in a cell on a hidden/protected
+tab if that's a concern.
 
 ### The points formula is literal, evaluable text — not code
 `config.py`'s `FORMULA` variable (e.g.
@@ -1165,7 +1234,11 @@ ones most likely to come back:
   had quietly stopped being true. **When you add a route, the decorator
   is part of adding it.** A quick way to re-check the whole set: list
   every `@app.route` and confirm each has `login_required` or
-  `admin_required` (only `/login` and `/logout` legitimately don't).
+  `admin_required` — as of 1.1.0 there are exactly THREE legitimate
+  exceptions: `/login`, `/logout`, and `/export/base-asados.csv` (which
+  is gated by its own token check instead — see that route's own
+  section — not left open by accident). Any other undecorated route is
+  a bug, not a fourth exception.
 - **HTML tables tie cells to headers by ORDER, nothing else.** Base de
   Asados had "Cantidad Carne (kg)" showing the Rol weight and "Peso
   Rol" showing kilos of meat, because its `<th>` list got reordered

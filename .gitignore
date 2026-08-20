@@ -18,6 +18,11 @@ Base Histórica*.csv
 # Signs the session cookies. Committing this would let anyone forge a
 # login session for the live site.
 secret_key.txt
+# Guards /export/base-asados.csv (the Looker Studio / Google Sheets
+# feed) — the token that lets that ONE route skip the login page.
+# Committing it would let anyone with the repo pull the group's real
+# names/addresses/points straight off the live site, no login needed.
+export_token.txt
 
 # --- Python / editor noise -------------------------------------------
 __pycache__/
