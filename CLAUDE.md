@@ -80,9 +80,11 @@ own description above: editing is open to **every** logged-in user (not
 "Edit/delete permissions" note below.
 
 **v1.0.0 also marks the first release holding the group's REAL data** —
-232 asados / 262 participations imported from the historical
-spreadsheet, replacing the randomly-seeded test data. Two consequences
-worth knowing before touching anything data-related:
+imported from the historical spreadsheet, replacing the randomly-seeded
+test data. **Currently 234 asados / 264 participations** (v1.0.1's
+corrected `Base Histórica v2.csv` re-import; v1.0.0 shipped with the
+v1 file's 232 / 262 — see the CHANGELOG for what changed). Two
+consequences worth knowing before touching anything data-related:
 - **Local `asados.db` is now real, irreplaceable data.** Before this,
   wiping it via `init_db()` cost nothing. It now costs the group's
   whole history, and `backups/` is the only copy (same disk — see
@@ -95,6 +97,29 @@ worth knowing before touching anything data-related:
   `Chuleta de Cerdo` 0.3→0.7, `Kanka` 0.8→1, `Horno de barro` 0.3→0).
   A `config beta.py` sitting untracked in the repo root holds the OLD
   weights as the user's own backup — it is NOT read by anything.
+
+**The spreadsheet is the source of truth for history, and it gets
+CORRECTED — expect re-imports, not just one import.** `Base Histórica
+v2.csv` fixed a real error in the original: Gas cocción had been scored
+at weight 0.5 in the spreadsheet while `config.py` has always said 0.7,
+so 98 rows (every Gas asado) carried slightly low points. The v2
+re-import brought the stored points AND the frozen `coccion_weight`
+column into line at 0.7, and added two new asados (14 and 15 Aug 2026).
+Points still come from the SPREADSHEET's own numbers rather than being
+recalculated by `config.py` — the freezing rule is unchanged; what
+changed is that the spreadsheet itself was wrong and got fixed at
+source. If a v3 ever lands, re-import the same way (verify row counts
+and the total reconcile, then check `coccion_weight`/`superficie_weight`
+are consistent per category — a points-only update would leave Base de
+Asados showing a weight that can't produce the points next to it).
+
+**Watch the rounding when reconciling a re-import.** The spreadsheet
+carries 3- and 4-decimal points values (`0.616`, `0.4312`); the app
+stores 2 decimals, same as `calculate_points()`'s own `round(x, 2)`.
+Summed over 264 rows that's a ~0.04 gap between the CSV total and the
+database total, and it is EXPECTED, not a failed import. Reconcile by
+comparing the multiset of ROUNDED per-row values (which matches
+exactly), not the raw grand totals.
 
 **Phase 5 (mobile responsiveness) turned out to need very little new
 work** — the app was already close to fully responsive as a side
@@ -1163,6 +1188,13 @@ ones most likely to come back:
   published. It's in `.gitignore` now, alongside `asados.db` for the
   same reason. **Before any `git add .`, check `git status` for data
   files** — the group's addresses are not yours to publish.
+  **This one recurred immediately**: the corrected `Base Histórica
+  v2.csv` arrived a few days later and was again untracked-but-
+  un-ignored, because the original rule named one exact filename. The
+  rule is now the glob `Base Histórica*.csv`, which covers a v3 too.
+  Prefer a pattern over a literal filename whenever the file is one of
+  a series — an ignore rule that only matches the version you happened
+  to have in front of you will quietly stop protecting you.
 
 Verified clean, and worth NOT re-litigating: no SQL injection (the
 three f-string queries interpolate only hard-coded fragments and a

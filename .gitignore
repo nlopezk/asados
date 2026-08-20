@@ -8,7 +8,11 @@ backups/
 # (see CHANGELOG 1.0.0). Same personal data as asados.db, just in a
 # different file format — it is deliberately kept LOCALLY as the
 # provenance record of that import, and deliberately not tracked.
-Base Histórica.csv
+# The glob covers the later corrected revisions too ("Base Histórica
+# v2.csv", ...) — v2 was sitting untracked but UN-ignored for a while,
+# exactly the near-miss the 1.0.0 audit caught with v1. No leading
+# whitespace on these lines, ever: it silently breaks the match.
+Base Histórica*.csv
 
 # --- Secrets ---------------------------------------------------------
 # Signs the session cookies. Committing this would let anyone forge a

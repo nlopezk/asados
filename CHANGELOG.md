@@ -19,6 +19,27 @@ ship.
   — the current backups protect against bad data, not against losing
   the hosting account.
 
+## [1.0.1] - 2026-08-19
+Data correction release — no application code changed, only the
+historical data, `.gitignore`, and the docs.
+
+### Fixed
+- **Gas asados were scored slightly low across the whole history.** The
+  original spreadsheet had Gas cocción at weight 0.5, while `config.py`
+  has always said 0.7. `Base Histórica v2.csv` corrects it at source,
+  and re-importing brought 98 rows (every Gas asado) into line — both
+  the stored points and the frozen `coccion_weight` column, so Base de
+  Asados can't show a weight that doesn't produce the points beside it.
+  Group total went 199.75 → 208.25; the standings order is unchanged.
+- **`.gitignore` now uses the glob `Base Histórica*.csv`.** The 1.0.0
+  rule named one exact filename, so `Base Histórica v2.csv` showed up
+  untracked but un-ignored — the same near-miss the 1.0.0 audit had
+  just caught with v1, on a public repo holding real home addresses.
+
+### Added
+- Two new asados (14 and 15 Aug 2026, both Nico G.), bringing the
+  history to **234 asados / 264 participations**.
+
 ## [1.0.0] - 2026-08-14 — "Primera versión completa"
 First version with the group's **real history** in it (232 asados,
 262 participations, imported from the historical spreadsheet) rather
