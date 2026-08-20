@@ -19,6 +19,17 @@
 {% block content %}
 <h2>Resumen</h2>
 
+<!-- Plotly powers the cumulative-points chart below the table. Loaded
+     from jsdelivr, exact-version-pinned (same pattern as Leaflet in
+     _location_picker.html — a version pin never silently changes
+     behavior later, unlike Flatpickr's always-latest include on the
+     home page). "cartesian-dist" is Plotly's own smaller partial
+     bundle — line/scatter charts, range slider, range selector, and
+     nothing else this page needs (3D, maps, etc.) — a meaningfully
+     smaller download than the full plotly.js for the one chart type
+     used here. -->
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-cartesian-dist-min@2.35.2/plotly-cartesian.min.js"></script>
+
 <!-- FILTERS: a plain GET form, same bookmarkable-URL approach as the
      home page's filters (?year=...&semester=...) — app.py's
      resumen_page() reads these query params to narrow the SQL. Both
@@ -141,7 +152,7 @@
                 {% for row in rows %}
                     <tr>
                         <td class="resumen-rank">{{ loop.index }}</td>
-                        <td>{{ row.name }}</td>
+                        <td><span class="user-color-dot" style="background-color: {{ user_color(row.user_id) }}"></span>{{ row.name }}</td>
                         <!-- round(2) on the sums as well as the averages:
                              these are sums of decimal weights (0.3, 0.7,
                              0.8...), and floating-point addition can
@@ -179,5 +190,300 @@
         Superficie, Local y Rol escalan el resultado en lugar de aportar una
         parte fija. Los puntos reales son siempre la columna “Puntos Totales”.
     </p>
+{% endif %}
+
+<!-- CUMULATIVE POINTS CHART — deliberately OUTSIDE the earlier
+     rows-is-empty check above: it shows the FULL history regardless of
+     the year/semester filters (see build_resumen_chart_data()'s
+     docstring in app.py for why), so it still has something to show
+     even when the filtered table above it is empty. Its own
+     empty-state below only fires if NO asado has ever been recorded,
+     period. (Note: never spell out Jinja's curly-percent/curly-brace
+     delimiters as literal characters in a comment — Jinja parses them
+     regardless of being inside an HTML comment, since it has no
+     concept of HTML comments at all. This exact file hit that once
+     already while writing this one.) -->
+<h3 class="resumen-chart-title">Puntos Acumulados en el Tiempo</h3>
+
+{% if chart_data.series|length == 0 %}
+    <p class="empty-state">Todavía no hay datos para graficar.</p>
+{% else %}
+    <p class="resumen-chart-hint">
+        Arrastra para mover la vista, scroll o pinchar celular
+        para zoom, o usa los botones/franja de abajo para saltar
+        a un período. Doble clic para volver a la vista completa.
+    </p>
+    <div class="resumen-chart-card">
+        <div id="resumen-chart"></div>
+    </div>
+
+    <script>
+        // Plain data, built server-side by build_resumen_chart_data()
+        // in app.py — this script only turns it into a Plotly figure,
+        // it does no aggregation/math of its own. Flask's tojson
+        // filter HTML-escapes for exactly this "raw JSON inside a
+        // script tag" use (same curly-percent-tojson pattern
+        // _asado_form.html already uses for its own WEIGHTS constant),
+        // so this is safe even though a user's own display name
+        // (editable via Configuración) ends up inside this JSON.
+        const CHART_DATA = {{ chart_data | tojson }};
+
+        // Read the app's OWN theme colors from the CSS custom
+        // properties in style.css, instead of hard-coding hex values
+        // a second time here — if the walnut palette is ever retuned,
+        // this chart follows automatically rather than silently going
+        // out of sync (the same "one place decides" reasoning as
+        // config.py's FORMULA, just applied to color instead of math).
+        const rootStyle = getComputedStyle(document.documentElement);
+        const themeColor = (name) => rootStyle.getPropertyValue(name).trim();
+
+        const textColor = themeColor('--color-text');
+        const mutedColor = themeColor('--color-text-muted');
+        const gridColor = themeColor('--color-border');
+        const surfaceColor = themeColor('--color-surface');
+        const accentColor = themeColor('--color-accent-text');
+
+        // One trace per user. shape:'hv' draws a proper STEP line
+        // (flat, then a vertical jump exactly on the asado's date) —
+        // not a diagonal interpolation, which would falsely suggest
+        // points trickled in continuously between events. Only the
+        // LAST point of each line gets a visible marker (an 8px dot,
+        // per this app's dataviz convention for a line's endpoint);
+        // every earlier point stays marker-less so ~50 closely-spaced
+        // dates per user don't turn into a wall of dots.
+        const traces = CHART_DATA.series.map(function (s) {
+            const dates = s.points.map(function (p) { return p[0]; });
+            const values = s.points.map(function (p) { return p[1]; });
+            const sizes = dates.map(function (_, i) { return i === dates.length - 1 ? 8 : 0; });
+            return {
+                x: dates,
+                y: values,
+                name: s.name,
+                mode: 'lines+markers',
+                line: { color: s.color, width: 2, shape: 'hv' },
+                marker: { color: s.color, size: sizes, line: { color: surfaceColor, width: 2 } },
+                // Empty <extra></extra> suppresses Plotly's own
+                // secondary "trace name" box — in hovermode:'x
+                // unified' below, the unified tooltip already
+                // prefixes every row with the series' own name and
+                // color swatch on its own.
+                hovertemplate: '%{y:.2f} pts<extra></extra>',
+            };
+        });
+
+        // Direct end-of-line name labels — required relief (not just
+        // a nicety) for two of these eight validated colors, which
+        // fall under the app's own 3:1 contrast floor against the
+        // walnut card surface (see RESUMEN_CHART_PALETTE's comment in
+        // app.py) — labels use the app's own text color, never the
+        // series color, so they stay legible regardless.
+        //
+        // COLLISION HANDLING: two users finishing within a few points
+        // of each other land within a few PIXELS of each other on the
+        // y-axis, and their name labels visually overlap into an
+        // unreadable stack — a real anti-pattern (nudging colliding
+        // labels apart vertically detaches them from their lines and
+        // reads as noise). Instead, any final values within ~3.5% of
+        // the y-axis range of each other are grouped into ONE
+        // combined "Name, Name" label at their shared height — the
+        // legend below still identifies each one individually, so no
+        // information is actually lost, only the doomed attempt to
+        // print two labels on top of each other. This is general (not
+        // hard-coded to whichever two users happen to be close this
+        // month) — the standings shift over time, and whoever's close
+        // at the moment gets merged automatically.
+        // Direct end-labels need real horizontal room to the right of
+        // the plot (the name text itself, past the line's last point)
+        // — room this chart doesn't have on a phone. Below 600px they
+        // are DROPPED entirely rather than squeezed: a first pass
+        // tried to keep them at every width and the labels/legend/
+        // x-axis dates all collided into unreadable overlapping text
+        // (caught by a Playwright screenshot, not guessed at). The
+        // legend + hover tooltip are the named fallback for exactly
+        // this ("legend + tooltip" per the dataviz skill's own
+        // collision guidance) and both stay fully present on mobile —
+        // nothing is actually inaccessible, just not direct-labeled.
+        const isNarrow = window.innerWidth < 600;
+
+        let annotations = [];
+        if (!isNarrow) {
+            const finalValues = CHART_DATA.series.map(function (s) { return s.points[s.points.length - 1][1]; });
+            const yRange = Math.max.apply(null, finalValues.concat([0]));
+            const collisionThreshold = yRange * 0.035;
+
+            const byFinalValue = CHART_DATA.series.slice().sort(function (a, b) {
+                return a.points[a.points.length - 1][1] - b.points[b.points.length - 1][1];
+            });
+
+            // COLLISION HANDLING: two users finishing within a few
+            // points of each other land within a few PIXELS of each
+            // other on the y-axis, and their name labels visually
+            // overlap into an unreadable stack — a real anti-pattern
+            // (nudging colliding labels apart vertically detaches them
+            // from their lines and reads as noise). Instead, any final
+            // values within ~3.5% of the y-axis range of each other
+            // are grouped into ONE combined "Name, Name" label at
+            // their shared height — the legend still identifies each
+            // one individually, so no information is actually lost,
+            // only the doomed attempt to print two labels on top of
+            // each other. This is general (not hard-coded to whichever
+            // two users happen to be close this month) — the standings
+            // shift over time, and whoever's close gets merged
+            // automatically.
+            let idx = 0;
+            while (idx < byFinalValue.length) {
+                const cluster = [byFinalValue[idx]];
+                let next = idx + 1;
+                while (next < byFinalValue.length) {
+                    const clusterLast = cluster[cluster.length - 1].points;
+                    const clusterLastVal = clusterLast[clusterLast.length - 1][1];
+                    const candidateVal = byFinalValue[next].points[byFinalValue[next].points.length - 1][1];
+                    if (candidateVal - clusterLastVal <= collisionThreshold) {
+                        cluster.push(byFinalValue[next]);
+                        next++;
+                    } else {
+                        break;
+                    }
+                }
+                const rightmostDate = cluster[cluster.length - 1].points[cluster[cluster.length - 1].points.length - 1][0];
+                const avgY = cluster.reduce(function (sum, s) { return sum + s.points[s.points.length - 1][1]; }, 0) / cluster.length;
+                annotations.push({
+                    x: rightmostDate, y: avgY, xref: 'x', yref: 'y',
+                    text: '  ' + cluster.map(function (s) { return s.name; }).join(', '),
+                    showarrow: false, xanchor: 'left', align: 'left',
+                    font: { color: textColor, size: 11 },
+                });
+                idx = next;
+            }
+        }
+
+        const layout = {
+            paper_bgcolor: 'transparent',
+            plot_bgcolor: 'transparent',
+            font: { color: mutedColor, family: "'Inter', -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+            // Right margin exists to leave room for the end-of-line
+            // labels — collapses to a small fixed gap when isNarrow
+            // drops those labels, so the plot gets that width back
+            // instead of leaving a mysteriously empty strip. Bottom
+            // margin grows on mobile because a narrower plot forces
+            // Plotly to rotate the date tick labels diagonally to keep
+            // them from overlapping each other — rotated text needs
+            // more vertical room than horizontal text, the opposite of
+            // what the earlier (wrong) mobile CSS height assumed.
+            // Extra TOP margin (was 10px) is what makes room for the
+            // legend row now living above the plot — see legend.y
+            // below. Bottom margin still grows on narrow screens for
+            // the rotated date ticks.
+            // isNarrow's top margin is much bigger than desktop's: below
+            // ~600px the 4 rangeselector buttons don't fit on one row
+            // and wrap to two, which needs real room reserved above the
+            // plot or the (also top-mounted, see legend below) legend
+            // collides with the wrapped second row of buttons — measured
+            // via the same width-sweep approach as the CSS height notes.
+            margin: { l: 55, r: isNarrow ? 15 : 130, t: isNarrow ? 150 : 60, b: isNarrow ? 70 : 40 },
+            xaxis: {
+                type: 'date',
+                gridcolor: gridColor,
+                linecolor: gridColor,
+                tickfont: { color: mutedColor },
+                // The "movable/zoomable/filter by period" ask, in one
+                // combo: rangeslider is a mini overview strip you drag
+                // to shift the visible window (the "movable" part);
+                // scroll/pinch zoom (config below) and box-drag zoom
+                // are the "zoomable" part; rangeselector's preset
+                // buttons are the "filter by period" part. All three
+                // are Plotly's own built-in features on a date axis —
+                // no extra plugin/CDN script needed for any of them.
+                rangeslider: { visible: true, bgcolor: surfaceColor, bordercolor: gridColor, thickness: isNarrow ? 0.06 : 0.09 },
+                rangeselector: {
+                    // Pinned ABOVE the plot (y > 1, in the reserved
+                    // top margin), well clear of the legend sharing
+                    // that same band — see the measured gap check
+                    // this was tuned against, in CLAUDE.md. Pushed
+                    // further up when narrow: below ~600px the 4
+                    // buttons don't fit one row and wrap to two,
+                    // needing more clearance above the legend (which
+                    // stays at a FIXED y — see legend.y below — moving
+                    // both independently is what caused a real
+                    // regression once already: raising the legend's y
+                    // to "make room" pushed it ABOVE these buttons
+                    // instead of staying below them).
+                    y: isNarrow ? 1.5 : 1.2,
+                    buttons: [
+                        { count: 3, label: '3m', step: 'month', stepmode: 'backward' },
+                        { count: 6, label: '6m', step: 'month', stepmode: 'backward' },
+                        { count: 1, label: '1a', step: 'year', stepmode: 'backward' },
+                        { step: 'all', label: 'Todo' },
+                    ],
+                    bgcolor: surfaceColor,
+                    activecolor: accentColor,
+                    bordercolor: gridColor,
+                    font: { color: textColor },
+                },
+            },
+            yaxis: {
+                title: { text: 'Puntos acumulados', font: { color: mutedColor } },
+                gridcolor: gridColor,
+                linecolor: gridColor,
+                tickfont: { color: mutedColor },
+                // Cumulative points never go down — pinning the axis
+                // to start at 0 keeps every user's early, near-zero
+                // history readable instead of Plotly auto-scaling to
+                // whatever the lowest VISIBLE value is after a zoom.
+                rangemode: 'tozero',
+            },
+            // A legend is mandatory here regardless of the direct
+            // labels above (dataviz convention: identity is never
+            // color-alone) — also doubles as a click-to-isolate/
+            // double-click-to-solo control, which is Plotly's own
+            // built-in behavior, free.
+            //
+            // LIVES ABOVE THE PLOT NOW (y > 1, yanchor 'bottom'), not
+            // below the rangeslider where it started. A first version
+            // stacked it under the rangeslider and measured a real
+            // ~14px overlap between their bounding boxes at EVERY
+            // viewport width tested (320px through 1600px) — small
+            // enough to look fine in one screenshot, big enough to
+            // read as "the legend hides under the timeline" in an
+            // actual browser, which is exactly what happened. Rather
+            // than keep hand-tuning a negative y against Plotly's
+            // rangeslider geometry (part fixed pixels, part a fraction
+            // of a fraction — fragile to get precise from the docs
+            // alone), putting the legend where nothing else competes
+            // for the same band removes the whole class of collision.
+            // y is FIXED regardless of isNarrow, on purpose — it's the
+            // rangeselector buttons above it (see xaxis.rangeselector.y)
+            // that move to make room when they wrap to two rows on a
+            // narrow screen, not this. Two things independently moving
+            // to "make more room" is exactly what inverted their stacking
+            // order the first time this was tuned.
+            legend: { orientation: 'h', y: 1.02, yanchor: 'bottom', font: { color: textColor, size: isNarrow ? 10 : 12 } },
+            annotations: annotations,
+            // 'x unified': one tooltip box lists every user's value at
+            // the hovered date, instead of needing the pointer to land
+            // exactly on one thin line — the "crosshair finds the X"
+            // behavior this app's dataviz convention calls for.
+            hovermode: 'x unified',
+            // Default to PAN on click-drag (not Plotly's own default
+            // of box-zoom-on-drag) — "movable" was asked for first;
+            // the modebar (top-right of the chart) still offers an
+            // explicit zoom-box tool for anyone who wants it, and the
+            // scroll-wheel/pinch zoom below works regardless of this.
+            dragmode: 'pan',
+        };
+
+        const config = {
+            responsive: true,
+            scrollZoom: true,
+            displaylogo: false,
+            // Lasso/box SELECTION (as opposed to box ZOOM, which stays)
+            // has no meaning on a trend line — nothing to "select" —
+            // so it's dropped from the modebar rather than left as a
+            // dead button.
+            modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+        };
+
+        Plotly.newPlot('resumen-chart', traces, layout, config);
+    </script>
 {% endif %}
 {% endblock %}

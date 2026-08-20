@@ -14,6 +14,7 @@ import os
 import csv
 import io
 import functools
+import collections
 import secrets                     # unguessable CSRF tokens + the export-token comparison
 from flask import Flask, render_template, request, redirect, url_for, g, jsonify, session, Response
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -32,7 +33,7 @@ DATABASE = "asados.db"  # the SQLite database is just a single file on disk
 # version is cut (see CLAUDE.md). Nothing ties these three together
 # automatically; forgetting to bump this is a real, easy-to-repeat
 # mistake, so check it specifically before tagging a new release.
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 # How many rows to show per page before showing a "next" arrow, on the
 # home page and on Base de Asados respectively. Base de Asados can show
@@ -92,6 +93,175 @@ RESUMEN_SORT_COLUMNS = {
 # leader belongs on top before anyone touches a header.
 RESUMEN_DEFAULT_SORT = "total"
 RESUMEN_DEFAULT_DIRECTION = "desc"
+
+# ---------------------------------------------------------------------
+# USER COLOR — one identity color per user, shared across the WHOLE app
+# ---------------------------------------------------------------------
+# Originally built just for the Resumen chart (hence the name that
+# stuck on the variable below), then reused as-is for the small color
+# swatch next to a name in Resumen's table and next to each participant
+# on the home page — deliberately the SAME palette and the SAME
+# assignment rule everywhere, via get_user_color() below, rather than
+# three places independently deciding "what color is this person."
+# Recoloring the app, or extending it to a 4th place (Base de Asados?
+# view_asado.html?), means calling get_user_color() there too — never
+# re-deriving a color inline.
+#
+# This is a CATEGORICAL palette (identity: which user), 8 fixed hues in
+# a fixed order — never generated, never reassigned by row position.
+# These are the dataviz skill's own documented default categorical
+# hues (dark-surface column), used UNCHANGED: run against this app's
+# actual chart/card surface (--color-surface, the walnut/leather
+# #453524 cards use) rather than the skill's own near-black reference
+# surface, they still clear every hard gate — lightness band, chroma
+# floor, CVD separation (adjacent ΔE 8.4 — the relevant gate for a line
+# chart or a column of swatches in a list, where only NEIGHBOURING
+# entries are ever compared side by side; a scatter/bubble chart, where
+# any two dots can end up adjacent, would need the much stricter
+# all-pairs gate instead, which this palette's full 8 slots do NOT
+# clear), and the normal-vision floor. Two slots (magenta, green) land
+# under the 3:1 contrast floor against that surface — legal only WITH
+# secondary encoding, which is why every place this color appears also
+# shows the person's NAME right next to the swatch, never a color
+# standing alone as the only identifier. See CLAUDE.md's "Resumen's
+# chart" section for the full validation run this palette came from.
+#
+# Indexed by (user_id - 1) % 8 in get_user_color() below, NOT by row/
+# sort position — "color follows the entity, never its rank" (dataviz
+# skill). A user keeps the same color for as long as their account
+# exists, regardless of another user being added or deleted, or of how
+# any given table happens to be sorted at the moment. Past 8 users the
+# palette repeats (two people would share a color) — a real limit
+# worth revisiting with the same six-checks validator if this group
+# ever grows past 8 active accounts, not something to silently patch
+# by generating a 9th hue.
+USER_COLOR_PALETTE = [
+    "#3987e5",  # 1 blue
+    "#d95926",  # 2 orange
+    "#199e70",  # 3 aqua
+    "#c98500",  # 4 yellow
+    "#d55181",  # 5 magenta
+    "#008300",  # 6 green
+    "#9085e9",  # 7 violet
+    "#e66767",  # 8 red
+]
+
+
+def get_user_color(user_id):
+    """THE single place that decides what color a user is, anywhere in
+    this app — the chart, the Resumen table, the home page's
+    participant lists, and anywhere added later all call this instead
+    of indexing USER_COLOR_PALETTE themselves. Also injected into every
+    Jinja template as user_color() (see inject_user_color() below), so
+    a template can call {{ user_color(row.user_id) }} directly without
+    app.py needing to pre-compute a "color" field into every query
+    result first."""
+    return USER_COLOR_PALETTE[(user_id - 1) % len(USER_COLOR_PALETTE)]
+
+
+def build_resumen_chart_data(db):
+    """
+    Builds the data for Resumen's "cumulative points over time" chart —
+    one step-line per user, points accumulating as their asados happen.
+
+    Deliberately INDEPENDENT of the page's own ?year=/?semester= filters
+    that scope the standings table above it. Those answer "who's ahead
+    THIS period"; a cumulative total sliced to a period and re-started
+    at 0 answers a much less useful question ("points scored only
+    inside this window", which isn't really "cumulative" any more).
+    Instead the chart always plots the FULL history, and its own
+    pan/zoom/range-selector (see resumen.html) is how a viewer explores
+    a period — a real interactive control, not a second, conflicting
+    filter fighting the one above the table.
+
+    Returns a JSON-serializable dict (plain lists/dicts, never
+    sqlite3.Row — those aren't JSON-serializable), embedded into
+    resumen.html via `{{ chart_data | tojson }}`:
+        {
+            "series": [
+                {"user_id": 1, "name": "...", "color": "#...",
+                 "points": [["2026-01-01", 0.0], ["2026-01-02", 0.8], ...]},
+                ...
+            ],
+        }
+    Empty "series" (no participations at all, ever) is a valid, expected
+    result — resumen.html shows a plain empty-state message instead of
+    an empty chart in that case, same pattern as the table above it.
+
+    THE STEP SHAPE (drawn in resumen.html via Plotly's `shape: 'hv'`)
+    is what makes this an honest picture, not just a stylistic choice:
+    a cumulative total is exactly flat between two asados and jumps
+    EXACTLY on the date of the next one — a straight diagonal line
+    between two points (the plotting default) would imply points
+    trickled in continuously, which never happened.
+
+    WHY EVERY LINE STARTS AT (min_date, 0) AND ENDS AT (max_date, their
+    latest total): so all users sit on the same x-axis start/end and a
+    late-joining or occasional participant reads as "flat, then
+    rising" rather than a line that simply starts mid-chart with no
+    visual way to compare it to someone who's been around since day
+    one. This is honest, not misleading — their real cumulative total
+    on a date before their first asado genuinely was zero.
+    """
+    rows = db.execute(
+        """
+        SELECT users.id AS user_id, users.name AS name, asados.date AS date,
+               SUM(participations.points) AS day_points
+        FROM participations
+        JOIN asados ON asados.id = participations.asado_id
+        JOIN users ON users.id = participations.user_id
+        GROUP BY users.id, asados.date
+        ORDER BY users.id, asados.date
+        """
+    ).fetchall()
+
+    if not rows:
+        return {"series": []}
+
+    by_user = collections.OrderedDict()
+    names = {}
+    for r in rows:
+        by_user.setdefault(r["user_id"], []).append((r["date"], r["day_points"]))
+        names[r["user_id"]] = r["name"]
+
+    all_dates = [r["date"] for r in rows]
+    min_date = min(all_dates)
+    max_date = max(all_dates)
+
+    series = []
+    for user_id, day_points in by_user.items():
+        cumulative = 0.0
+        curve = []
+        # Anchor the start: if this user's own first asado is AFTER
+        # the group's earliest one, insert an explicit (min_date, 0)
+        # point so their line starts flat from the same left edge as
+        # everyone else's, instead of only beginning wherever their
+        # own history happens to start.
+        if day_points[0][0] != min_date:
+            curve.append([min_date, 0.0])
+        for date, points_that_day in day_points:
+            cumulative = round(cumulative + points_that_day, 2)
+            curve.append([date, cumulative])
+        # Anchor the end the same way, so every line reaches the same
+        # right edge (flat at their latest total) rather than stopping
+        # dead at whatever date they last happened to attend.
+        if curve[-1][0] != max_date:
+            curve.append([max_date, cumulative])
+
+        series.append({
+            "user_id": user_id,
+            "name": names[user_id],
+            "color": get_user_color(user_id),
+            "points": curve,
+        })
+
+    # Cosmetic, not load-bearing: ordering series highest-final-total
+    # first makes the legend read roughly like the standings table
+    # above it, which is a nicer default than sqlite's GROUP BY order
+    # (by user_id) — but nothing downstream depends on this order.
+    series.sort(key=lambda s: -s["points"][-1][1])
+
+    return {"series": series}
 
 
 def parse_page_number(value):
@@ -418,6 +588,17 @@ def inject_version():
     base.html's footer can show it without every single route passing
     it through render_template() by hand."""
     return {"version": VERSION}
+
+
+@app.context_processor
+def inject_user_color():
+    """Makes user_color(user_id) callable from any template — e.g.
+    {{ user_color(row.user_id) }} — same "inject once, use everywhere"
+    pattern as csrf_token()/version above. This is what lets
+    resumen.html and index.html both show the same per-user color
+    swatch without app.py needing to pre-compute a "color" key into
+    every query result those two (and any future) routes build."""
+    return {"user_color": get_user_color}
 
 
 @app.before_request
@@ -904,7 +1085,7 @@ def index():
     for asado in asados:
         participants = db.execute(
             """
-            SELECT users.name, participations.rol, participations.points
+            SELECT users.id AS user_id, users.name, participations.rol, participations.points
             FROM participations
             JOIN users ON participations.user_id = users.id
             WHERE participations.asado_id = ?
@@ -1735,6 +1916,11 @@ def resumen_page():
         selected_semester=semester_filter,
         sort_key=sort_key,
         direction=direction,
+        # See build_resumen_chart_data()'s own docstring for why this
+        # is computed from the FULL history, not the year/semester
+        # filters above (rows/available_years/etc. all respect them;
+        # this deliberately doesn't).
+        chart_data=build_resumen_chart_data(db),
     )
 
 

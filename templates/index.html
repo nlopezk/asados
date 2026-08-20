@@ -224,7 +224,7 @@
             <p class="asado-participants-label">Participantes:</p>
             <ul class="participant-list">
                 {% for p in item.participants %}
-                    <li>{{ p.name }} — {{ p.rol }} — <strong>{{ p.points }} pts</strong></li>
+                    <li><span class="user-color-dot" style="background-color: {{ user_color(p.user_id) }}"></span>{{ p.name }} — {{ p.rol }} — <strong>{{ p.points }} pts</strong></li>
                 {% endfor %}
             </ul>
         </div>

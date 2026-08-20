@@ -793,6 +793,227 @@ instead of centered. Any time you cap a block narrower than its
 container on this app's wide pages, centering needs both properties
 together, not just the cap.
 
+### Resumen's chart — cumulative points over time, one step-line per user
+Below the standings table, a Plotly line chart plots every user's
+running point total across their whole history. Built following this
+repo's `dataviz` skill (form → color → validate → marks → interaction →
+accessibility → *look at it*), and every real decision below came out
+of that procedure, not taste.
+
+**Plotly, not Chart.js** — even though Chart.js was the library named
+in the original roadmap notes. The deciding factor was the literal
+feature list asked for: "movable, zoomable, or filtering by periods."
+Plotly's date axis ships a `rangeslider` (a draggable mini-overview —
+the "movable" part), scroll/pinch zoom plus box-zoom (the "zoomable"
+part), and a `rangeselector` of preset buttons (3m/6m/1a/Todo — the
+"filtering by periods" part) as built-in `layout` options on ANY
+cartesian trace — no plugin, no separate date-adapter script. Chart.js
+would have needed a zoom plugin AND a date adapter as two more CDN
+scripts with their own version-compatibility matrix, for the same
+three features. Loaded via jsdelivr's `plotly.js-cartesian-dist-min`
+(Plotly's own smaller partial bundle — 2D line/scatter charts only, not
+3D/maps/etc.), exact-version-pinned (`@2.35.2`) the same way Leaflet
+already is in `_location_picker.html` — a pin never silently changes
+behavior later, unlike Flatpickr's always-latest include on the home
+page.
+
+**The palette is the dataviz skill's own documented default categorical
+hues, dark-surface column, completely UNCHANGED** — not because
+inventing a walnut-themed palette wasn't considered, but because the
+validator (`validate_palette.js --mode dark --surface "#453524"`, this
+app's actual `--color-surface`, not the skill's own near-black
+reference surface) already passes every hard gate at that exact
+surface color: lightness band, chroma floor, the adjacent-pair CVD
+separation that applies to a LINE chart or a column of swatches in a
+list (ΔE 8.4 — a scatter/bubble chart would need the much stricter
+all-pairs gate instead, which this palette's full 8 slots do NOT
+clear), and the normal-vision floor. Two slots (magenta `#d55181`,
+green `#008300`) land under the 3:1 contrast-vs-surface floor — legal
+only WITH secondary encoding, which is why color never stands alone
+anywhere it's used: the chart backs it with a legend, a unified hover
+tooltip, AND direct end-of-line name labels; the table/home-page
+swatches always sit directly beside the person's name, never replacing
+it. Colors are assigned by `get_user_color(user_id)` — `(user_id - 1)
+% 8` into `USER_COLOR_PALETTE` (app.py, originally named for the chart
+alone; see "One color per user, everywhere" below for why it's now
+shared app-wide) — keyed to the stable, permanent `user_id`, never to
+sort position or row index, so "color follows the entity, never its
+rank" (deleting or adding a user never repaints anyone else's color).
+Past 8 concurrent users the palette repeats; if this group ever grows
+past that, re-run the validator rather than silently generating a 9th
+hue.
+
+**The line SHAPE is a step (`shape: 'hv'`), not a diagonal
+interpolation** — this is the one place a chart's default rendering
+would have been dishonest. A cumulative total is exactly flat between
+two asados and jumps EXACTLY on the date of the next one; a straight
+diagonal line between two points would visually claim points trickled
+in continuously, which never happened. `'hv'` (horizontal-then-vertical)
+draws the flat segment first and the jump precisely at the event's own
+x, which is what actually happened.
+
+**Every line is anchored to the same start (the group's earliest asado
+date, value 0) and the same end (the group's latest asado date, at
+each user's own latest total)** — `build_resumen_chart_data()` inserts
+these synthetic endpoints when a user's own history doesn't already
+touch them. This is what makes a late-joining or occasional participant
+(Checo, currently) read as "flat, then rising" instead of a line that
+simply starts mid-chart with no way to visually compare it to someone
+who's been around since day one. It's honest, not misleading — their
+real cumulative total on a date before their first asado genuinely
+was zero.
+
+**Deliberately INDEPENDENT of Resumen's own `?year=`/`?semester=`
+filters** — `build_resumen_chart_data()` always queries the full
+history, regardless of what's currently selected above the table. A
+"cumulative total" sliced to a filtered period and restarted at 0
+answers a much less useful question ("points scored only inside this
+window"), and it would fight the chart's OWN interactive range control
+— which is the actual, literal feature that was asked for — with a
+second, different filtering mechanism above it. The standings table
+answers "who's ahead THIS period"; the chart answers "how has everyone
+trended over time," and its own pan/zoom/rangeselector is how a viewer
+explores any period they want.
+
+**Colliding end-labels merge into one combined label, they don't get
+nudged apart** — the dataviz skill calls out vertically nudging
+colliding labels as a real anti-pattern (it detaches them from their
+lines and reads as noise). Two users finishing within ~3.5% of the
+y-axis range of each other (currently "nicog"/"raul", 39.34 vs 38.38)
+get ONE "Name, Name" annotation at their shared height instead of two
+overlapping ones. This clustering is written generically (a sort +
+threshold scan over final values), not hard-coded to whichever two
+users happen to be close this month — the standings shift, and
+whoever's close at the time gets merged automatically.
+
+**Direct end-labels are DROPPED ENTIRELY below 600px viewport width**
+(`isNarrow` in resumen.html), relying on the legend + hover tooltip
+instead — the dataviz skill's own named fallback for exactly this
+situation. This wasn't a stylistic call: a first pass tried to keep
+the labels at every width, and on a ~300px-wide plot the label text,
+the wrapped legend, and the rotated x-axis date ticks all visually
+collided into unreadable overlapping text — caught by a Playwright
+screenshot, not guessed at. Below 600px the right margin also
+collapses (130px → 15px) to give the narrow plot that width back
+instead of leaving an empty strip reserved for labels that no longer
+render.
+
+**The legend lives ABOVE the plot (`legend.y: 1.02, yanchor: 'bottom'`),
+not below the rangeslider where it started** — this took two real
+rounds to get right, both worth knowing before touching this chart
+again:
+
+- *Round 1*: the legend sat under the rangeslider (`legend.y: -0.22`),
+  tuned by eyeballing one desktop screenshot and one 375px screenshot
+  where it looked fine. It wasn't: measuring the actual DOM (
+  `getBoundingClientRect()` on `.legend` vs `.rangeslider-container`)
+  found a real **14px bounding-box overlap at every width from 320px
+  to 1600px**, including the "clean-looking" desktop screenshot — text
+  bounding boxes carry padding a screenshot doesn't make obvious, so a
+  small overlap can measure as real while still rendering fine in one
+  particular browser/font/DPI combination, and rendering visibly broken
+  in another (which is exactly what happened — the person using the app
+  saw it hide under the rangeslider on their own screen). Rather than
+  keep hand-tuning a negative `y` against Plotly's rangeslider geometry
+  (part fixed pixels, part a fraction of a fraction — genuinely hard to
+  predict exactly from the docs alone), the legend was moved to the top
+  margin band instead, where nothing else competed for the same space.
+- *Round 2*: moving the legend up fixed the first problem and created a
+  narrower one — below ~600px the 4 rangeselector buttons don't fit one
+  row and wrap to two, and the FIRST fix for that (raising the legend's
+  own `y` on narrow screens) pushed the legend literally above the
+  buttons instead of staying below them, since a bigger Plotly `y`
+  means higher on the page. The actual fix: leave `legend.y` FIXED at
+  `1.02` regardless of width, and instead make `xaxis.rangeselector.y`
+  bigger on narrow screens (`1.5` vs `1.2`) — the buttons move to make
+  room for wrapping, the legend doesn't move at all.
+
+**The lesson generalizes: verify chart chrome across a WIDTH SWEEP, not
+2–3 sample breakpoints.** Both rounds above were caught by testing
+every ~50–100px from 320px to 1600px (`getBoundingClientRect()` on
+`.legend`, `.rangeselector`, `.rangeslider-container`, checking the gap
+between each pair is a real, positive number, not just "not obviously
+negative") — the second bug specifically only existed below 600px,
+which a 320/768/1600-style spot check would have walked right past.
+Also worth remembering while doing this: **resizing an already-loaded
+page's viewport does NOT re-run this chart's own `isNarrow` logic** —
+`isNarrow` and everything derived from it (margin, legend/rangeselector
+positioning) are computed ONCE when the page's inline `<script>` first
+runs. Plotly's `responsive: true` only reflows the existing SVG into
+the new width; it does not re-execute the page's own script. A sweep
+has to `page.goto()` fresh at each width, not `setViewportSize()` on a
+page that's already loaded — the first sweep attempt got this wrong
+and, ironically, "confirmed" the second bug was fixed when it hadn't
+even been tested yet.
+
+**Gotcha that also cost real iteration: rotated x-axis labels need
+MORE vertical room than horizontal ones, not less.** The first mobile
+pass assumed a narrower chart needs less container height (smaller
+rangeslider, was the reasoning) and set it lower than desktop's — this
+was backwards. A narrow plot forces Plotly to rotate the date tick
+labels diagonally so they don't overlap each other, and rotated text
+is taller. The mobile CSS height ended up the SAME as desktop's
+(620px, `static/style.css`), with extra `margin.b` reserved in the
+narrow-screen layout branch specifically for the rotated ticks.
+
+**`#resumen-chart`'s CSS `height` is not optional plumbing** — Plotly's
+`responsive: true` config re-flows the WIDTH on resize, but height
+comes from whatever pixel height the container element actually has
+at the moment `Plotly.newPlot()` runs, not from Plotly itself. The
+height has to fit the WHOLE stack (rangeselector buttons, the plot,
+x-axis labels, the rangeslider, the legend) or the chart chrome
+overlaps or gets clipped — a real, named anti-pattern ("a chart
+container whose fixed height excludes the axis band"), not a
+theoretical one; the very first version of this chart hit it.
+
+**Theme colors are read from the CSS custom properties at render
+time** (`getComputedStyle(document.documentElement)`), not hard-coded
+a second time in the chart's own JS — if the walnut palette in
+`:root` is ever retuned, this chart follows automatically instead of
+silently drifting out of sync, the same "one place decides" reasoning
+`config.py`'s `FORMULA` already follows for the points math.
+
+### One color per user, everywhere — not just the chart
+`get_user_color(user_id)` in app.py (built on `USER_COLOR_PALETTE`,
+the same categorical palette validated for the Resumen chart above) is
+the ONE function anywhere in this app that decides what color a user
+is. It's used in three places today — the chart, a small dot next to
+each name in Resumen's table, and a small dot next to each participant
+on the home page's asado cards — and any future place a user's
+identity needs a color should call it too, never re-derive one.
+
+**Exposed to every template as `user_color()` via a context processor**
+(`inject_user_color()`, same "inject once, use everywhere" pattern
+`csrf_token()`/`version` already use) — a template calls
+`{{ user_color(row.user_id) }}` directly; app.py never needs to
+pre-compute a "color" key into a query result just so a template can
+read it. This is WHY `index()`'s participants query now selects
+`users.id AS user_id` (it didn't before this feature existed) — any
+new query whose rows get a color swatch needs to select the user's id
+too, or `user_color()` has nothing to key off of in that template.
+
+**The swatch is a small dot (`.user-color-dot`, style.css), not a
+filled background or a colored name** — consistent with the dataviz
+skill's rule that text never wears the data color, and with two of
+this palette's eight colors sitting under this app's own 3:1 contrast
+floor (see above): the dot supplements the name, it never becomes the
+only way to tell who's who. It's a plain inline `<span>` with an
+inline `style="background-color: ..."` (the color is per-row runtime
+data, not a fixed class, so a CSS class per color doesn't make sense
+here) — this reliably trips the VSCode CSS-in-`style`-attribute
+linter into flagging "at-rule or selector expected" on that line,
+because the linter tries to parse the Jinja `{{ user_color(...) }}`
+expression as literal CSS and chokes on it. Same false-positive
+category CLAUDE.md already documents for `_asado_form.html`'s
+`{{ weights|tojson }}` inside a `<script>` tag — cosmetic, doesn't
+affect the running app, left as-is rather than restructured just to
+quiet an editor warning.
+
+**Renaming note**: this constant was called `RESUMEN_CHART_PALETTE`
+until this feature existed — if you're looking at an old commit or an
+old comment that still says that name, it's the same palette, just
+before it was reused beyond the chart alone.
+
 ### Recurring locations — a quick-fill pool, deliberately NOT linked to asados
 `locations` (schema.sql) holds a small, user-curated pool of named
 places ("Casa de Nico", "Quincho El Bosque") — managed at `/ubicaciones`

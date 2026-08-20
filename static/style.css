@@ -524,6 +524,28 @@ hr {
     padding-left: 18px;
 }
 
+/* --- Per-user color swatch (shared by index.html + resumen.html) ---
+   The same small dot, styled once, used everywhere get_user_color()
+   (app.py) is called from a template — a plain round swatch rather
+   than a filled background/pill, since the identity channel here is
+   meant to SUPPLEMENT the name/text next to it, never replace it (see
+   the dataviz notes on USER_COLOR_PALETTE in app.py — two of its eight
+   colors fall under this app's own 3:1 text-contrast floor, so they
+   are never relied on to carry meaning alone). */
+.user-color-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    margin-right: 6px;
+    /* A thin surface-colored ring, same spacer idea .truncate-cell's
+       tooltip cursor and the chart's own end-markers already use
+       elsewhere in this app — keeps the dot legible against both the
+       walnut card background and a busier row background alike. */
+    box-shadow: 0 0 0 1.5px var(--color-surface);
+    vertical-align: middle;
+}
+
 .empty-state {
     text-align: center;
     color: var(--color-text-muted);
@@ -1289,6 +1311,75 @@ button:hover {
     font-size: 0.82em;
     color: var(--color-text-muted);
     line-height: 1.45;
+}
+
+/* --- Resumen: cumulative points chart (Plotly) --- */
+.resumen-chart-title {
+    margin-top: 26px;
+}
+
+.resumen-chart-hint {
+    margin: 0 0 10px 0;
+    font-size: 0.82em;
+    color: var(--color-text-muted);
+}
+
+/* Same card language as .asado-card/.filter-form — surface background,
+   border, soft shadow — so the chart reads as one more panel on the
+   page instead of a foreign embed. Deliberately capped narrower than
+   the full 1500px .container-wide tier (same reasoning as
+   .resumen-wrapper above it): a chart this wide on a large monitor
+   would just stretch the plotted lines further apart with no gain in
+   readability, and Plotly's own rangeslider/legend/margins were tuned
+   against a ~1300px working width. */
+.resumen-chart-card {
+    max-width: 1300px;
+    margin: 0 auto;
+    padding: 16px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Plotly's `responsive: true` config (see resumen.html) makes it
+   re-flow to whatever WIDTH this element resolves to on resize, but
+   Plotly does NOT infer a height from CSS the same way — it renders
+   at whatever pixel height this element actually has at the moment
+   Plotly.newPlot() runs. Setting the height here (rather than via
+   Plotly's own `layout.height`) keeps sizing entirely in CSS, where
+   the rest of this app's responsive breakpoints already live.
+   The height has to fit the WHOLE stack — rangeselector buttons on
+   top, the plot itself, x-axis tick labels, the rangeslider mini-chart
+   underneath, and the legend row below that — not just the plotted
+   area, or the legend/rangeslider get clipped or overlap each other
+   (a real anti-pattern: a fixed height that excludes chart chrome).
+   A first pass at 520px genuinely clipped the legend clean off the
+   render — Playwright screenshots caught it before this ever shipped
+   — 620px was the number that actually fit the full stack, measured
+   the same way. If you change the legend/rangeslider/rangeselector
+   settings in resumen.html, re-measure this rather than assume a
+   number "close enough" still fits. */
+#resumen-chart {
+    width: 100%;
+    height: 620px;
+}
+
+@media (max-width: 480px) {
+    /* NOT less height than desktop — the opposite instinct is the
+       wrong one here (an earlier pass tried 420px assuming a shrunken
+       rangeslider would need less room, and it clipped/overlapped
+       everything). A NARROWER plot forces Plotly to rotate the x-axis
+       date labels diagonally to avoid them overlapping each other,
+       and rotated text needs MORE vertical room than horizontal text,
+       not less — resumen.html's own isNarrow branch adds bottom
+       margin for exactly this. Same height as desktop turned out to
+       be the number that actually fits the full stack without
+       overlap, measured the same screenshot-and-check way as the
+       620px figure above. */
+    #resumen-chart {
+        height: 620px;
+    }
 }
 
 /* --- Pagination (home page + Base de Asados) --- */

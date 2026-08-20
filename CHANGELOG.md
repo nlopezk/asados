@@ -11,13 +11,53 @@ and when.
 ## Next Features (ideas, not yet built)
 Roughly in the order they came up, not necessarily the order they'll
 ship.
-- Dashboard mockup with a KPI (the rest of Phase 4 — the leaderboard
-  half shipped in 1.0.0 as "Resumen"; the Looker Studio export in
-  1.1.0 is a real path to this one without adding a JS charting
-  library to the app itself).
+- A KPI/dashboard row above or beside Resumen's chart (Phase 4's
+  leaderboard shipped in 1.0.0 as the standings table; the trend chart
+  shipped in 1.2.0 — a small set of headline stat tiles is what's left).
 - Offsite backups (e.g. periodically pulling `backups/` down to a NAS)
   — the current backups protect against bad data, not against losing
   the hosting account.
+Potential bugs:
+- Verificar punto y coma.
+- one role per user per asado
+Social:
+- User statistics.
+- Calendar view
+Improvements:
+- Cow View
+- Favourite cuts (less priority)
+- Asado weight calculator
+
+Groups (much later): Creación de grupos, invitaciones y posibilidad de que el usuario pertenezca a distintos grupos.
+
+
+## [1.2.0] - 2026-08-20
+### Added
+- **Resumen chart**: a Plotly line graph below the standings table,
+  one step-line per user showing their cumulative points over their
+  whole history — pannable (drag, or the mini-overview strip), zoomable
+  (scroll/pinch, or box-zoom), and filterable by period (3m/6m/1a/Todo
+  preset buttons), all built into Plotly's own date axis. Deliberately
+  independent of the table's Año/Semestre filters — the chart always
+  shows full history, with its own interactive range as the way to
+  focus on a period. Colors are the `dataviz` skill's own validated
+  categorical palette, checked against this app's actual walnut card
+  surface, not eyeballed — see `CLAUDE.md`'s "Resumen's chart" section
+  for the full reasoning.
+- **The same per-user color now shows up everywhere**, not just the
+  chart: a small dot next to each name in Resumen's table, and next to
+  every participant on the home page's asado cards. One shared
+  function (`get_user_color()`) decides it, exposed to every template
+  as `user_color()` — see CLAUDE.md's "One color per user, everywhere"
+  section.
+### Fixed
+- The chart's legend genuinely overlapped the rangeslider beneath it
+  at every screen width (a real ~14px DOM overlap, not just a
+  narrow-screen issue) — moved to sit above the plot instead, where
+  nothing else competes for the same space, and re-verified across an
+  18-point width sweep from 320px to 1600px rather than the 2–3 sample
+  breakpoints the first pass shipped with. See CLAUDE.md for what
+  actually broke (twice) and why a narrow spot-check missed it.
 
 ## [1.1.0] - 2026-08-20
 ### Added
