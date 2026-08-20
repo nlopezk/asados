@@ -1500,6 +1500,22 @@ the app match `config.py`'s formula exactly.
 
 ## Gotchas already hit once (avoid repeating)
 
+- **`static/style.css` is cache-busted via `?v={{ version }}` on its
+  `<link>` in `base.html` — don't remove that query string.** 1.2.0
+  shipped a real CSS change (the per-user color dots) that was
+  genuinely deployed correctly (verified: the live file had the new
+  CSS) but was INVISIBLE to anyone who'd already visited the site
+  before the update, because their browser was still serving its own
+  cached copy of the old `style.css` — no server-side bug at all, a
+  client-side caching gap. Appending the app's own `VERSION` to the
+  URL means every release naturally busts old caches, since bumping
+  `VERSION` is already a required step for every release (see the
+  `VERSION` gotcha below). If a future CSS change "isn't showing up"
+  for a user after a confirmed-successful deploy, ask them to hard
+  refresh (Ctrl/Cmd+Shift+R) before assuming anything else is wrong —
+  and confirm the live server's own file is actually correct first
+  (`curl` the static URL directly) before spending time on any other
+  theory.
 - **`.gitignore` leading whitespace**: a previous edit accidentally had
   leading spaces on each line (e.g. `"   asados.db"` instead of
   `"asados.db"`), which silently broke pattern matching and let

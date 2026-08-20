@@ -24,7 +24,21 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- ?v={{ version }} busts the browser's cache on every release —
+         without it, a returning visitor's browser can keep serving an
+         OLD cached style.css indefinitely (no explicit Cache-Control
+         header on this file means browsers fall back to their own
+         heuristic caching based on Last-Modified, which is exactly
+         what happened here: a real style.css change shipped in
+         1.2.0's dots, but a browser that had visited before kept
+         showing the old stylesheet — invisible, un-styled <span>
+         elements, not a server bug). "version" already exists in
+         every template via inject_version() (same value the footer
+         shows), so this reuses it rather than adding new plumbing —
+         and since VERSION is already bumped every release by this
+         project's own established discipline, this fixes itself going
+         forward with zero extra steps. -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ version }}">
 </head>
 <body>
     <!-- CURRENT-SECTION HIGHLIGHT: request.endpoint is Flask's name for

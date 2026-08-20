@@ -31,6 +31,21 @@ Improvements:
 Groups (much later): Creación de grupos, invitaciones y posibilidad de que el usuario pertenezca a distintos grupos.
 
 
+## [1.2.1] - 2026-08-20
+### Fixed
+- **1.2.0's color dots were invisible after deploying**, for anyone
+  who'd already visited the site before the update — a real browser
+  caching gap, not a server bug (confirmed: the live `style.css` had
+  the correct new CSS the whole time). `base.html`'s stylesheet link
+  had no cache-busting, so a browser that already had an old
+  `style.css` cached had no reason to fetch the new one — the `<span>`
+  dots rendered in the HTML same as always, just with no CSS around to
+  make them visible. Now links as `style.css?v={{ version }}`, so
+  every version bump forces a fresh fetch automatically — nothing
+  extra to remember on future releases. A hard refresh
+  (Ctrl/Cmd+Shift+R) already fixed it for anyone hitting this before
+  pulling this release.
+
 ## [1.2.0] - 2026-08-20
 ### Added
 - **Resumen chart**: a Plotly line graph below the standings table,
