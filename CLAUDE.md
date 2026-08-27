@@ -507,7 +507,7 @@ yet, just one Flask app with a handful of routes:
   table, ONE ROW PER USER. Filters by `?year=`/`?semester=` and sorts
   by `?sort=`/`?dir=`; see the "Resumen" section below
 - `/usuario/<id>` (`user_profile`) — one person's own page: stat
-  tiles, a personal cumulative-points trend, and their full
+  tiles, a monthly asados-attended bar chart, and their full
   participation history. See "User profiles" below
 
 Data model (`schema.sql`): `users` ← `participations` → `asados` ←
@@ -1092,8 +1092,8 @@ before it was reused beyond the chart alone.
 ### User profiles — one click from any name + color dot, anywhere
 `/usuario/<user_id>` (`user_profile()` in app.py + `user_profile.html`)
 is a person's own page: four stat tiles (Puntos Totales,
-Participaciones, Promedio x Participación, Posición), a personal
-cumulative-points chart, and their full participation history.
+Participaciones, Promedio x Participación, Posición), a monthly
+asados-attended bar chart, and their full participation history.
 Reachable by wrapping a name + color dot in an `<a href="{{ url_for
 ('user_profile', user_id=...) }}">` — done today in Resumen's table,
 the home page's participant lists, and the home page's "Resumen del
@@ -1117,29 +1117,83 @@ abstraction over. If Resumen's own sort/rank logic and this one start
 drifting in what "the standings" means, that's the signal to
 consolidate — not before.
 
-**`build_user_chart_data()` is a deliberately SIMPLER sibling of
-`build_resumen_chart_data()`**, not a parameterized version of it —
-see its own docstring for the specific things it drops (no per-series
-color assignment beyond this one user's own `get_user_color()`, no
-group-wide start/end date anchoring, no end-label collision handling)
-and why: a solo trend line has nothing to anchor against, compare
-against, or collide with. The chart itself (`user_profile.html`)
-mirrors this — no legend (the page title already says whose line it
-is), no rangeslider/rangeselector (a glance-at-your-own-trend widget
-doesn't need Resumen's period-filtering chrome), just the step-line
-and a hover tooltip. `#profile-chart`'s CSS height (320px) was sized
-for exactly that reduced stack, not copied from `#resumen-chart`'s
-620px — a much shorter chart needs a much shorter container.
+**The profile chart is a monthly bar chart (`build_user_monthly_chart_data()`
+in app.py), not the cumulative-points step-line it originally shipped
+with** — replaced outright in v1.5.0 at the user's request ("a simple
+bar chart with sum of asados by month"), not kept as a second chart
+alongside it. It COUNTS asados attended per calendar month, not points
+scored — the four stat tiles above it already show the points total,
+and the group-wide points-over-time story already belongs to Resumen's
+own chart (`build_resumen_chart_data()`); this one answers a different
+question ("how often have I actually been showing up"), so it
+deliberately doesn't re-plot the same number a second way. One flat
+bar color (this user's own `get_user_color()`), never a magnitude
+color ramp — the dataviz skill's "one series → one color" rule: height
+already encodes the count, a color gradient keyed to that same count
+would just be a second, redundant encoding of it. Rounded top corners /
+square baseline via Plotly's `marker.cornerradius` (added specifically
+for this — see the "Resumen's chart" section below, which flagged this
+as "not yet used, planned").
+
+**Every month in the range gets a bar, including zero-count months** —
+`build_user_monthly_chart_data()` fills gaps in Python after the SQL
+`GROUP BY` (which only ever returns rows for months with ≥1 asado); a
+quiet stretch is real information ("nothing happened here"), and
+silently skipping from e.g. Mar to Jul would visually read as if no
+month existed in between rather than "zero, zero, zero, zero". The
+range runs from this user's own earliest participation month through
+the CURRENT real-world month (`datetime.date.today()`), not their
+latest participation — so someone who's gone quiet for a while shows
+that gap running right up to the present, instead of the chart quietly
+stopping the month they were last around (which would look identical
+to "still active, just not updated yet").
+
+**No legend, no rangeslider/rangeselector, no modebar at all**
+(`displayModeBar: false`) — this is a small "how's my month been"
+glance, not Resumen's multi-user comparison chart; there's nothing
+here worth zooming/panning into, and the page title + chart title
+already say whose counts these are. `dtick` is computed client-side via
+a small `niceIntegerStep()` helper in `user_profile.html` rather than
+left to Plotly's own auto-ticking — the y-axis is always a whole count
+of asados, and Plotly's default tick spacing has no idea of that and
+will happily offer a fractional gridline like 2.5 for a small max.
+`#profile-chart`'s CSS height (320px) was kept as-is from the original
+line-chart version — verified by screenshot that a short bar chart
+fits the same space comfortably, no re-tuning needed.
 
 ### "Resumen del Grupo" — the home page's friendly summary strip
-A row of compact, pill-shaped cards at the very top of the home page
-(above the filter form), one per participant: color dot, name (linked
-to their profile), total points, and a participation count.
-`build_group_summary()` in app.py builds it; deliberately NOT a second
-standings table — no per-category weight breakdown, no sortable
-columns, none of Resumen's own density. This answers "who's around and
-roughly how are they doing," not "exactly how did they get there" —
-Resumen (or now, clicking into a profile) is for that.
+A row of compact, pill-shaped cards at the very top of the home page —
+literally the first thing on the page (moved ahead of "Listado de
+Asados" itself in v1.5.0, at the user's request) — one per participant:
+color dot, name (linked to their profile), total points, and a
+participation count. `build_group_summary()` in app.py builds it;
+deliberately NOT a second standings table — no per-category weight
+breakdown, no sortable columns, none of Resumen's own density. This
+answers "who's around and roughly how are they doing," not "exactly
+how did they get there" — Resumen (or now, clicking into a profile) is
+for that.
+
+**Its title is a real `<h2>` (`.group-summary-title`), not an `<h3>`
+with a custom font-size override** — since it now leads the page, it
+needed the SAME visual weight as "Listado de Asados" below it, and the
+simplest way to guarantee that is literally sharing `h2`'s existing
+`font-size: 1.7em` rule rather than hand-picking a new number that
+could drift out of sync with it later. Two `<h2>`s on one page is
+fine — they're two peer sections, not a hierarchy violation.
+
+**v1.5.0's full home-page order, top to bottom**: success/error
+messages, "Resumen del Grupo", "Listado de Asados", a green "➕ Añadir
+Asado" shortcut button, the filter form, then the asado card list +
+pagination. The shortcut button (`.home-add-shortcut` wrapping an
+`<a class="primary-button primary-button-green">`) duplicates the
+navbar's own "Añadir Asado" link on purpose — the same reasoning that
+got "Inicio" added to the navbar in the first place: not everyone
+reliably notices a navbar link, and the single action most worth
+surfacing deserves a second, harder-to-miss entry point right in the
+page flow. It reuses `.primary-button-green` (style.css) rather than
+plain `.primary-button` specifically so its fill matches the navbar's
+own `.nav-link-add` green (`--color-green`/`--color-green-hover`) —
+same color, same action, wherever you meet it.
 
 **ALL-TIME and completely independent of the home page's own filters**
 (`?date_from=`/`?year=`/`?month=`/`?user_id=`) — same reasoning as

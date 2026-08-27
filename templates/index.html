@@ -6,8 +6,6 @@
 -->
 
 {% block content %}
-<h2>Listado de Asados</h2>
-
 {% if success %}
     <p class="success-message">{{ success }}</p>
 {% endif %}
@@ -18,13 +16,20 @@
 <!-- "RESUMEN DEL GRUPO" — a compact, friendly strip of "who's playing"
      cards, deliberately NOT a second standings table (Resumen already
      has that — see build_group_summary() in app.py for the full
-     reasoning). Sits above the filter form/asado list on purpose: a
-     stable "who's in this group" header, independent of whatever
-     filter narrows the list below it — so it never changes shape just
-     because someone picked a Año or Usuario filter. -->
+     reasoning). Deliberately the FIRST thing on the page (moved ahead
+     of "Listado de Asados" itself in 1.5.0, at the user's request) — a
+     stable "who's in this group" header is what you actually want to
+     see first on a page whose real subject is a friend group, not a
+     table. Its title is a plain <h2> (was <h3>) for the same reason:
+     now that it leads the page, it needed to read with the same
+     weight as "Listado de Asados" below it, not as a subsection of it
+     — two <h2>s on one page is fine, they're two peer sections, not a
+     hierarchy. Still independent of whatever filter narrows the list
+     below it — so it never changes shape just because someone picked
+     a Año or Usuario filter. -->
 {% if group_summary.participants|length > 0 %}
     <div class="group-summary">
-        <h3 class="group-summary-title">Resumen del Grupo</h3>
+        <h2 class="group-summary-title">Resumen del Grupo</h2>
         <p class="group-summary-subtitle">
             {{ group_summary.participants|length }}
             persona{{ 's' if group_summary.participants|length != 1 else '' }}
@@ -46,6 +51,22 @@
         </div>
     </div>
 {% endif %}
+
+<h2>Listado de Asados</h2>
+
+<!-- Shortcut straight to the "Añadir Asado" form — the SAME action the
+     navbar's own green link already offers, duplicated here because
+     not everyone reliably notices the navbar link (this is literally
+     why "Inicio" was added to the navbar too, see base.html). Reuses
+     .primary-button-green (style.css) rather than the plain
+     .primary-button so it visually matches the navbar's own
+     .nav-link-add green fill — same color variables
+     (--color-green/--color-green-hover), so "this button does the
+     same thing as that navbar link" reads instantly instead of having
+     to be inferred from the label text alone. -->
+<div class="home-add-shortcut">
+    <a href="{{ url_for('new_asado') }}" class="primary-button primary-button-green">➕ Añadir Asado</a>
+</div>
 
 <!-- Flatpickr: a small, dependency-free date picker — used here for its
      "range" mode, a single calendar where clicking a start day then an

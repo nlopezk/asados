@@ -31,6 +31,24 @@ Improvements:
 Groups (much later): Creación de grupos, invitaciones y posibilidad de que el usuario pertenezca a distintos grupos.
 
 
+## [1.5.0] - 2026-08-27
+### Changed
+- **Home page reordered**: "Resumen del Grupo" is now the first thing
+  on the page (its title is a real `<h2>`, matching "Listado de
+  Asados"'s size — bigger and clearer than the small `<h3>` it used to
+  be), followed by "Listado de Asados", a new green "➕ Añadir Asado"
+  shortcut button (same fill as the navbar's own Añadir Asado link),
+  the filter form, then the asado list and pagination — unchanged
+  internally, just moved.
+- **Profile page chart replaced**: the personal cumulative-points
+  step-line is now a bar chart of asados attended per calendar month
+  (including months with zero, from this user's earliest participation
+  through the current month) — one flat bar color per user, rounded
+  top corners, no legend/modebar/zoom chrome. See
+  `build_user_monthly_chart_data()` in app.py and CLAUDE.md's "User
+  profiles" section for the full reasoning (count vs. points, why every
+  month is filled in, why one flat color).
+
 ## [1.4.0] - 2026-08-20
 ### Added
 - **User profiles** (`/usuario/<id>`): click any name + color dot —

@@ -16,6 +16,7 @@ import io
 import functools
 import collections
 import secrets                     # unguessable CSRF tokens + the export-token comparison
+from datetime import date          # "today" for the profile page's monthly bar chart — see build_user_monthly_chart_data()
 from flask import Flask, render_template, request, redirect, url_for, g, jsonify, session, Response
 from werkzeug.security import check_password_hash, generate_password_hash
 from config import (
@@ -33,7 +34,7 @@ DATABASE = "asados.db"  # the SQLite database is just a single file on disk
 # version is cut (see CLAUDE.md). Nothing ties these three together
 # automatically; forgetting to bump this is a real, easy-to-repeat
 # mistake, so check it specifically before tagging a new release.
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 
 # How many rows to show per page before showing a "next" arrow, on the
 # home page and on Base de Asados respectively. Base de Asados can show
@@ -2073,39 +2074,84 @@ def resumen_page():
     )
 
 
-def build_user_chart_data(db, user_id):
+# Spanish month abbreviations, index 0 = January — used only to build
+# friendly x-axis labels for build_user_monthly_chart_data() below (the
+# app's UI text is Spanish throughout, see CLAUDE.md's "Language
+# conventions"; a plain SQLite strftime('%m', ...) only ever gives a
+# zero-padded number, never a name).
+MESES_ABREVIADOS = [
+    "Ene", "Feb", "Mar", "Abr", "May", "Jun",
+    "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
+]
+
+
+def build_user_monthly_chart_data(db, user_id):
     """
-    A single-user version of build_resumen_chart_data() above, for one
-    person's own profile page — same cumulative-step-line math, but
-    deliberately simpler since there's only ever ONE line here: no
-    per-series color assignment beyond this one user's own
-    get_user_color(), no start/end anchoring against a GROUP's earliest/
-    latest date (a solo trend line doesn't need to line up against
-    anyone else's), and no end-label collision handling (nothing else
-    is sharing the plot to collide with).
+    Powers the profile page's bar chart: how many asados this user
+    attended, per calendar month. Replaces the earlier cumulative-
+    points step-line chart (v1.5.0) — the user's own request was a
+    "simple bar chart with sum of asados by month", which is a COUNT
+    of asados attended, not a sum of points scored: the points total
+    already has its own stat-tile above this chart, and the group-wide
+    points-over-time story already belongs to Resumen's own chart (see
+    build_resumen_chart_data()). One flat bar color — this user's own
+    get_user_color() — not a magnitude-based color ramp: the dataviz
+    skill's "one series -> one color" rule, since re-encoding the same
+    count as both bar height AND a color gradient would be a redundant,
+    misleading second encoding of one variable.
+
+    Every month in the range gets a bar, INCLUDING months with zero
+    asados — a `GROUP BY` only ever produces rows for months that
+    actually have at least one asado, so this fills the gaps in Python
+    afterwards. A quiet stretch (nothing attended for a few months) is
+    real, meaningful information here, the same way build_resumen_chart_
+    data() anchors every user's line to a shared start/end for an
+    honest read — silently skipping straight from e.g. Mar to Jul would
+    read as if no month existed in between, not as "zero, zero, zero".
+
+    The range runs from this user's own EARLIEST participation month
+    through the CURRENT real-world month (today), not their latest
+    participation — so someone who hasn't been to anything in a while
+    visibly shows that gap running right up to the present, instead of
+    the chart quietly stopping the month they were last there (which
+    would look identical to "still active, chart just not updated").
     """
     rows = db.execute(
         """
-        SELECT asados.date AS date, SUM(participations.points) AS day_points
+        SELECT strftime('%Y-%m', asados.date) AS month, COUNT(*) AS asado_count
         FROM participations
         JOIN asados ON asados.id = participations.asado_id
         WHERE participations.user_id = ?
-        GROUP BY asados.date
-        ORDER BY asados.date
+        GROUP BY month
+        ORDER BY month
         """,
         (user_id,),
     ).fetchall()
 
     if not rows:
-        return {"points": [], "color": get_user_color(user_id)}
+        return {"months": [], "counts": [], "color": get_user_color(user_id)}
 
-    cumulative = 0.0
-    curve = []
-    for row in rows:
-        cumulative = round(cumulative + row["day_points"], 2)
-        curve.append([row["date"], cumulative])
+    counts_by_month = {row["month"]: row["asado_count"] for row in rows}
 
-    return {"points": curve, "color": get_user_color(user_id)}
+    # Walk every month from this user's earliest participation through
+    # the current real-world month, filling in 0 for any month with no
+    # asado of theirs — see the docstring above for why that matters.
+    first_year, first_month = (int(part) for part in rows[0]["month"].split("-"))
+    today = date.today()
+
+    months = []
+    counts = []
+    year, month = first_year, first_month
+    while (year, month) <= (today.year, today.month):
+        key = f"{year:04d}-{month:02d}"
+        months.append(f"{MESES_ABREVIADOS[month - 1]} {year}")
+        counts.append(counts_by_month.get(key, 0))
+        month += 1
+        if month > 12:
+            month = 1
+            year += 1
+
+    return {"months": months, "counts": counts, "color": get_user_color(user_id)}
 
 
 @app.route("/usuario/<int:user_id>")
@@ -2184,7 +2230,7 @@ def user_profile(user_id):
         position=position,
         total_ranked=len(standings),
         history=history,
-        chart_data=build_user_chart_data(db, user_id),
+        chart_data=build_user_monthly_chart_data(db, user_id),
     )
 
 

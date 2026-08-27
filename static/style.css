@@ -837,6 +837,34 @@ button:hover {
     background-color: var(--color-accent-hover);
 }
 
+/* Stacked ON TOP of .primary-button (class="primary-button
+   primary-button-green"), not a standalone class — inherits all of
+   .primary-button's shape/sizing/:visited-defense for free, only the
+   fill color changes. Reuses the SAME --color-green/--color-green-hover
+   variables as the navbar's own .nav-link-add, so the home page's
+   "Añadir Asado" shortcut and the navbar's own "Añadir Asado" link
+   read as the same action wherever you meet it, not two different
+   greens that happen to be close. */
+.primary-button-green,
+.primary-button-green:visited {
+    background-color: var(--color-green);
+}
+
+.primary-button-green:hover {
+    background-color: var(--color-green-hover);
+}
+
+/* Wraps the home page's "Añadir Asado" shortcut specifically — kept as
+   its own tiny class rather than adding margin-bottom to .primary-button
+   itself, since that class is shared by other forms/pages that already
+   have their own surrounding spacing tuned; a global change there would
+   have nudged layouts nobody asked to change. .primary-button already
+   supplies margin-top: 12px (the gap above, under "Listado de Asados"),
+   this only adds the gap below, before the filter form. */
+.home-add-shortcut {
+    margin-bottom: 16px;
+}
+
 /* --- Detail tables --- */
 .detail-table {
     width: 100%;
