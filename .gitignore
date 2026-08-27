@@ -2,7 +2,13 @@
 # This repo is PUBLIC. Everything in this section contains the group's
 # actual personal data — real names, home addresses, and exact GPS
 # coordinates — so none of it belongs on GitHub.
-asados.db
+# Glob, not just the literal "asados.db" — this project has since
+# started pulling dated copies of the LIVE server's database down to
+# this machine for backup/comparison (e.g. "asados_real_2025-08-27.db"),
+# and a literal filename rule would silently let those slip through
+# uncovered, exactly the near-miss already hit twice with the
+# historical CSV below. Any *.db file in this repo is real data.
+*.db
 backups/
 # The historical spreadsheet the existing asados were imported from
 # (see CHANGELOG 1.0.0). Same personal data as asados.db, just in a
