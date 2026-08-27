@@ -632,6 +632,67 @@ edits of the same asado's participant list — don't build a feature
 (e.g. a permalink, or a comment thread) that assumes a `participation_id`
 survives an edit.
 
+**A user can't appear twice among an asado's participants.** One
+person holding two Roles (or the same Role twice) at the same asado
+doesn't mean anything — someone is either the Asador or they aren't —
+so both `new_asado()` and `edit_asado()` reject the whole submission if
+the same registered `user_id` shows up in more than one participant
+row, checked BEFORE any database write (an early `return redirect(...)`
+before the first `db.execute()` — nothing is written either way, so
+failing fast just avoids wasted queries, not a rollback). Blank rows
+("Elegir usuario..." left untouched) don't count as a duplicate — two
+empty rows aren't the same as one user picked twice. Client-side,
+`_asado_form.html`'s `updateParticipantUserOptions()` disables an
+already-chosen user in every OTHER row's dropdown, so picking a
+duplicate is normally impossible from the UI at all, not just caught
+after the fact; a `submit` listener double-checks anyway (same
+"friendly client check + real server check" layering this app already
+uses for required fields, e.g. the location picker), since JS can be
+disabled and a stale form can still get resubmitted. On rejection,
+`new_asado()` redirects back to a blank form (losing what was typed —
+matches this app's existing convention for POST validation failures,
+e.g. `create_location()`); `edit_asado()` redirects to `view_asado`
+instead, which is why it's checked before the `DELETE FROM
+participations` a few lines down — the OLD participants must still be
+intact if the route bails out.
+
+### Decimal input accepts ',' as well as '.' — a real bug, not a nicety
+This app's users are Spanish/Latin-American, where ',' is the everyday
+decimal separator ("2,5 kg"). `<input type="number">` doesn't care: per
+the HTML spec it only ever accepts '.' as the decimal separator,
+regardless of the page's `lang`. Typing "2,5" into one doesn't show an
+error — the comma keystroke is silently DROPPED, leaving "25" in the
+field, ten times too large, and the browser reports it as perfectly
+valid. Confirmed by actually typing it into a real Chromium instance
+before this was fixed, not assumed from the spec alone.
+
+**The fix has two layers, matching how this app already treats every
+other required/validated field**: every hand-typed decimal input
+(`_asado_form.html`'s Peso Total; `ubicaciones.html`'s Existing-row
+Latitud/Longitud — the map-picker's OWN lat/lon inputs stay
+`type="hidden"`, JS-filled, never hand-typed, so they were never at
+risk) is `type="text" inputmode="decimal"` instead of `type="number"`,
+which lets a typed comma actually reach the field instead of being
+eaten before the page even sees it; a shared `normalizeDecimalInput()`
+function then converts it to '.' live, so what's ON SCREEN always
+matches what gets submitted (duplicated once per template rather than
+shared — this app has no shared/common JS file, by design, matching
+its no-build-step approach). `app.py`'s `parse_decimal()` is the
+SERVER-side backstop — a straight `.replace(",", ".")` before
+`float()`, same technique the 1.0.0 historical CSV import already used
+for the same reason — so a value reaches the database correctly parsed
+regardless of whether it went through the JS at all (disabled JS, a
+tampered request, anything). `people` (headcount) deliberately keeps
+`type="number"` — nobody types a decimal into a headcount field, so
+there's no comma-decimal risk there to fix.
+
+**If you add a new hand-typed decimal field anywhere in this app**, it
+needs all three: `type="text" inputmode="decimal"` (not `type="number"`),
+the same `normalizeDecimalInput()` wired to its `input` event, and
+`parse_decimal(request.form.get(field))` on the Python side instead of
+`request.form.get(field, type=float)`. Skipping any one of the three
+re-opens this exact bug for that one field.
+
 ### Automatic backups — currently only on new_asado(), not edit/delete
 `backup_db.py`'s `backup_database()` is called from `new_asado()`
 right after `db.commit()`, so every new asado triggers a fresh, safe

@@ -9,5 +9,8 @@
 
 {% block content %}
 <h2>New Asado</h2>
+{% if error %}
+    <p class="error-message">{{ error }}</p>
+{% endif %}
 {% include "_asado_form.html" %}
 {% endblock %}

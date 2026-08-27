@@ -33,7 +33,7 @@ DATABASE = "asados.db"  # the SQLite database is just a single file on disk
 # version is cut (see CLAUDE.md). Nothing ties these three together
 # automatically; forgetting to bump this is a real, easy-to-repeat
 # mistake, so check it specifically before tagging a new release.
-VERSION = "1.2.1"
+VERSION = "1.3.0"
 
 # How many rows to show per page before showing a "next" arrow, on the
 # home page and on Base de Asados respectively. Base de Asados can show
@@ -277,6 +277,51 @@ def parse_page_number(value):
     except (TypeError, ValueError):
         return 1
     return page if page >= 1 else 1
+
+
+def parse_decimal(raw_value):
+    """
+    Parses a hand-typed form field into a float, accepting BOTH '.' and
+    ',' as the decimal separator.
+
+    This app's users are Spanish/Latin-American, where ',' is the
+    everyday decimal separator ("2,5 kg") — but a plain
+    request.form.get(field, type=float) (Werkzeug's built-in
+    conversion, used everywhere in this file before this function
+    existed) calls Python's own float(), which only ever accepts '.'.
+    Worse, the matching HTML side (<input type="number">) doesn't even
+    surface an error when someone types a comma: per the HTML spec,
+    that input type only accepts the "." separator regardless of the
+    page's language, and typing "2,5" doesn't get rejected — the
+    comma keystroke is just silently DROPPED, leaving "25" in the
+    field. The browser reports that as perfectly valid. That's a
+    genuine, silent data-corruption risk for exactly the audience this
+    app is built for (someone meaning to log 2.5 kg of meat would
+    actually save 25kg), not just a cosmetic inconvenience — confirmed
+    by literally typing it into a real browser before this existed.
+
+    Used for every hand-typed decimal field in the app (asado
+    total_weight; the Ubicaciones "Existentes" table's latitude/
+    longitude, which unlike the map-picker's own hidden inputs ARE
+    plain, hand-editable number fields) — see _asado_form.html/
+    ubicaciones.html, where those inputs were switched from
+    type="number" to type="text" inputmode="decimal" specifically so a
+    typed comma actually reaches this function instead of being eaten
+    by the browser before the page even sees it.
+
+    Returns None for a blank/missing/unparseable value, matching how
+    Werkzeug's own `type=float` already behaves on request.form.get()
+    — a drop-in replacement, not a new calling convention.
+    """
+    if raw_value is None:
+        return None
+    raw_value = raw_value.strip()
+    if not raw_value:
+        return None
+    try:
+        return float(raw_value.replace(",", "."))
+    except ValueError:
+        return None
 
 
 # ---------------------------------------------------------------------
@@ -836,8 +881,8 @@ def create_location():
     db = get_db()
     name = request.form.get("name", "").strip()
     address = request.form.get("address", "").strip()
-    latitude = request.form.get("latitude", type=float)
-    longitude = request.form.get("longitude", type=float)
+    latitude = parse_decimal(request.form.get("latitude"))
+    longitude = parse_decimal(request.form.get("longitude"))
 
     # Name, address, AND coordinates are all mandatory here — unlike
     # the asado form's own (optional) location, a saved location with a
@@ -880,8 +925,8 @@ def edit_location(location_id):
 
     name = request.form.get("name", "").strip()
     address = request.form.get("address", "").strip()
-    latitude = request.form.get("latitude", type=float)
-    longitude = request.form.get("longitude", type=float)
+    latitude = parse_decimal(request.form.get("latitude"))
+    longitude = parse_decimal(request.form.get("longitude"))
 
     # Same mandatory checks as create_location() above.
     if not name:
@@ -1197,19 +1242,46 @@ def new_asado():
         superficie = request.form["superficie"]
         local = request.form["local"]
         location = request.form.get("location", "")
-        # These are hidden inputs, filled in by the map-picker JavaScript
-        # (see new_asado.html). type=float means Flask converts the text
-        # to a Python float automatically; if empty, it becomes None.
-        latitude = request.form.get("latitude", type=float)
-        longitude = request.form.get("longitude", type=float)
+        # These are hidden inputs, filled in by the map-picker
+        # JavaScript (see new_asado.html) — always '.'-formatted, so
+        # parse_decimal() is only strictly needed for total_weight
+        # below, but using it here too costs nothing and keeps ONE
+        # function deciding "how this app reads a hand-or-JS-typed
+        # decimal" rather than two different rules for two paths.
+        latitude = parse_decimal(request.form.get("latitude"))
+        longitude = parse_decimal(request.form.get("longitude"))
         people = request.form.get("people", type=int)
-        total_weight = request.form.get("total_weight", type=float)
+        # total_weight IS hand-typed (see _asado_form.html's
+        # type="text" inputmode="decimal" input) — parse_decimal()
+        # accepts "2,5" the way this app's Spanish-speaking users
+        # actually type it, not just "2.5". See parse_decimal()'s own
+        # docstring for what silently went wrong before this existed.
+        total_weight = parse_decimal(request.form.get("total_weight"))
         # "Guardar esta ubicación" checkbox (see _asado_form.html) — an
         # UNCHECKED box, the default, means today's original one-off
         # behavior: this location is used for THIS asado only and never
         # added to the reusable pool. See maybe_save_location() above.
         save_location = request.form.get("save_location") == "on"
         location_name = request.form.get("location_name", "").strip()
+
+        # --- Participants: read + validate BEFORE inserting anything ---
+        # A blank row (nothing selected) is fine — it's just skipped
+        # further down, same as always. What's NOT allowed is the SAME
+        # registered user appearing in more than one row: one person
+        # can't hold two Roles (or the same Role twice) at the same
+        # asado. Checked here, before the asado INSERT below, so an
+        # invalid submission fails fast instead of doing (uncommitted,
+        # but still wasted) writes first. Blank rows are excluded from
+        # the comparison — two rows both left on "Elegir usuario..." is
+        # not a duplicate, it's just two empty rows.
+        participant_user_ids = request.form.getlist("participant_user_id")
+        participant_roles = request.form.getlist("participant_rol")
+        non_blank_participant_ids = [uid for uid in participant_user_ids if uid]
+        if len(non_blank_participant_ids) != len(set(non_blank_participant_ids)):
+            return redirect(url_for(
+                "new_asado",
+                error="Un mismo usuario no puede tener más de un rol en el mismo asado.",
+            ))
 
         # --- Step 2: insert the asado row and get its new auto-generated id ---
         # Look up (and freeze) the shared weights NOW, at creation time
@@ -1250,8 +1322,11 @@ def new_asado():
         # not free-typed text) alongside their Rol for this asado.
         # This matches your decision: only registered accounts can be
         # participants, no more auto-creating users on the fly.
-        user_ids = request.form.getlist("participant_user_id")
-        roles = request.form.getlist("participant_rol")
+        # user_ids/roles were already read (and checked for a duplicate
+        # user) above, before Step 2 — reused here rather than reading
+        # request.form a second time.
+        user_ids = participant_user_ids
+        roles = participant_roles
 
         for user_id_str, rol in zip(user_ids, roles):
             if not user_id_str:
@@ -1323,6 +1398,10 @@ def new_asado():
         existing_tipos_carne=[],
         form_action=url_for("new_asado"),
         submit_label="Añadir Asado",
+        # Only ever populated when redirected here after a failed
+        # validation (see the duplicate-participant check above) —
+        # same lightweight ?error= pattern every other route uses.
+        error=request.args.get("error"),
         **asado_form_context(db),
     )
 
@@ -1452,12 +1531,36 @@ def edit_asado(asado_id):
     superficie = request.form["superficie"]
     local = request.form["local"]
     location = request.form.get("location", "")
-    latitude = request.form.get("latitude", type=float)
-    longitude = request.form.get("longitude", type=float)
+    # parse_decimal() (not Werkzeug's type=float) — see its own
+    # docstring: an <input type="number"> silently mangles a
+    # hand-typed "2,5" into "25" rather than erroring, a real risk for
+    # this app's Spanish-speaking users. latitude/longitude are always
+    # '.'-formatted (JS-filled hidden inputs), but routing them through
+    # the same function costs nothing and keeps one rule for "how this
+    # app reads a decimal from a form."
+    latitude = parse_decimal(request.form.get("latitude"))
+    longitude = parse_decimal(request.form.get("longitude"))
     people = request.form.get("people", type=int)
-    total_weight = request.form.get("total_weight", type=float)
+    total_weight = parse_decimal(request.form.get("total_weight"))
     save_location = request.form.get("save_location") == "on"
     location_name = request.form.get("location_name", "").strip()
+
+    # --- Participants: read + validate BEFORE the UPDATE/DELETE below ---
+    # Same rule and same reasoning as new_asado(): the same registered
+    # user can't appear in more than one row (two Roles, or the same
+    # Role twice, at the same asado). Checked here, before touching the
+    # database at all, so a failed validation can't leave the OLD
+    # participants deleted with nothing valid to replace them — the
+    # whole route bails out with everything still exactly as it was.
+    participant_user_ids = request.form.getlist("participant_user_id")
+    participant_roles = request.form.getlist("participant_rol")
+    non_blank_participant_ids = [uid for uid in participant_user_ids if uid]
+    if len(non_blank_participant_ids) != len(set(non_blank_participant_ids)):
+        return redirect(url_for(
+            "view_asado",
+            asado_id=asado_id,
+            error="Un mismo usuario no puede tener más de un rol en el mismo asado.",
+        ))
 
     shared_weights = get_shared_weights(tipo_carne_list, coccion, superficie, local)
 
@@ -1490,8 +1593,11 @@ def edit_asado(asado_id):
     # Replace participants wholesale (see docstring above).
     db.execute("DELETE FROM participations WHERE asado_id = ?", (asado_id,))
 
-    user_ids = request.form.getlist("participant_user_id")
-    roles = request.form.getlist("participant_rol")
+    # user_ids/roles were already read (and checked for a duplicate
+    # user) above, before any database write — reused here rather than
+    # reading request.form a second time.
+    user_ids = participant_user_ids
+    roles = participant_roles
 
     new_participants = []  # "Nombre (Rol)" strings, for the activity log diff below
     for user_id_str, rol in zip(user_ids, roles):

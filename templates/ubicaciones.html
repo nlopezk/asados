@@ -121,10 +121,26 @@
                                  separate submitted fields, just displayed
                                  side by side instead of in two columns
                                  each with their own header/border overhead. -->
+                            <!-- type="text" + inputmode="decimal", NOT
+                                 type="number" — same reason as
+                                 _asado_form.html's Peso Total field: an
+                                 <input type="number"> silently mangles
+                                 a hand-typed "-33,45" into "-3345"
+                                 (dropping the comma entirely, ten
+                                 times too large) rather than showing
+                                 an error, for exactly this app's
+                                 Spanish-speaking users. These ARE
+                                 hand-editable (unlike the map-picker's
+                                 own hidden lat/lon inputs elsewhere in
+                                 this app) — this is the one place
+                                 someone might manually correct a
+                                 typo'd coordinate. app.py's
+                                 parse_decimal() accepts either
+                                 separator server-side regardless. -->
                             <div class="loc-coord-pair">
-                                <input type="number" step="any" name="latitude" value="{{ loc.latitude }}" required
+                                <input type="text" inputmode="decimal" name="latitude" value="{{ loc.latitude }}" required
                                        class="loc-coord-input" title="Latitud" form="location-form-{{ loc.id }}">
-                                <input type="number" step="any" name="longitude" value="{{ loc.longitude }}" required
+                                <input type="text" inputmode="decimal" name="longitude" value="{{ loc.longitude }}" required
                                        class="loc-coord-input" title="Longitud" form="location-form-{{ loc.id }}">
                             </div>
                         </td>
@@ -145,5 +161,30 @@
             </tbody>
         </table>
     </div>
+
+    <script>
+        // Live-normalizes a typed ',' to '.' in the Latitud/Longitud
+        // fields above — same function, same reasoning as
+        // _asado_form.html's Peso Total field (see that file's own
+        // comment for the full "why"); duplicated here rather than
+        // shared, since this app has no shared/common JS file to pull
+        // it from (every template's script is self-contained, by
+        // design — matching the project's no-build-step approach).
+        // Wired to EVERY latitude/longitude input on this page at
+        // once (there's one pair per saved location row, all sharing
+        // the same name="latitude"/name="longitude", not unique ids)
+        // rather than by id, since a querySelectorAll is what actually
+        // reaches every row's own pair of fields.
+        function normalizeDecimalInput(event) {
+            const input = event.target;
+            if (input.value.indexOf(",") === -1) return;
+            const distanceFromEnd = input.value.length - input.selectionStart;
+            input.value = input.value.replace(",", ".");
+            const newPosition = input.value.length - distanceFromEnd;
+            input.setSelectionRange(newPosition, newPosition);
+        }
+        document.querySelectorAll('input[name="latitude"], input[name="longitude"]')
+            .forEach(function (input) { input.addEventListener("input", normalizeDecimalInput); });
+    </script>
 {% endif %}
 {% endblock %}

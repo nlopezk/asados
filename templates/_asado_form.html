@@ -195,8 +195,22 @@
     <label for="people">Cantidad de personas</label>
     <input type="number" id="people" name="people" min="1" value="{{ asado.people if asado and asado.people is not none else '' }}">
 
+    <!-- type="text" + inputmode="decimal", NOT type="number" — a
+         genuine, silent-data-corruption gotcha this app hit: per the
+         HTML spec, <input type="number"> only ever accepts '.' as the
+         decimal separator, regardless of the page's language. Typing
+         "2,5" (how this app's Spanish-speaking users actually write
+         two-and-a-half) doesn't show an error — the comma keystroke is
+         just silently dropped, leaving "25" in the field, ten times
+         too large, and the browser reports it as perfectly valid.
+         inputmode="decimal" still gives a numeric keypad on mobile, so
+         nothing is lost there. normalizeDecimalInput() below converts
+         a typed comma to a period live, so what's ON SCREEN always
+         matches what actually gets submitted; parse_decimal() in
+         app.py accepts either separator too, as a server-side backstop
+         regardless of what reaches it. -->
     <label for="total_weight">Peso Total en kg</label>
-    <input type="number" step="0.1" id="total_weight" name="total_weight" min="0" value="{{ asado.total_weight if asado and asado.total_weight is not none else '' }}">
+    <input type="text" inputmode="decimal" id="total_weight" name="total_weight" value="{{ asado.total_weight if asado and asado.total_weight is not none else '' }}">
 
     <hr>
 
@@ -286,6 +300,7 @@
 
         document.getElementById("participants-container").appendChild(newRow);
         wireParticipantRow(newRow);
+        updateParticipantUserOptions();
         updatePointsSummary();
     }
 
@@ -295,6 +310,7 @@
     // rather than an existing row, so it works fine with zero rows too.
     function removeParticipantRow(button) {
         button.closest(".participant-row").remove();
+        updateParticipantUserOptions();
         updatePointsSummary();
     }
 
@@ -303,9 +319,65 @@
     // select them individually by their "name" attribute rather than
     // assuming there's only one <select> in the row.
     function wireParticipantRow(row) {
-        row.querySelector("select[name='participant_user_id']").addEventListener("change", updatePointsSummary);
+        row.querySelector("select[name='participant_user_id']").addEventListener("change", function () {
+            updateParticipantUserOptions();
+            updatePointsSummary();
+        });
         row.querySelector("select[name='participant_rol']").addEventListener("change", updatePointsSummary);
     }
+
+    // -----------------------------------------------------------------
+    // PREVENT THE SAME USER FROM BEING PICKED TWICE
+    // -----------------------------------------------------------------
+    // One person can't hold two Roles (or the same Role twice) at the
+    // same asado — this is the CLIENT-side half of that rule: for
+    // every participant dropdown, disable whichever users are already
+    // selected in any OTHER row, so picking a duplicate is never
+    // possible from the UI in the first place, rather than only being
+    // caught after the fact. app.py's new_asado()/edit_asado() still
+    // enforce the same rule server-side regardless (the authoritative
+    // check — the same "friendly client check + real server check"
+    // layering this app already uses for required fields elsewhere),
+    // since JS can be disabled, and a browser's back/forward cache can
+    // resubmit a stale form.
+    //
+    // Deliberately does NOT disable the CURRENT row's own selected
+    // option under itself — only OTHER rows' selections count against
+    // a given dropdown, so a row always keeps showing its own current
+    // pick as a valid, selected option.
+    function updateParticipantUserOptions() {
+        const userSelects = Array.from(document.querySelectorAll("select[name='participant_user_id']"));
+        userSelects.forEach(function (currentSelect) {
+            const selectedElsewhere = userSelects
+                .filter(function (select) { return select !== currentSelect; })
+                .map(function (select) { return select.value; })
+                .filter(function (value) { return value; }); // ignore "Elegir usuario..." (blank)
+
+            Array.from(currentSelect.options).forEach(function (option) {
+                if (!option.value) return; // the placeholder option always stays enabled
+                option.disabled = selectedElsewhere.includes(option.value);
+            });
+        });
+    }
+
+    // Belt-and-suspenders: block SUBMIT too, not just rely on the
+    // disabled-options UI above. Covers the case where a row's user
+    // was validly picked, then a DIFFERENT row's dropdown gets changed
+    // in a way that never re-triggers this row's own disabled-state
+    // (shouldn't happen given updateParticipantUserOptions() above
+    // runs on every relevant change, but a submit-time check is cheap
+    // insurance against a future change to this file breaking that
+    // invariant silently).
+    document.getElementById("asado-form").addEventListener("submit", function (event) {
+        const chosenUserIds = Array.from(document.querySelectorAll("select[name='participant_user_id']"))
+            .map(function (select) { return select.value; })
+            .filter(function (value) { return value; });
+        const hasDuplicate = new Set(chosenUserIds).size !== chosenUserIds.length;
+        if (hasDuplicate) {
+            event.preventDefault();
+            alert("Un mismo usuario no puede tener más de un rol en el mismo asado.");
+        }
+    });
 
     // -----------------------------------------------------------------
     // LIVE POINTS PREVIEW
@@ -437,12 +509,41 @@
     document.querySelectorAll(".tipo-carne-row").forEach(wireTipoCarneRow);
     document.querySelectorAll(".participant-row").forEach(wireParticipantRow);
     updateTipoCarneRemoveButtons();
+    updateParticipantUserOptions();
 
     // Run once on page load so the hints/summary aren't blank before
     // the user touches anything.
     updateWeightHints();
     updateTipoCarneHints();
     updatePointsSummary();
+
+    // -----------------------------------------------------------------
+    // DECIMAL FIELDS: live-normalize a typed ',' to '.'
+    // -----------------------------------------------------------------
+    // total_weight is type="text" inputmode="decimal" (see its own
+    // comment above), not type="number" — so a typed comma actually
+    // reaches this field's value instead of being silently dropped by
+    // the browser. This converts it to '.' AS THE PERSON TYPES, so
+    // what's on screen always matches what parse_decimal() (app.py)
+    // will parse — this app's Spanish-speaking users naturally type
+    // "2,5", and without this the field would just sit there showing
+    // "2,5" until submit, which looks unconfirmed even though the
+    // server-side parse_decimal() backstop would handle it correctly
+    // either way.
+    function normalizeDecimalInput(event) {
+        const input = event.target;
+        if (input.value.indexOf(",") === -1) return; // nothing to normalize
+        // Track the cursor's distance from the END of the string
+        // (rather than from the start) so it lands in the right place
+        // after the replace shortens nothing but shifts the comma ->
+        // period in place — matters if someone edits a digit BEFORE
+        // the decimal point rather than just typing left to right.
+        const distanceFromEnd = input.value.length - input.selectionStart;
+        input.value = input.value.replace(",", ".");
+        const newPosition = input.value.length - distanceFromEnd;
+        input.setSelectionRange(newPosition, newPosition);
+    }
+    document.getElementById("total_weight").addEventListener("input", normalizeDecimalInput);
 
     // -----------------------------------------------------------------
     // "UBICACIÓN GUARDADA" DROPDOWN — a quick-fill convenience only.

@@ -31,6 +31,31 @@ Improvements:
 Groups (much later): Creación de grupos, invitaciones y posibilidad de que el usuario pertenezca a distintos grupos.
 
 
+## [1.3.0] - 2026-08-20
+### Fixed
+- **Typing a comma into a decimal field (Peso Total, or Ubicaciones'
+  Latitud/Longitud) silently produced the WRONG NUMBER, not an error.**
+  `<input type="number">` only ever accepts '.' as a decimal separator
+  per the HTML spec — typing "2,5" doesn't get rejected, the comma
+  keystroke is just dropped, leaving "25" in the field (ten times too
+  large) and the browser reports it as valid. Confirmed by actually
+  typing it into a real browser. Since this app's users are Spanish/
+  Latin-American, where ',' is the everyday decimal separator, this was
+  a genuine, silent data-corruption risk, not a cosmetic inconvenience.
+  Fixed at both layers: the affected inputs are now `type="text"
+  inputmode="decimal"` with a live comma-to-period normalizer, and a
+  new `parse_decimal()` in `app.py` accepts either separator
+  server-side regardless of what actually reaches it. `Cantidad de
+  personas` (a headcount, never a decimal) was left as `type="number"`
+  — nothing to fix there.
+### Added
+- **The same user can no longer be added twice to one asado's
+  participant list** (e.g. as both Asador and Comensal). Prevented at
+  the UI level (an already-picked user is disabled in every other
+  row's dropdown) and enforced server-side regardless — both
+  `new_asado()` and `edit_asado()` reject the whole submission before
+  writing anything if a duplicate slips through.
+
 ## [1.2.1] - 2026-08-20
 ### Fixed
 - **1.2.0's color dots were invisible after deploying**, for anyone
