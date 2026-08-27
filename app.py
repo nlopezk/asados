@@ -33,7 +33,7 @@ DATABASE = "asados.db"  # the SQLite database is just a single file on disk
 # version is cut (see CLAUDE.md). Nothing ties these three together
 # automatically; forgetting to bump this is a real, easy-to-repeat
 # mistake, so check it specifically before tagging a new release.
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 
 # How many rows to show per page before showing a "next" arrow, on the
 # home page and on Base de Asados respectively. Base de Asados can show
@@ -1035,6 +1035,45 @@ def maybe_save_location(db, user_id, name, address, latitude, longitude):
     )
 
 
+def build_group_summary(db):
+    """
+    "Resumen del Grupo" — the compact, friendly strip of cards at the
+    TOP of the home page, one per participant, showing who's playing
+    and their all-time totals — deliberately NOT another standings
+    table: no per-category weight breakdown, no sortable columns, none
+    of Resumen's own density. This answers "who's around and roughly
+    how are they doing," not "exactly how did they get there" — that's
+    what clicking into Resumen (or now, a user's own profile) is for.
+
+    ALL-TIME and completely independent of the home page's own filters
+    (?date_from=/?year=/?month=/?user_id=) — same reasoning as
+    Resumen's chart: a summary that changes shape every time someone
+    narrows the asado list below it would be a worse "who's in this
+    group" snapshot, not a better one. Sorted by total points
+    descending, same default as Resumen's own table.
+    """
+    participants = db.execute(
+        """
+        SELECT users.id AS user_id, users.name AS name,
+               COUNT(participations.id) AS participations_count,
+               SUM(participations.points) AS total_points
+        FROM participations
+        JOIN users ON users.id = participations.user_id
+        GROUP BY users.id, users.name
+        ORDER BY total_points DESC
+        """
+    ).fetchall()
+
+    total_asados = db.execute("SELECT COUNT(*) FROM asados").fetchone()[0]
+    earliest_date = db.execute("SELECT MIN(date) FROM asados").fetchone()[0]
+
+    return {
+        "participants": participants,
+        "total_asados": total_asados,
+        "earliest_date": earliest_date,
+    }
+
+
 # ---------------------------------------------------------------------
 # ROUTES
 # ---------------------------------------------------------------------
@@ -1166,6 +1205,10 @@ def index():
         asados=asados_with_participants,
         registered_users=registered_users,
         available_years=available_years,
+        # See build_group_summary()'s own docstring for why this is
+        # ALWAYS the full, unfiltered history — independent of every
+        # filter below it, deliberately.
+        group_summary=build_group_summary(db),
         meses=MESES,
         selected_date_from=date_from_filter,
         selected_date_to=date_to_filter,
@@ -2027,6 +2070,121 @@ def resumen_page():
         # filters above (rows/available_years/etc. all respect them;
         # this deliberately doesn't).
         chart_data=build_resumen_chart_data(db),
+    )
+
+
+def build_user_chart_data(db, user_id):
+    """
+    A single-user version of build_resumen_chart_data() above, for one
+    person's own profile page — same cumulative-step-line math, but
+    deliberately simpler since there's only ever ONE line here: no
+    per-series color assignment beyond this one user's own
+    get_user_color(), no start/end anchoring against a GROUP's earliest/
+    latest date (a solo trend line doesn't need to line up against
+    anyone else's), and no end-label collision handling (nothing else
+    is sharing the plot to collide with).
+    """
+    rows = db.execute(
+        """
+        SELECT asados.date AS date, SUM(participations.points) AS day_points
+        FROM participations
+        JOIN asados ON asados.id = participations.asado_id
+        WHERE participations.user_id = ?
+        GROUP BY asados.date
+        ORDER BY asados.date
+        """,
+        (user_id,),
+    ).fetchall()
+
+    if not rows:
+        return {"points": [], "color": get_user_color(user_id)}
+
+    cumulative = 0.0
+    curve = []
+    for row in rows:
+        cumulative = round(cumulative + row["day_points"], 2)
+        curve.append([row["date"], cumulative])
+
+    return {"points": curve, "color": get_user_color(user_id)}
+
+
+@app.route("/usuario/<int:user_id>")
+@login_required
+def user_profile(user_id):
+    """
+    A user's own profile page — all-time stats, a personal cumulative-
+    points trend, and their full participation history. One click away
+    from anywhere a name + color dot appears (Resumen's table, the home
+    page's participant lists and its "Resumen del Grupo" strip).
+
+    Deliberately does NOT show `username` (the login handle) — see
+    CLAUDE.md's "Display name vs. login username" note: `username` is
+    only ever shown on the admin-only /config user-management table.
+    This page is reachable by every logged-in user about every OTHER
+    user, so it follows the same rule as everywhere else that isn't
+    that one admin table — display `name` only.
+    """
+    db = get_db()
+
+    profile_user = db.execute("SELECT id, name FROM users WHERE id = ?", (user_id,)).fetchone()
+    if profile_user is None:
+        return "Usuario no encontrado.", 404
+
+    # COALESCE: SUM()/AVG() over zero rows return SQL NULL, not 0 — a
+    # brand-new account with no participations yet should show "0" /
+    # "still no participations" rather than crashing the template on
+    # None. COUNT() already returns 0 naturally, no COALESCE needed.
+    stats = db.execute(
+        """
+        SELECT COUNT(participations.id) AS participations_count,
+               COALESCE(SUM(participations.points), 0) AS total_points,
+               AVG(participations.points) AS avg_points
+        FROM participations
+        WHERE participations.user_id = ?
+        """,
+        (user_id,),
+    ).fetchone()
+
+    # "Posición": this user's rank in the SAME all-time, points-
+    # descending standings Resumen defaults to — among users with at
+    # least one participation (same omit-the-zeroes rule Resumen's own
+    # table already follows), so a brand-new account doesn't show a
+    # nonsensical "position" among people who've never attended anything.
+    standings = db.execute(
+        """
+        SELECT participations.user_id AS user_id
+        FROM participations
+        GROUP BY participations.user_id
+        ORDER BY SUM(participations.points) DESC
+        """
+    ).fetchall()
+    position = None
+    for rank, row in enumerate(standings, start=1):
+        if row["user_id"] == user_id:
+            position = rank
+            break
+
+    history = db.execute(
+        """
+        SELECT asados.id AS asado_id, asados.date AS date, asados.nombre AS nombre,
+               participations.rol AS rol, participations.points AS points
+        FROM participations
+        JOIN asados ON asados.id = participations.asado_id
+        WHERE participations.user_id = ?
+        ORDER BY asados.date DESC
+        """,
+        (user_id,),
+    ).fetchall()
+
+    return render_template(
+        "user_profile.html",
+        profile_user=profile_user,
+        profile_color=get_user_color(user_id),
+        stats=stats,
+        position=position,
+        total_ranked=len(standings),
+        history=history,
+        chart_data=build_user_chart_data(db, user_id),
     )
 
 

@@ -330,33 +330,37 @@ hr {
 }
 
 /* --- Navbar: collapsed "☰" presentation on narrow screens ---
-   Note the breakpoint: 1125px, NOT the 480px used by the app's other
+   Note the breakpoint: 1168px, NOT the 480px used by the app's other
    mobile rules at the bottom of this file. Those two numbers answer
    different questions on purpose. 480px is roughly "is this a
    phone?" — the right question for stacking form rows. This one is
    "do the nav links still FIT on one line?", and that has nothing to
    do with what device you're on.
 
-   1125 isn't a guess or a convention — it's measured, and it MOVES
+   1168 isn't a guess or a convention — it's measured, and it MOVES
    WHEN THE LINKS DO. The navbar was walked down width by width in a
-   real browser: one clean 63px-tall row at 1126px, and at 1125px the
-   longer labels start wrapping their own text and it jumps to 100px
+   real browser: one clean 67px-tall row at 1169px, and at 1168px the
+   longer labels start wrapping their own text and it jumps to 104px
    tall. So the dropdown takes over at exactly that point.
 
-   This has already been re-measured once, which is the whole reason
-   it's documented this way: the number was 1024px with six links, and
-   adding "🏆 Resumen" pushed the content requirement from ~1026px to
-   ~1151px. Had the breakpoint been left at 1024, every width between
-   ~1125px and 1024px would have silently gone back to the squeezed,
-   text-wrapping navbar this was built to eliminate. **If you add or
-   rename a nav link, re-measure and update this number.** (An early
-   version of this block guessed 860px and was wrong for the same
-   underlying reason — measure the content, don't assume a device.)
+   **This has now been re-measured TWICE, which is the whole reason
+   it's documented this way**: the number was 1024px with six links,
+   became 1125px the moment a seventh link ("🏆 Resumen") was added,
+   and became 1168px when an eighth ("Inicio") was added — each time
+   walking a real browser width by width to find the new exact
+   boundary, never assumed by extrapolation. Left at any of the older
+   numbers, every width between the new and old breakpoints would have
+   silently gone back to the squeezed, text-wrapping navbar this was
+   built to eliminate. **If you add, remove, or rename a nav link,
+   re-measure and update this number** — don't just eyeball a new
+   value. (An early version of this block guessed 860px and was wrong
+   for the same underlying reason — measure the content, don't assume
+   a device.)
 
    Everything here is a narrow-screen OVERRIDE — the desktop navbar
    above is untouched and stays a plain horizontal row, which is why
    this costs nothing on a PC. */
-@media (max-width: 1125px) {
+@media (max-width: 1168px) {
     /* Lets .navbar-right drop onto its own line below the title and
        the ☰ button, instead of trying to share their row. */
     .navbar {
@@ -465,6 +469,67 @@ hr {
 
 .app-footer-quote {
     font-style: italic;
+}
+
+/* --- "Resumen del Grupo" — the home page's friendly summary strip --- */
+.group-summary {
+    margin-bottom: 20px;
+}
+
+.group-summary-title {
+    margin-bottom: 2px;
+}
+
+.group-summary-subtitle {
+    color: var(--color-text-muted);
+    font-size: 0.9em;
+    margin-bottom: 10px;
+}
+
+.group-summary-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+/* Each card is a single <a> — the whole chip is one click target to
+   that person's profile, not just their name text. Deliberately
+   NOT the same specificity trick .nav-link/.secondary-button etc. use
+   for their own color+:visited pairing (see CLAUDE.md's "every
+   link-styled component..." note) — this one leans on the app's
+   global a/a:visited rule instead (both already resolve to
+   --color-accent-text), since nothing here overrides that color
+   itself; only background/border/layout are custom. */
+.group-summary-card {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 20px;
+    padding: 6px 14px 6px 10px;
+    text-decoration: none;
+    font-size: 0.92em;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.group-summary-card:hover {
+    border-color: var(--color-accent-text);
+}
+
+.group-summary-name {
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.group-summary-points {
+    color: var(--color-accent-text);
+    font-weight: 600;
+}
+
+.group-summary-count {
+    color: var(--color-text-muted);
+    font-size: 0.88em;
 }
 
 /* --- Asado cards on the home page --- */
@@ -1382,6 +1447,101 @@ button:hover {
     }
 }
 
+/* --- User profile page --- */
+.profile-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+/* Bigger than the inline .user-color-dot used in lists/tables (that
+   one sits beside small text; this one sits beside an h2) — same
+   role, same shared get_user_color() source, just scaled up for a
+   page header instead of a table row. */
+.profile-color-dot {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px var(--color-surface);
+    flex-shrink: 0;
+}
+
+/* Stat tile row: label (small, muted, uppercase — same "book's own
+   section label" treatment this app already uses for filter/column
+   labels) + value (large, semibold, the app's heading serif). Follows
+   the dataviz skill's stat-tile contract: PROPORTIONAL figures on the
+   big standalone value, never tabular-nums (that's reserved for
+   columns that must align vertically, e.g. the history table below,
+   not a single glanceable number). */
+.stat-tile-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-bottom: 22px;
+}
+
+.stat-tile {
+    flex: 1 1 160px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.stat-tile-label {
+    display: block;
+    font-size: 0.75em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--color-text-muted);
+    margin-bottom: 4px;
+}
+
+.stat-tile-value {
+    display: block;
+    font-family: 'EB Garamond', Georgia, serif;
+    font-size: 1.7em;
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.stat-tile-of {
+    font-family: 'Inter', -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    font-size: 0.5em;
+    font-weight: 400;
+    color: var(--color-text-muted);
+}
+
+.profile-chart-title,
+.profile-history-title {
+    margin-top: 8px;
+}
+
+/* Same card language as .resumen-chart-card, but a much shorter fixed
+   height — this chart has no legend/rangeslider/rangeselector to fit
+   (see user_profile.html's own comment on why: a solo trend line
+   doesn't need the period-filtering chrome a 6-line group comparison
+   does), so the whole stack is just the plot + x-axis labels. Measured
+   the same screenshot-and-check way as Resumen's own chart height. */
+.profile-chart-card {
+    max-width: 900px;
+    padding: 16px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    margin-bottom: 22px;
+}
+
+#profile-chart {
+    width: 100%;
+    height: 320px;
+}
+
 /* --- Pagination (home page + Base de Asados) --- */
 .pagination {
     display: flex;
@@ -1409,7 +1569,7 @@ button:hover {
     /* NOTE: the navbar rules that used to live here (flex-wrap on
        .navbar/.navbar-right so the links wrapped onto extra rows, and
        a tap-target padding bump on .nav-link) were removed when the
-       ☰ dropdown was added — see the 1125px block near the top of
+       ☰ dropdown was added — see the 1168px block near the top of
        this file, which now handles every screen narrower than that
        (so it always applies here too). Those
        rules made the links WRAP into a multi-row clump that ate a

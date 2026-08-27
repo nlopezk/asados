@@ -152,7 +152,11 @@
                 {% for row in rows %}
                     <tr>
                         <td class="resumen-rank">{{ loop.index }}</td>
-                        <td><span class="user-color-dot" style="background-color: {{ user_color(row.user_id) }}"></span>{{ row.name }}</td>
+                        <td>
+                            <a href="{{ url_for('user_profile', user_id=row.user_id) }}">
+                                <span class="user-color-dot" style="background-color: {{ user_color(row.user_id) }}"></span>{{ row.name }}
+                            </a>
+                        </td>
                         <!-- round(2) on the sums as well as the averages:
                              these are sums of decimal weights (0.3, 0.7,
                              0.8...), and floating-point addition can

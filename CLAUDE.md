@@ -145,40 +145,49 @@ is what made the rest of the app responsive almost for free; keep
 using that pattern rather than fixed widths.
 
 **The navbar has two presentations from ONE set of links: a
-horizontal row above 1125px, a "☰" dropdown at/below it.** Previously
+horizontal row above 1168px, a "☰" dropdown at/below it.** Previously
 there was only the row, and below ~1025px it wrapped into a two- and
 three-row clump of pills — measured at **216px tall on a 375px phone
 (≈31% of the visible screen, ≈38% at 320px) before any content
-appeared at all**; it's 63px now in both presentations. The links
-exist exactly once in `base.html` (a phone-only duplicate menu would
-be a second place to forget when adding a section); `.nav-toggle` +
-the `@media (max-width: 1125px)` block in style.css do all the
-switching, and `toggleNav()` in `base.html` only ever toggles a single
-`.open` class.
+appeared at all**; it's 67px now in both presentations (the single-row
+height ticked up from 63px to 67px somewhere along the way — a small,
+harmless rendering-metrics shift, not a regression; re-measured and
+confirmed clean either way). The links exist exactly once in
+`base.html` (a phone-only duplicate menu would be a second place to
+forget when adding a section); `.nav-toggle` + the
+`@media (max-width: 1168px)` block in style.css do all the switching,
+and `toggleNav()` in `base.html` only ever toggles a single `.open`
+class.
 
-**On-screen order (both presentations share it): Añadir Asado,
+**On-screen order (both presentations share it): Añadir Asado, Inicio,
 Resumen, Base de Asados, Ubicaciones, Config, username, Actividad,
 Salir.** Añadir Asado leads because it's the one ACTION among
 otherwise purely navigational links (see `.nav-link-add` below);
-Actividad sits after the username deliberately, since it's a "look
-something up" page rather than a place you're likely headed straight
-from login, and putting the two logout-adjacent items (Actividad,
-Salir) at the tail keeps the front of the row for the pages used most.
+Inicio comes right after it — the 🔥 Asados logo has always linked
+home too, but a logo isn't always registered as clickable NAVIGATION
+at a glance, so an ordinary nav item makes "back to the list" as
+discoverable as every other section, rather than depending on someone
+noticing the flame icon specifically. Actividad sits after the
+username deliberately, since it's a "look something up" page rather
+than a place you're likely headed straight from login, and putting the
+two logout-adjacent items (Actividad, Salir) at the tail keeps the
+front of the row for the pages used most.
 
 Three things here are load-bearing and easy to undo by accident:
 - **The breakpoint is measured, not conventional, and it MOVES when
-  the links do.** It started at 1026px (six links), then had to be
-  re-measured to ~1151px the moment a seventh link ("🏆 Resumen") was
-  added — walking a real browser width by width found the exact
-  boundary at 1125px (still one clean 63px row) vs. 1124px (jumps to
-  100px as labels wrap). Left at the old number, every width between
-  the new and old breakpoints would have silently gone back to the
-  squeezed, wrapping navbar this was built to eliminate. **If you add,
-  remove, or rename a nav link, re-measure and update the number** —
-  don't just eyeball a new value. It is also deliberately unrelated to
-  the app's other 480px breakpoint, which answers "is this a phone?"
-  (right question for stacking form rows), not "do these links still
-  fit?".
+  the links do.** It started at 1026px (six links), got re-measured to
+  1125px the moment a seventh link ("🏆 Resumen") was added, and again
+  to 1168px when an eighth ("Inicio") was added — each time walking a
+  real browser width by width to find the EXACT boundary (currently:
+  one clean 67px row at 1169px vs. 1168px, where labels wrap and it
+  jumps to 104px). Left at an old number, every width between the new
+  and old breakpoints would have silently gone back to the squeezed,
+  wrapping navbar this was built to eliminate. **If you add, remove, or
+  rename a nav link, re-measure and update the number** — don't just
+  eyeball a new value; this has already needed correcting twice. It is
+  also deliberately unrelated to the app's other 480px breakpoint,
+  which answers "is this a phone?" (right question for stacking form
+  rows), not "do these links still fit?".
 - **`.navbar-right`/`.nav-username` were moved UP next to the other
   navbar rules, and must stay above that media query.** They used to
   sit ~400 lines lower. Since `.navbar-right { display: none }` inside
@@ -497,6 +506,9 @@ yet, just one Flask app with a handful of routes:
 - `/resumen` (`resumen_page`) — "Resumen": the standings/position
   table, ONE ROW PER USER. Filters by `?year=`/`?semester=` and sorts
   by `?sort=`/`?dir=`; see the "Resumen" section below
+- `/usuario/<id>` (`user_profile`) — one person's own page: stat
+  tiles, a personal cumulative-points trend, and their full
+  participation history. See "User profiles" below
 
 Data model (`schema.sql`): `users` ← `participations` → `asados` ←
 `asado_tipo_carne`, all classic many-to-many junction tables. `users`
@@ -1038,10 +1050,12 @@ silently drifting out of sync, the same "one place decides" reasoning
 `get_user_color(user_id)` in app.py (built on `USER_COLOR_PALETTE`,
 the same categorical palette validated for the Resumen chart above) is
 the ONE function anywhere in this app that decides what color a user
-is. It's used in three places today — the chart, a small dot next to
-each name in Resumen's table, and a small dot next to each participant
-on the home page's asado cards — and any future place a user's
-identity needs a color should call it too, never re-derive one.
+is. It's used in several places today — the chart, a small dot next to
+each name in Resumen's table, a small dot next to each participant on
+the home page's asado cards, the home page's "Resumen del Grupo" cards,
+and a bigger version of the same dot on a user's own profile page
+header — and any future place a user's identity needs a color should
+call it too, never re-derive one.
 
 **Exposed to every template as `user_color()` via a context processor**
 (`inject_user_color()`, same "inject once, use everywhere" pattern
@@ -1074,6 +1088,76 @@ quiet an editor warning.
 until this feature existed — if you're looking at an old commit or an
 old comment that still says that name, it's the same palette, just
 before it was reused beyond the chart alone.
+
+### User profiles — one click from any name + color dot, anywhere
+`/usuario/<user_id>` (`user_profile()` in app.py + `user_profile.html`)
+is a person's own page: four stat tiles (Puntos Totales,
+Participaciones, Promedio x Participación, Posición), a personal
+cumulative-points chart, and their full participation history.
+Reachable by wrapping a name + color dot in an `<a href="{{ url_for
+('user_profile', user_id=...) }}">` — done today in Resumen's table,
+the home page's participant lists, and the home page's "Resumen del
+Grupo" cards below.
+
+**Same display-name rule as everywhere else**: only `name` is shown,
+never `username` — see the "Display name vs. login username" note.
+This page is reachable by every logged-in user about every OTHER user
+(not admin-gated, same visibility as Resumen or Actividad — there's
+nothing here a `login_required` doesn't already cover), so it follows
+the same rule as every other non-`/config` view.
+
+**"Posición" is computed the same way twice, independently** — once
+here (ranking among users with `SUM(points)`, users with zero
+participations omitted) and once inside `build_group_summary()` for
+the home page cards. This is a small, deliberate duplication rather
+than a shared helper: the two aren't quite the same query (this one
+also needs the RANK of one specific user, not just the sorted list),
+and two five-line SQL queries were judged not worth a shared
+abstraction over. If Resumen's own sort/rank logic and this one start
+drifting in what "the standings" means, that's the signal to
+consolidate — not before.
+
+**`build_user_chart_data()` is a deliberately SIMPLER sibling of
+`build_resumen_chart_data()`**, not a parameterized version of it —
+see its own docstring for the specific things it drops (no per-series
+color assignment beyond this one user's own `get_user_color()`, no
+group-wide start/end date anchoring, no end-label collision handling)
+and why: a solo trend line has nothing to anchor against, compare
+against, or collide with. The chart itself (`user_profile.html`)
+mirrors this — no legend (the page title already says whose line it
+is), no rangeslider/rangeselector (a glance-at-your-own-trend widget
+doesn't need Resumen's period-filtering chrome), just the step-line
+and a hover tooltip. `#profile-chart`'s CSS height (320px) was sized
+for exactly that reduced stack, not copied from `#resumen-chart`'s
+620px — a much shorter chart needs a much shorter container.
+
+### "Resumen del Grupo" — the home page's friendly summary strip
+A row of compact, pill-shaped cards at the very top of the home page
+(above the filter form), one per participant: color dot, name (linked
+to their profile), total points, and a participation count.
+`build_group_summary()` in app.py builds it; deliberately NOT a second
+standings table — no per-category weight breakdown, no sortable
+columns, none of Resumen's own density. This answers "who's around and
+roughly how are they doing," not "exactly how did they get there" —
+Resumen (or now, clicking into a profile) is for that.
+
+**ALL-TIME and completely independent of the home page's own filters**
+(`?date_from=`/`?year=`/`?month=`/`?user_id=`) — same reasoning as
+Resumen's chart being independent of its own Año/Semestre filters: a
+summary that reshuffled or changed size every time someone narrowed
+the asado list below it would be a worse "who's in this group"
+snapshot, not a better one. Sorted by total points descending, same
+default as Resumen's own table, so the two "who's ahead" views never
+visually disagree with each other.
+
+**The subtitle line ("X personas participando en Y asados desde
+YYYY") is the one place in this app that reformats a date for
+friendliness** — everywhere else (asado cards, Base de Asados) shows
+the raw `YYYY-MM-DD` on purpose, for precision. This is a summary
+blurb, not a data field, so trimming `earliest_date` down to just its
+year (`[:4]` in the template) reads more like a sentence a person
+would say and less like a database dump — a deliberate exception to
+the "show dates raw" convention, not an oversight.
 
 ### Recurring locations — a quick-fill pool, deliberately NOT linked to asados
 `locations` (schema.sql) holds a small, user-curated pool of named

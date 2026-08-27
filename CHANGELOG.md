@@ -31,6 +31,25 @@ Improvements:
 Groups (much later): Creación de grupos, invitaciones y posibilidad de que el usuario pertenezca a distintos grupos.
 
 
+## [1.4.0] - 2026-08-20
+### Added
+- **User profiles** (`/usuario/<id>`): click any name + color dot —
+  in Resumen's table, the home page's participant lists, or the new
+  "Resumen del Grupo" cards below — to reach that person's own page:
+  Puntos Totales, Participaciones, Promedio, Posición, a personal
+  cumulative-points chart, and their full asado history.
+- **"Resumen del Grupo"**: a friendly, all-time summary strip at the
+  top of the home page — one compact card per participant (color dot,
+  name, total points, participation count), sorted the same way
+  Resumen defaults to. Deliberately less detail than Resumen's own
+  table and independent of the home page's own filters — a stable
+  "who's in this group" snapshot, not a second standings table.
+- **"Inicio" nav link**, between Añadir Asado and Resumen — the 🔥
+  Asados logo always linked home too, but wasn't always obvious as a
+  clickable nav item. The navbar's collapse breakpoint moved from
+  1125px to 1168px to fit the 8th link — re-measured in a real browser
+  the same way every previous addition was, not guessed.
+
 ## [1.3.0] - 2026-08-20
 ### Fixed
 - **Typing a comma into a decimal field (Peso Total, or Ubicaciones'

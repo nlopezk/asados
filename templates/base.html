@@ -97,10 +97,18 @@
                  this one list). "Añadir Asado" leads because it's the
                  only ACTION among otherwise purely navigational links —
                  which is also why it alone gets .nav-link-add's green
-                 fill instead of the shared translucent white. -->
+                 fill instead of the shared translucent white. "Inicio"
+                 comes right after it: the 🔥 Asados logo already links
+                 home, but it's easy to not register a logo AS a nav
+                 link at a glance — an explicit, ordinary nav item makes
+                 "go back to the list" discoverable the same way every
+                 other section already is, instead of relying on people
+                 noticing the flame icon specifically. -->
             <div class="navbar-right" id="navbar-right">
                 <a href="{{ url_for('new_asado') }}"
                    class="nav-link nav-link-add {% if request.endpoint == 'new_asado' %}nav-current{% endif %}">Añadir Asado</a>
+                <a href="{{ url_for('index') }}"
+                   class="nav-link {% if request.endpoint in home_endpoints %}nav-current{% endif %}">Inicio</a>
                 <a href="{{ url_for('resumen_page') }}"
                    class="nav-link {% if request.endpoint == 'resumen_page' %}nav-current{% endif %}">🏆 Resumen</a>
                 <a href="{{ url_for('base_asados') }}"

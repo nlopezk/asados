@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+<!--
+    user_profile.html — one person's own page: all-time stats, a
+    personal cumulative-points trend, and their full participation
+    history. Reachable from anywhere a name + color dot shows up
+    (Resumen's table, the home page's participant lists and its
+    "Resumen del Grupo" strip) via app.py's user_profile() route.
+
+    Deliberately does NOT show `username` — see app.py's
+    user_profile() docstring / CLAUDE.md's "Display name vs. login
+    username" note. Only `name` (the friendly display name) appears
+    here, same as everywhere else in the app that isn't the admin-only
+    /config table.
+-->
+
+{% block content %}
+<div class="profile-header">
+    <span class="profile-color-dot" style="background-color: {{ profile_color }}"></span>
+    <h2>{{ profile_user.name }}</h2>
+</div>
+
+<!-- STAT TILES: label (sentence case) + value (proportional figures,
+     not tabular-nums — this app's dataviz convention reserves
+     tabular-nums for columns that must align vertically, e.g. table
+     rows; a standalone number like these reads better with its font's
+     normal proportional spacing). Four tiles, no delta/trend — this
+     is a snapshot, not a dashboard with a "since last period" story;
+     nothing in this app tracks periods in a way that would make a
+     delta meaningful here. -->
+<div class="stat-tile-row">
+    <div class="stat-tile">
+        <span class="stat-tile-label">Puntos Totales</span>
+        <span class="stat-tile-value">{{ stats.total_points | round(2) }}</span>
+    </div>
+    <div class="stat-tile">
+        <span class="stat-tile-label">Participaciones</span>
+        <span class="stat-tile-value">{{ stats.participations_count }}</span>
+    </div>
+    <div class="stat-tile">
+        <span class="stat-tile-label">Promedio x Participación</span>
+        <span class="stat-tile-value">
+            {% if stats.avg_points is not none %}{{ stats.avg_points | round(2) }}{% else %}—{% endif %}
+        </span>
+    </div>
+    <div class="stat-tile">
+        <span class="stat-tile-label">Posición</span>
+        <span class="stat-tile-value">
+            {% if position %}#{{ position }} <span class="stat-tile-of">de {{ total_ranked }}</span>{% else %}—{% endif %}
+        </span>
+    </div>
+</div>
+
+{% if chart_data.points|length > 0 %}
+    <!-- Plotly, same exact-version-pinned CDN as resumen.html — loaded
+         again here rather than shared, since this is a different page
+         (no build step/bundler in this app to share it through). A
+         much simpler figure than Resumen's: one line, no legend
+         (the page title already says whose line this is), no
+         rangeslider/rangeselector (a personal glance-at-your-own-trend
+         widget doesn't need period-filtering controls the way a
+         6-line group comparison does), just the step-line + hover. -->
+    <script src="https://cdn.jsdelivr.net/npm/plotly.js-cartesian-dist-min@2.35.2/plotly-cartesian.min.js"></script>
+    <h3 class="profile-chart-title">Puntos Acumulados</h3>
+    <div class="profile-chart-card">
+        <div id="profile-chart"></div>
+    </div>
+    <script>
+        const CHART_DATA = {{ chart_data | tojson }};
+        const rootStyle = getComputedStyle(document.documentElement);
+        const themeColor = (name) => rootStyle.getPropertyValue(name).trim();
+
+        const dates = CHART_DATA.points.map(function (p) { return p[0]; });
+        const values = CHART_DATA.points.map(function (p) { return p[1]; });
+
+        const trace = {
+            x: dates,
+            y: values,
+            mode: 'lines+markers',
+            line: { color: CHART_DATA.color, width: 2, shape: 'hv' },
+            marker: {
+                color: CHART_DATA.color,
+                size: dates.map(function (_, i) { return i === dates.length - 1 ? 8 : 0; }),
+                line: { color: themeColor('--color-surface'), width: 2 },
+            },
+            hovertemplate: '%{y:.2f} pts<extra></extra>',
+        };
+
+        Plotly.newPlot('profile-chart', [trace], {
+            paper_bgcolor: 'transparent',
+            plot_bgcolor: 'transparent',
+            font: { color: themeColor('--color-text-muted'), family: "'Inter', -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+            margin: { l: 50, r: 20, t: 10, b: 40 },
+            xaxis: { type: 'date', gridcolor: themeColor('--color-border'), linecolor: themeColor('--color-border'), tickfont: { color: themeColor('--color-text-muted') } },
+            yaxis: {
+                title: { text: 'Puntos acumulados', font: { color: themeColor('--color-text-muted') } },
+                gridcolor: themeColor('--color-border'), linecolor: themeColor('--color-border'),
+                tickfont: { color: themeColor('--color-text-muted') }, rangemode: 'tozero',
+            },
+            hovermode: 'x unified',
+            dragmode: 'pan',
+        }, { responsive: true, scrollZoom: true, displaylogo: false, modeBarButtonsToRemove: ['lasso2d', 'select2d'] });
+    </script>
+{% endif %}
+
+<h3 class="profile-history-title">Historial de Asados</h3>
+{% if history|length == 0 %}
+    <p class="empty-state">Todavía no hay participaciones registradas.</p>
+{% else %}
+    <div class="spreadsheet-wrapper">
+        <table class="spreadsheet-table">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Asado</th>
+                    <th>Rol</th>
+                    <th>Puntos</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in history %}
+                    <tr>
+                        <td>{{ row.date }}</td>
+                        <td><a href="{{ url_for('view_asado', asado_id=row.asado_id) }}">{{ row.nombre }}</a></td>
+                        <td>{{ row.rol }}</td>
+                        <td>{{ row.points }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endif %}
+{% endblock %}

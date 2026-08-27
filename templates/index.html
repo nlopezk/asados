@@ -15,6 +15,38 @@
     <p class="error-message">{{ error }}</p>
 {% endif %}
 
+<!-- "RESUMEN DEL GRUPO" — a compact, friendly strip of "who's playing"
+     cards, deliberately NOT a second standings table (Resumen already
+     has that — see build_group_summary() in app.py for the full
+     reasoning). Sits above the filter form/asado list on purpose: a
+     stable "who's in this group" header, independent of whatever
+     filter narrows the list below it — so it never changes shape just
+     because someone picked a Año or Usuario filter. -->
+{% if group_summary.participants|length > 0 %}
+    <div class="group-summary">
+        <h3 class="group-summary-title">Resumen del Grupo</h3>
+        <p class="group-summary-subtitle">
+            {{ group_summary.participants|length }}
+            persona{{ 's' if group_summary.participants|length != 1 else '' }}
+            participando en {{ group_summary.total_asados }}
+            asado{{ 's' if group_summary.total_asados != 1 else '' }}
+            {% if group_summary.earliest_date %}desde {{ group_summary.earliest_date[:4] }}{% endif %}.
+        </p>
+        <div class="group-summary-cards">
+            {% for p in group_summary.participants %}
+                <a href="{{ url_for('user_profile', user_id=p.user_id) }}" class="group-summary-card">
+                    <span class="user-color-dot" style="background-color: {{ user_color(p.user_id) }}"></span>
+                    <span class="group-summary-name">{{ p.name }}</span>
+                    <span class="group-summary-points">{{ p.total_points | round(2) }} pts</span>
+                    <span class="group-summary-count">
+                        {{ p.participations_count }} asado{{ 's' if p.participations_count != 1 else '' }}
+                    </span>
+                </a>
+            {% endfor %}
+        </div>
+    </div>
+{% endif %}
+
 <!-- Flatpickr: a small, dependency-free date picker — used here for its
      "range" mode, a single calendar where clicking a start day then an
      end day highlights everything in between (like an airline booking
@@ -224,7 +256,12 @@
             <p class="asado-participants-label">Participantes:</p>
             <ul class="participant-list">
                 {% for p in item.participants %}
-                    <li><span class="user-color-dot" style="background-color: {{ user_color(p.user_id) }}"></span>{{ p.name }} — {{ p.rol }} — <strong>{{ p.points }} pts</strong></li>
+                    <li>
+                        <a href="{{ url_for('user_profile', user_id=p.user_id) }}">
+                            <span class="user-color-dot" style="background-color: {{ user_color(p.user_id) }}"></span>{{ p.name }}
+                        </a>
+                         — {{ p.rol }} — <strong>{{ p.points }} pts</strong>
+                    </li>
                 {% endfor %}
             </ul>
         </div>
