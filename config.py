@@ -75,6 +75,113 @@ ROL_WEIGHTS = {
 }
 
 
+# =====================================================================
+# NON-SCORING DATA BELOW THIS LINE
+# =====================================================================
+# Everything from here down is DESCRIPTIVE ONLY. Unlike the *_WEIGHTS
+# dicts above, none of it has a number, none of it is read by FORMULA,
+# calculate_points(), get_shared_weights() or get_rol_weight(), and
+# none of it can change anyone's points — not now, and not by accident
+# later. Adding fifty cuts to CORTES_VACUNO below leaves every stored
+# `points` value in the database byte-identical.
+#
+# This is the same separation schema.sql makes physically: the
+# asado_cortes table deliberately has NO `corte_weight` column, where
+# asado_tipo_carne has one. Two files, one rule — if you ever find
+# yourself wanting to give a corte a number, that's a deliberate new
+# decision with its own migration, not something to slip in here.
+# =====================================================================
+
+# Which Tipo de Carne category opens the cow diagram / cut picker.
+#
+# A LIST, not a single string, deliberately: adding a second beef
+# category is then a one-line edit with zero code or schema impact.
+# That matters here specifically — "Bifes Vacuno o similar" is actually
+# this group's MOST-used category (117 of 247 recorded types, 47%, vs.
+# 86 for the one below), and it's beef from the same animal, so it's
+# the obvious candidate if the cow ever feels like it shows up too
+# rarely. Scoped to just the one for now, at the user's explicit call.
+CATEGORIAS_CON_DESPIECE = [
+    "Corte de Vacuno (Lomo, Tira, Vacío)",
+]
+
+# Every individual beef cut, in the order it appears in the picker.
+#   key   = the cut's display name, exactly as it is STORED in
+#           asado_cortes.corte and shown on screen (the full text, not
+#           a slug — same convention as asado_tipo_carne.tipo_carne).
+#   value = the `data-corte` attribute of the matching region in the
+#           cow diagram, or None for a cut with no drawn region.
+#
+# The dropdown is the COMPLETE list; the diagram is a visual shortcut
+# INTO it. That's why a None is fine and not a bug — a cut with no
+# region (Entraña, a diaphragm cut, is the obvious case) is still
+# fully selectable, it just can't be clicked on the picture. The
+# values aren't read at all until the diagram itself ships; they're
+# here from the start so that release needs no data migration.
+#
+# Names are CHILEAN, and that is not incidental. This group's own 239
+# asado titles are full of Punta de Ganso, Lomo Vetado, Punta Picana,
+# Malaya, Plateada, Tapabarriga, Sobrecostilla, Palanca and Abastero —
+# not Argentine "Bife de Chorizo", not US "Ribeye"/"Brisket". If you
+# extend this list, stay in that vocabulary; a well-meaning swap to a
+# US or Argentine cut chart would be wrong for these users.
+#
+# Slug on one side, display name on the other (rather than putting the
+# full name in the diagram itself) means renaming a label later —
+# "Punta Picana" -> "Picana" — is a one-line edit here that never
+# touches the drawing.
+CORTES_VACUNO = {
+    "Lomo Vetado":     "lomo-vetado",
+    "Lomo Liso":       "lomo-liso",
+    "Filete":          "filete",
+    "Asado de Tira":   "asado-de-tira",
+    "Sobrecostilla":   "sobrecostilla",
+    "Huachalomo":      "huachalomo",
+    "Plateada":        "plateada",
+    "Tapabarriga":     "tapabarriga",
+    "Malaya":          "malaya",
+    "Punta Picana":    "punta-picana",
+    "Punta de Ganso":  "punta-de-ganso",
+    "Punta Paleta":    "punta-paleta",
+    "Posta Rosada":    "posta-rosada",
+    "Posta Negra":     "posta-negra",
+    "Abastero":        "abastero",
+    "Choclillo":       "choclillo",
+    "Palanca":         "palanca",
+    "Asiento":         "asiento",
+    "Tapapecho":       "tapapecho",
+    "Osobuco":         "osobuco",
+    "Entraña":         None,   # diaphragm — no sensible region on a side view
+}
+
+# A small icon for each NON-beef Tipo de Carne, shown beside (or
+# instead of) the cow. Emoji rather than eight sourced image files:
+# zero new assets, zero licences to check, nothing to cache-bust, and
+# it matches the UI language this app already speaks (the navbar runs
+# on 🔥📋📍⚙️🕓🏆).
+#
+# Emoji render differently across Android/iOS/Windows, and a few of
+# these are genuinely ambiguous on their own (🍖 vs 🥩 vs 🐖). So the
+# icon NEVER carries the meaning alone — every one is rendered with a
+# visible caption and a title tooltip. Same rule CLAUDE.md already
+# states for the per-user colour dots: the dot supplements the name,
+# it never replaces it.
+#
+# Every key here must exist in TIPO_CARNE_WEIGHTS above. The beef
+# categories in CATEGORIAS_CON_DESPIECE deliberately have no entry —
+# they get the full diagram instead.
+ICONOS_TIPO_CARNE = {
+    "Cordero": "🐑",
+    "Corte de Cerdo": "🐖",
+    "Bifes Vacuno o similar": "🥩",
+    "Chuleta de Cerdo o similar": "🍖",
+    "Pollo": "🍗",
+    "Embutidos (Chori, Morcilla)": "🌭",
+    "Hamburguesa casera": "🍔",
+    "Pescados": "🐟",
+}
+
+
 def get_tipo_carne_weights(tipo_carne_list):
     """
     Looks up the weight for EVERY selected "Tipo de Carne" (an asado can

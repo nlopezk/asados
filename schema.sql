@@ -2,15 +2,26 @@
 -- schema.sql
 -- This file defines the STRUCTURE of our database (the "blueprint").
 -- It does NOT contain any actual data — just the shape of the tables.
--- We will run this once to create empty tables, then fill them via the app.
+--
+-- ⚠️  THIS FILE IS FOR CREATING A **FRESH, EMPTY** DATABASE ONLY.
+-- It opens with DROP TABLE. Running it (via app.py's init_db()) against
+-- the real asados.db DESTROYS the group's entire history — 239 asados
+-- of real, irreplaceable data, locally AND on PythonAnywhere.
+-- To change the shape of a database that already holds data, write an
+-- additive migration script instead; migrate_add_cortes.py is the
+-- worked example to copy. See CLAUDE.md for the full rule.
 -- =====================================================================
 
 -- Drop tables first if they already exist, so we can re-run this file
 -- safely during development without errors. (In production you would NOT
 -- do this, since it deletes all existing data!)
+-- ORDER MATTERS: children before parents. get_db() runs
+-- PRAGMA foreign_keys = ON, so dropping a parent while a child still
+-- references it fails. Any new child table of `asados` goes above it.
 DROP TABLE IF EXISTS activity_log_changes;
 DROP TABLE IF EXISTS activity_log;
 DROP TABLE IF EXISTS asado_tipo_carne;
+DROP TABLE IF EXISTS asado_cortes;
 DROP TABLE IF EXISTS participations;
 DROP TABLE IF EXISTS asados;
 DROP TABLE IF EXISTS locations;
@@ -95,6 +106,37 @@ CREATE TABLE asado_tipo_carne (
     asado_id INTEGER NOT NULL,
     tipo_carne TEXT NOT NULL,          -- e.g. "Vacío", "Chorizo", etc.
     tipo_carne_weight REAL NOT NULL,   -- THIS type's own frozen weight (not necessarily the max)
+
+    FOREIGN KEY (asado_id) REFERENCES asados (id)
+);
+
+-- ---------------------------------------------------------------------
+-- ASADO_CORTES TABLE
+-- One row per (asado, individual beef cut) pair — "Lomo Vetado",
+-- "Punta de Ganso", etc. This is a SECOND, FINER dimension sitting
+-- underneath asado_tipo_carne's category ("Corte de Vacuno (Lomo,
+-- Tira, Vacío)"), not a replacement for it: the category still says
+-- what KIND of meat, these say exactly which cuts of it.
+--
+-- NOTE THE COLUMN THAT ISN'T HERE: there is no `corte_weight`.
+-- asado_tipo_carne has one because its categories genuinely feed the
+-- points formula, and each selected type's weight is frozen at write
+-- time so history stays reproducible. Cortes are PURELY DESCRIPTIVE —
+-- they record what was actually on the grill, and nothing in
+-- config.py's FORMULA, calculate_points(), get_shared_weights() or
+-- /api/points ever reads this table. The missing column IS the rule,
+-- stated where it can't be missed: there is no number here for a
+-- future edit to accidentally start scoring. If cuts ever SHOULD
+-- score, that's a deliberate new decision with its own migration.
+--
+-- Replaced wholesale on every edit, exactly like participations and
+-- asado_tipo_carne (see edit_asado() in app.py) — so a row's id here
+-- is NOT a stable reference across edits of the same asado.
+-- ---------------------------------------------------------------------
+CREATE TABLE asado_cortes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    asado_id INTEGER NOT NULL,
+    corte TEXT NOT NULL,               -- display name from config.py's CORTES_VACUNO, stored in full (same convention as asado_tipo_carne.tipo_carne) — never a slug
 
     FOREIGN KEY (asado_id) REFERENCES asados (id)
 );
@@ -251,4 +293,5 @@ CREATE TABLE locations (
 CREATE INDEX idx_participations_asado_id ON participations (asado_id);
 CREATE INDEX idx_participations_user_id ON participations (user_id);
 CREATE INDEX idx_asado_tipo_carne_asado_id ON asado_tipo_carne (asado_id);
+CREATE INDEX idx_asado_cortes_asado_id ON asado_cortes (asado_id);
 CREATE INDEX idx_activity_log_changes_log_id ON activity_log_changes (log_id);

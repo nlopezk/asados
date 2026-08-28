@@ -33,6 +33,14 @@
     <table class="detail-table">
         <tr><th>Fecha</th><td>{{ asado.date }}</td></tr>
         <tr><th>Tipo de Carne</th><td>{{ tipos_carne_display }}</td></tr>
+        {# Only beef asados can have cuts, and only if someone picked
+           them — so this row is absent far more often than not (every
+           asado created before the feature existed has none). Hidden
+           entirely rather than shown empty: a blank row would read as
+           missing data rather than "not applicable here". #}
+        {% if cortes_display %}
+            <tr><th>Cortes</th><td>{{ cortes_display }}</td></tr>
+        {% endif %}
         <tr><th>Tipo de Cocción</th><td>{{ asado.coccion }}</td></tr>
         <tr><th>Superficie</th><td>{{ asado.superficie }}</td></tr>
         <tr><th>Local</th><td>{{ asado.local }}</td></tr>

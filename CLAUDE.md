@@ -25,9 +25,21 @@ directly with Python.
 # Install dependencies
 pip install -r requirements.txt
 
-# Create/reset the database (WIPES existing data — schema.sql runs
-# DROP TABLE + CREATE TABLE, there is no migration system)
+# ⚠️ DANGER — creates a BRAND NEW, EMPTY database. schema.sql runs
+# DROP TABLE + CREATE TABLE, so running this against the real
+# asados.db DESTROYS the group's whole history (239 asados). Only ever
+# use it for a genuinely fresh/throwaway database. To change the SHAPE
+# of a database that already has data, write a migration instead (see
+# below).
 python -c "from app import init_db; init_db()"
+
+# Apply a schema change to an EXISTING database without wiping it.
+# Additive and idempotent — safe to run twice, prints before/after row
+# counts so you can confirm nothing was lost. This is the pattern to
+# copy for any future schema change. On PythonAnywhere, run it AFTER
+# `git pull` but BEFORE clicking Reload (see "Rollout" in the Cortes
+# section below for why the order matters).
+python migrate_add_cortes.py [path/to/asados.db]
 
 # Create a login account (required at least once — no public sign-up page).
 # <name> is a display name; [role] is "admin" or "normal" (default "normal").
@@ -509,6 +521,11 @@ yet, just one Flask app with a handful of routes:
 - `/usuario/<id>` (`user_profile`) — one person's own page: stat
   tiles, a monthly asados-attended bar chart, and their full
   participation history. See "User profiles" below
+- `/cortes` (`cortes_page`) — "Cortes de Vacuno": a read-only
+  reference list of the individual beef cuts, plus the non-beef icon
+  legend. The only route in this app that touches no database at all
+  (everything it shows comes from `config.py`). See "Cortes de vacuno"
+  below
 
 Data model (`schema.sql`): `users` ← `participations` → `asados` ←
 `asado_tipo_carne`, all classic many-to-many junction tables. `users`
@@ -562,6 +579,112 @@ ambiguously to a human just glancing at the raw text, and semicolon
 avoids that entirely. `index.html`'s cards and `view_asado.html`'s
 read-only summary do their own equivalent "; ".join(...) in Python,
 since those aren't reading from `BASE_ASADOS_QUERY`.
+
+### Cortes de vacuno — a second dimension under Tipo de Carne, and it never scores
+Under the Tipo de Carne category sits a finer one: the individual beef
+cuts ("Lomo Vetado", "Punta de Ganso", ...), stored in `asado_cortes`
+and picked from a dropdown that appears on the asado form only when a
+category in `CATEGORIAS_CON_DESPIECE` is selected. There's also a
+standalone reference page at `/cortes`. Shipped in 1.6.0 as the
+plumbing half of the "Cow View" backlog idea; the clickable cow diagram
+itself is the planned follow-up (see the end of this section).
+
+**Cuts are DESCRIPTIVE ONLY, and two separate files are built to keep
+them that way.** `config.py` puts them below a "NON-SCORING DATA BELOW
+THIS LINE" banner, physically separated from the `*_WEIGHTS` dicts;
+`schema.sql`'s `asado_cortes` table deliberately has **no
+`corte_weight` column**, where `asado_tipo_carne` has one. That missing
+column is the point — there is no number sitting there for a future
+edit to start reading. Adding fifty cuts to `CORTES_VACUNO` leaves
+every stored `points` value byte-identical, and there's a test that
+posts the same asado twice (with cuts and without) and asserts every
+weight and every participant's points come out the same. If cuts should
+ever score, that's a deliberate new decision with its own migration.
+
+**The cut names are CHILEAN, and that is not incidental.** This was
+checked against the group's own 239 asado titles before picking any:
+Punta de Ganso (9), Lomo (9), Picana (7), Malaya (5), Punta Picana (4),
+Palanca (3), Lomo Liso (3), Plateada (3), Lomo Vetado (2), Asado de
+Tira (2), Tapabarriga (2), Sobrecostilla (2), Abastero, Posta, Filete,
+Punta Paleta. These are *not* Argentine ("Bife de Chorizo", "Tapa de
+Asado") and *not* US ("Ribeye", "Brisket") — the butchery boundaries
+genuinely differ, not just the labels. **Don't "helpfully" swap in a
+standard cut chart found online**: almost every one is US or Argentine,
+and it would be wrong for these users. Relatedly, when the diagram gets
+drawn it will have to be hand-authored — there is no Chilean beef-cuts
+SVG on Wikimedia Commons, and the nearest South American one
+(`Beef cuts Brazil.svg`) is CC BY-SA 3.0, whose share-alike would put a
+copyleft file into this otherwise unlicensed public repo.
+
+**Only `"Corte de Vacuno (Lomo, Tira, Vacío)"` opens the picker, and
+that's a scoping call worth revisiting.** `"Bifes Vacuno o similar"` is
+actually the group's MOST-used category (117 of 247 recorded types,
+47%, vs. 86 for Corte de Vacuno) and is beef from the same animal, so
+the picker currently stays hidden for the most common selection.
+`CATEGORIAS_CON_DESPIECE` is a **list** precisely so reversing this is
+a one-line edit with zero code or schema impact.
+
+**Non-beef categories get an emoji + caption, not sourced icon files.**
+Eight images would mean eight licence checks and a set that doesn't
+look like a set; emoji cost nothing and match the UI language the
+navbar already speaks. But emoji render differently across platforms
+and several of these are ambiguous alone (🍖 vs 🥩 vs 🐖), so **the
+glyph never appears without its label** — same rule as the per-user
+colour dots never replacing a name.
+
+**One picker per form, not one per Tipo de Carne row.** Repeating it
+per row would put two pickers on screen with no way to tell which owned
+what — and `asado_cortes` is keyed to the ASADO, so a per-row picker
+would have nowhere separate to store its answer anyway. The whole strip
+(`#meat-visual`) is flex + `flex-wrap`, which is what makes the icons
+sit BESIDE the picker on desktop and wrap underneath on a phone with no
+media query.
+
+**Hiding the picker uses `.hidden`, never `.remove()`.** The chosen
+cuts live in hidden inputs inside it; removing the element would
+silently discard them when someone switches category to check something
+and switches back. The SERVER is what actually decides — 
+`read_submitted_cortes()` drops cuts entirely if the submission isn't
+beef after all. Same "friendly client, authoritative server" layering
+as the duplicate-participant check.
+
+**Each chip contains its own hidden input**, so what's on screen and
+what gets submitted are physically the same thing — remove the chip and
+the input goes with it. Server-rendered chips (edit mode) and
+JS-created ones use identical markup, so one remove function handles
+both.
+
+**`delete_asado()` had to learn about the new table.** It deletes
+children before the parent because `PRAGMA foreign_keys = ON` — miss
+that and the first admin to delete an asado with cuts gets a 500, in a
+route the feature otherwise never touches. That line now carries a
+comment saying any new child table of `asados` belongs there too.
+
+**Rollout order on PythonAnywhere is load-bearing**: `git pull` →
+`python3 migrate_add_cortes.py` → **then** Reload. Reload first and the
+new code runs against a database with no `asado_cortes`, so every asado
+page throws "no such table" until the migration catches up. Pulling
+doesn't restart the app, so the old code keeps serving safely in
+between. The live database is a different file on a different disk —
+**the migration must be run in both places; there is no sync.**
+
+**Still to come (the actual cow):** an inline SVG partial
+(`templates/_cow_diagram.html`) whose regions are clickable and named
+on hover. Decisions already made for it: **inline SVG**, never
+`<img src="...svg">` (an `<img>`-loaded SVG is an opaque document — no
+per-region events, no page CSS, no access to `:root` custom
+properties, which is the whole styling story); **`data-corte="slug"`
+rather than `id="slug"`**, since duplicate ids break `getElementById`
+and `#id` selectors *silently* and `data-*` also gives one CSS rule for
+all regions; the `CORTES_VACUNO` values are already the region slugs,
+so no data migration is needed. Two constraints that will shape it:
+**there is no hover on a phone** (so a `<title>` per region plus a
+fixed caption strip, and tap-to-select doubling as tap-to-name — not a
+cursor-following tooltip, which would also need
+`getBoundingClientRect()` and that returns 0 inside `view_asado.html`'s
+`display: none` edit form); and **the dropdown stays the primary path
+on mobile**, since 18 regions squeezed to 375px fall under the ~44px
+touch minimum.
 
 **The individual weights that fed into `points` are frozen too, not
 just the final number.** `asados.tipo_carne_weight`/`coccion_weight`/
@@ -1726,10 +1849,20 @@ the app match `config.py`'s formula exactly.
   added after those files were first tracked, and gitignore never
   retroactively untracks files already known to git. If you notice
   them, `git rm --cached` is the fix, not editing `.gitignore` again.
-- **Schema changes wipe the local database.** `init_db()` runs
-  `DROP TABLE` + `CREATE TABLE` from `schema.sql` — there's no
-  migration system yet. Any schema change requires recreating the DB
-  and, since Phase 2, recreating user accounts via `create_user.py`.
+- **⚠️ NEVER run `init_db()` against a database that holds real data.**
+  It runs `DROP TABLE` + `CREATE TABLE` from `schema.sql`, which now
+  means destroying the group's entire history — 239 asados, locally
+  AND on PythonAnywhere, with `backups/` on the same disk as the only
+  copy. This advice used to read "any schema change requires recreating
+  the DB", which was true and harmless when the database held seeded
+  test data; following it literally today would be a catastrophe.
+  **A schema change now ships as an additive migration script instead**
+  — see `migrate_add_cortes.py` (the first one, added in 1.6.0) as the
+  worked example to copy: `CREATE TABLE IF NOT EXISTS` only, never
+  reads `schema.sql` (that would drag the DROPs along), backs up first,
+  idempotent, and prints before/after row counts for every existing
+  table so you can SEE nothing was lost. `schema.sql` is now for
+  creating FRESH databases only, and says so at the top.
 - **`VERSION` (`app.py`) is a THIRD manually-bumped place, alongside
   `CHANGELOG.md` and the git tag.** It's shown in the small footer on
   every page (see below) via `inject_version()`. Nothing automatically

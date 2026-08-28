@@ -23,6 +23,8 @@ from config import (
     calculate_points, get_shared_weights, get_rol_weight, get_tipo_carne_weights,
     TIPO_CARNE_WEIGHTS, COCCION_WEIGHTS, SUPERFICIE_WEIGHTS,
     LOCAL_WEIGHTS, ROL_WEIGHTS, FORMULA, VARIABLE_LABELS,
+    # Descriptive-only, never scored — see config.py's NON-SCORING banner.
+    CATEGORIAS_CON_DESPIECE, CORTES_VACUNO, ICONOS_TIPO_CARNE,
 )
 from backup_db import backup_database
 from activity_log import log_create, log_edit, log_delete, diff_asado, now_timestamp
@@ -34,7 +36,7 @@ DATABASE = "asados.db"  # the SQLite database is just a single file on disk
 # version is cut (see CLAUDE.md). Nothing ties these three together
 # automatically; forgetting to bump this is a real, easy-to-repeat
 # mistake, so check it specifically before tagging a new release.
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 
 # How many rows to show per page before showing a "next" arrow, on the
 # home page and on Base de Asados respectively. Base de Asados can show
@@ -986,6 +988,19 @@ def asado_form_context(db):
             "formula": FORMULA,  # the literal formula text, read directly by the JS preview
             "labels": VARIABLE_LABELS,  # human-readable names for the formula's variables
         },
+        # --- Cortes (descriptive only — see config.py's NON-SCORING
+        # banner and schema.sql's asado_cortes table) ---------------
+        # Deliberately NOT folded into the "weights" dict above.
+        # That dict reaches the browser as WEIGHTS, and
+        # updateTipoCarneHints() indexes straight into
+        # WEIGHTS.tipo_carne to print a number — putting a non-numeric
+        # list in there would surface as "undefined" in a weight hint.
+        # More importantly, "weights" means "things that score", and
+        # none of these do; keeping them out of it is the same
+        # separation config.py and schema.sql already make.
+        "cortes_options": CORTES_VACUNO,
+        "categorias_con_despiece": CATEGORIAS_CON_DESPIECE,
+        "iconos_tipo_carne": ICONOS_TIPO_CARNE,
         # All registered users, for the participant dropdowns —
         # participants must be existing accounts, selected by id, not
         # free-typed names. Ordered/displayed by "name" (the friendly
@@ -1259,6 +1274,43 @@ def api_points():
     return jsonify({"points": points})
 
 
+def read_submitted_cortes(tipo_carne_list):
+    """
+    Reads the individual beef cuts ("Lomo Vetado", "Punta de Ganso", ...)
+    off a submitted asado form. Shared by new_asado() and edit_asado()
+    so the two can't drift on what counts as a valid submission — the
+    same reason asado_form_context() exists for the render side.
+
+    NOTHING HERE FEEDS THE POINTS FORMULA. Cortes are descriptive only
+    (see config.py's NON-SCORING banner and schema.sql's asado_cortes
+    table, which deliberately has no weight column). This function's
+    result is written straight to that table and read by nothing else.
+
+    Two rules, both deliberate:
+
+    1. Cuts are DROPPED ENTIRELY unless a category that has a despiece
+       (CATEGORIAS_CON_DESPIECE) is among the submitted types. This
+       happens legitimately, not just under tampering: someone picks
+       three cuts, then changes the Tipo de Carne to something else
+       before saving. The form deliberately KEEPS their picks visible
+       client-side in case they change back, and the server makes the
+       final call about what's actually saved — the same "friendly
+       client behaviour, authoritative server rule" layering this app
+       already uses for required fields and duplicate participants.
+
+    2. Duplicates are removed while PRESERVING ORDER. dict.fromkeys()
+       rather than set(), because a set would scramble the order, and
+       the order cuts were picked in is the order they'll be listed
+       back. The UI can't produce a duplicate, but a stale or tampered
+       form can, and a duplicate is meaningless here (a cut is either
+       on the grill or it isn't) rather than something to reject the
+       whole submission over.
+    """
+    if not any(tc in CATEGORIAS_CON_DESPIECE for tc in tipo_carne_list):
+        return []
+    return list(dict.fromkeys(c for c in request.form.getlist("corte") if c))
+
+
 @app.route("/asado/new", methods=["GET", "POST"])
 @login_required
 def new_asado():
@@ -1282,6 +1334,7 @@ def new_asado():
         # never lets you remove the last row or leave one unselected,
         # but a tampered/malformed request shouldn't crash the route).
         tipo_carne_list = [tc for tc in request.form.getlist("tipo_carne") if tc]
+        cortes_list = read_submitted_cortes(tipo_carne_list)
         coccion = request.form["coccion"]
         superficie = request.form["superficie"]
         local = request.form["local"]
@@ -1359,6 +1412,17 @@ def new_asado():
             db.execute(
                 "INSERT INTO asado_tipo_carne (asado_id, tipo_carne, tipo_carne_weight) VALUES (?, ?, ?)",
                 (asado_id, tc, tipo_carne_weights[tc]),
+            )
+
+        # The individual cuts, if any. Note there's no weight to freeze
+        # here and no lookup to do — unlike the loop just above, these
+        # are descriptive only (see read_submitted_cortes() and
+        # schema.sql's asado_cortes table). Nothing about this loop can
+        # change the points already computed above.
+        for corte in cortes_list:
+            db.execute(
+                "INSERT INTO asado_cortes (asado_id, corte) VALUES (?, ?)",
+                (asado_id, corte),
             )
 
         # --- Step 3: handle participants ---
@@ -1440,6 +1504,7 @@ def new_asado():
         asado=None,
         existing_participants=[],
         existing_tipos_carne=[],
+        existing_cortes=[],
         form_action=url_for("new_asado"),
         submit_label="Añadir Asado",
         # Only ever populated when redirected here after a failed
@@ -1498,6 +1563,17 @@ def view_asado(asado_id):
     ).fetchall()
     existing_tipos_carne = [row["tipo_carne"] for row in tipo_carne_rows]
 
+    # The individual cuts, same shape and same two uses as the Tipo de
+    # Carne list above (raw list prefills the edit form's chips, joined
+    # string shows in the read-only summary). Often empty — cuts only
+    # exist for beef asados, and only when someone bothered to pick
+    # them, so every asado created before this feature has none.
+    corte_rows = db.execute(
+        "SELECT corte FROM asado_cortes WHERE asado_id = ? ORDER BY id",
+        (asado_id,),
+    ).fetchall()
+    existing_cortes = [row["corte"] for row in corte_rows]
+
     return render_template(
         "view_asado.html",
         asado=asado,
@@ -1505,6 +1581,8 @@ def view_asado(asado_id):
         existing_participants=existing_participants,
         existing_tipos_carne=existing_tipos_carne,
         tipos_carne_display="; ".join(existing_tipos_carne),
+        existing_cortes=existing_cortes,
+        cortes_display="; ".join(existing_cortes),
         form_action=url_for("edit_asado", asado_id=asado_id),
         submit_label="Guardar Cambios",
         success=request.args.get("success"),
@@ -1556,6 +1634,14 @@ def edit_asado(asado_id):
     ).fetchall()
     old_tipo_carne = [row["tipo_carne"] for row in old_tipo_carne_rows]
 
+    # Captured before the wholesale delete further down, same reason as
+    # the two lists either side of it — by the time the diff is built,
+    # the old rows are gone.
+    old_cortes_rows = db.execute(
+        "SELECT corte FROM asado_cortes WHERE asado_id = ? ORDER BY id", (asado_id,)
+    ).fetchall()
+    old_cortes = [row["corte"] for row in old_cortes_rows]
+
     old_participant_rows = db.execute(
         """
         SELECT users.name, participations.rol
@@ -1571,6 +1657,7 @@ def edit_asado(asado_id):
     nombre = request.form["nombre"]
     description = request.form.get("description", "")
     tipo_carne_list = [tc for tc in request.form.getlist("tipo_carne") if tc]
+    cortes_list = read_submitted_cortes(tipo_carne_list)
     coccion = request.form["coccion"]
     superficie = request.form["superficie"]
     local = request.form["local"]
@@ -1634,6 +1721,18 @@ def edit_asado(asado_id):
             (asado_id, tc, tipo_carne_weights[tc]),
         )
 
+    # Cuts, same wholesale replace. cortes_list is already empty if the
+    # edit moved this asado away from a beef category, so switching
+    # Tipo de Carne correctly clears any cuts that no longer apply —
+    # see read_submitted_cortes() for why the server decides that
+    # rather than trusting the form to have cleared them.
+    db.execute("DELETE FROM asado_cortes WHERE asado_id = ?", (asado_id,))
+    for corte in cortes_list:
+        db.execute(
+            "INSERT INTO asado_cortes (asado_id, corte) VALUES (?, ?)",
+            (asado_id, corte),
+        )
+
     # Replace participants wholesale (see docstring above).
     db.execute("DELETE FROM participations WHERE asado_id = ?", (asado_id,))
 
@@ -1682,6 +1781,7 @@ def edit_asado(asado_id):
         },
         old_tipo_carne, tipo_carne_list,
         old_participants, new_participants,
+        old_cortes, cortes_list,
     )
     log_edit(db, session["user_id"], g.name, asado_id, nombre, date, changes)
 
@@ -1692,6 +1792,35 @@ def edit_asado(asado_id):
 
     db.commit()
     return redirect(url_for("view_asado", asado_id=asado_id, success="Asado actualizado."))
+
+
+@app.route("/cortes")
+@login_required
+def cortes_page():
+    """
+    "Cortes de Vacuno" — a standalone reference page: every individual
+    beef cut this app knows about, plus the small-icon legend for the
+    non-beef Tipo de Carne categories.
+
+    Reference only. Nothing here is saved, and nothing here scores —
+    the cuts are descriptive (see config.py's NON-SCORING banner). The
+    same list also appears as a picker inside the asado form; this page
+    is for looking one up when you're not mid-form.
+
+    @login_required like (almost) every other route. A v1.0 audit found
+    /api/points sitting undecorated and made the rule explicit: the
+    decorator is part of adding a route. There are exactly three
+    legitimate exceptions in this app — /login, /logout, and the
+    token-gated CSV export — and this is not a fourth.
+
+    Notably the ONLY page in this app that touches no database at all:
+    everything it shows comes from config.py.
+    """
+    return render_template(
+        "cortes.html",
+        cortes_options=CORTES_VACUNO,
+        iconos_tipo_carne=ICONOS_TIPO_CARNE,
+    )
 
 
 @app.route("/asado/<int:asado_id>/delete", methods=["POST"])
@@ -1716,12 +1845,17 @@ def delete_asado(asado_id):
     # log_delete() docstring for the full reasoning.
     log_delete(db, session["user_id"], g.name, asado_id, asado["nombre"], asado["date"])
 
-    # Participations and asado_tipo_carne FIRST — schema.sql declares
-    # both asado_id columns as FOREIGN KEYs, and get_db() enforces that
+    # Every CHILD table first — schema.sql declares each of these
+    # asado_id columns as a FOREIGN KEY, and get_db() enforces that
     # (PRAGMA foreign_keys = ON), so deleting the asado row first would
-    # fail with an IntegrityError while either still references it.
+    # fail with an IntegrityError while any of them still references it.
+    # ADD ANY NEW CHILD TABLE OF `asados` HERE. It's easy to miss,
+    # because a new feature usually has no other reason to touch this
+    # route — but forget it and the first admin to delete an asado that
+    # uses the new table gets a 500, not a friendly error.
     db.execute("DELETE FROM participations WHERE asado_id = ?", (asado_id,))
     db.execute("DELETE FROM asado_tipo_carne WHERE asado_id = ?", (asado_id,))
+    db.execute("DELETE FROM asado_cortes WHERE asado_id = ?", (asado_id,))
     db.execute("DELETE FROM asados WHERE id = ?", (asado_id,))
     db.commit()
 

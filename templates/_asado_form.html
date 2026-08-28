@@ -15,7 +15,12 @@
                                (empty list for create -> renders one blank row)
       existing_tipos_carne  - list of tipo_carne strings to prefill Tipo de Carne rows
                                (empty list for create -> renders one blank row)
-    Plus the usual *_options / weights / registered_users, same as before.
+      existing_cortes       - list of individual beef cut names to prefill the
+                               cut chips (empty list for create, and empty for
+                               any asado that isn't beef or had none picked)
+    Plus the usual *_options / weights / registered_users, same as before,
+    and cortes_options / categorias_con_despiece / iconos_tipo_carne
+    (all from config.py, all descriptive-only — none of them score).
 -->
 
 {% macro tipo_carne_row(selected="") %}
@@ -90,6 +95,58 @@
     </template>
 
     <button type="button" onclick="addTipoCarneRow()">+ Añadir otro tipo de carne</button>
+
+    <!-- MEAT VISUALS: the cut picker for beef, plus a small icon for
+         every other selected meat type.
+
+         ONE strip for the whole form, NOT one per Tipo de Carne row.
+         Three reasons: repeating it per row would mean two cut pickers
+         on screen with no way to tell which owned what; asado_cortes
+         is keyed to the ASADO, not to a tipo_carne row, so a per-row
+         picker would have nowhere separate to store its answer anyway;
+         and "the icons appear beside the cow" describes exactly one
+         combined strip, which is what this is.
+
+         Shown/hidden entirely by updateMeatVisuals() below — the
+         server always renders it, JS decides what's visible. -->
+    <div id="meat-visual" class="meat-visual">
+        <!-- Beef only. Starts hidden and is revealed by
+             updateMeatVisuals() when a category in
+             CATEGORIAS_CON_DESPIECE is selected. -->
+        <div id="cortes-picker" class="cortes-picker hidden">
+            <label for="corte-select">Cortes (opcional)</label>
+            <select id="corte-select">
+                <option value="">— Añadir un corte —</option>
+                {% for nombre in cortes_options %}
+                    <option value="{{ nombre }}">{{ nombre }}</option>
+                {% endfor %}
+            </select>
+
+            <!-- The chips ARE the state. Each one carries its own
+                 hidden input, so the thing on screen and the thing
+                 that gets submitted physically can't drift apart —
+                 removing the chip removes the input with it. Prefilled
+                 server-side on edit; JS adds/removes from there on. -->
+            <div id="cortes-chips" class="cortes-chips">
+                {% for corte in existing_cortes %}
+                    <span class="corte-chip" data-corte-nombre="{{ corte }}">
+                        {{ corte }}
+                        <button type="button" class="corte-chip-remove"
+                                onclick="removeCorteChip(this)" title="Quitar corte">✕</button>
+                        <input type="hidden" name="corte" value="{{ corte }}">
+                    </span>
+                {% endfor %}
+            </div>
+
+            <p class="cortes-note">
+                Los cortes son sólo descriptivos — no afectan los puntos.
+                <a href="{{ url_for('cortes_page') }}" target="_blank" rel="noopener">Ver todos los cortes ↗</a>
+            </p>
+        </div>
+
+        <!-- Filled by updateMeatVisuals(); one icon per non-beef type. -->
+        <div id="meat-icons" class="meat-icons"></div>
+    </div>
 
     <label for="coccion">Tipo de Cocción
         <span class="weight-hint" id="hint-coccion"></span>
@@ -226,6 +283,18 @@
     // =================================================================
     const WEIGHTS = {{ weights|tojson }};
 
+    // Descriptive-only data, injected the same way and for the same
+    // reason — but deliberately kept OUT of WEIGHTS above, which means
+    // "things that score" and is indexed into for numbers.
+    //
+    // Injected rather than hand-typed into this file because these
+    // category strings carry accents and parentheses ("Corte de Vacuno
+    // (Lomo, Tira, Vacío)"). A hand-copied near-miss wouldn't throw —
+    // the cut picker would just silently never appear, with nothing in
+    // the console to explain why.
+    const CATEGORIAS_CON_DESPIECE = {{ categorias_con_despiece|tojson }};
+    const ICONOS_TIPO_CARNE = {{ iconos_tipo_carne|tojson }};
+
     // -----------------------------------------------------------------
     // TIPO DE CARNE ROWS (repeatable, minimum ONE — unlike participants,
     // which are allowed to go down to zero)
@@ -238,6 +307,7 @@
         wireTipoCarneRow(newRow);
         updateTipoCarneRemoveButtons();
         updateTipoCarneHints();
+        updateMeatVisuals();
         updatePointsSummary();
     }
 
@@ -255,12 +325,14 @@
         button.closest(".tipo-carne-row").remove();
         updateTipoCarneRemoveButtons();
         updateTipoCarneHints();
+        updateMeatVisuals();
         updatePointsSummary();
     }
 
     function wireTipoCarneRow(row) {
         row.querySelector("select[name='tipo_carne']").addEventListener("change", function () {
             updateTipoCarneHints();
+            updateMeatVisuals();
             updatePointsSummary();
         });
     }
@@ -289,6 +361,114 @@
             const isMax = rowWeights[index] === maxWeight;
             hint.textContent = "(peso: " + rowWeights[index] + ")" + (isMax ? " ★ mayor" : "");
         });
+    }
+
+    // -----------------------------------------------------------------
+    // MEAT VISUALS: the cut picker (beef) + small icons (everything else)
+    //
+    // NOTHING IN THIS SECTION TOUCHES POINTS. No /api/points call, no
+    // updatePointsSummary(). Cuts are descriptive only — see config.py's
+    // NON-SCORING banner and schema.sql's asado_cortes table.
+    // -----------------------------------------------------------------
+
+    // Reads the currently-selected categories exactly the way
+    // updateTipoCarneHints() above does, so there's one shared idea of
+    // "what's selected right now" rather than two that could disagree.
+    function selectedTipoCarneValues() {
+        return Array.from(
+            document.querySelectorAll("select[name='tipo_carne']")
+        ).map(function (select) { return select.value; });
+    }
+
+    function updateMeatVisuals() {
+        const selected = selectedTipoCarneValues();
+        const hasBeef = selected.some(function (value) {
+            return CATEGORIAS_CON_DESPIECE.indexOf(value) !== -1;
+        });
+
+        // .hidden, never .remove(). The chosen cuts live in hidden
+        // inputs inside this element — removing it from the DOM would
+        // silently throw them away. Someone who picks three cuts,
+        // switches category to check something, then switches back
+        // should find their cuts still there. (The SERVER still decides
+        // whether they're actually saved: read_submitted_cortes() drops
+        // them if the submission isn't beef after all.)
+        document.getElementById("cortes-picker").classList.toggle("hidden", !hasBeef);
+
+        // De-duplicated: two rows can legitimately hold the same
+        // category, and two identical 🍗 side by side just looks like a
+        // rendering bug.
+        const others = Array.from(new Set(selected)).filter(function (value) {
+            return value && CATEGORIAS_CON_DESPIECE.indexOf(value) === -1;
+        });
+
+        const iconsBox = document.getElementById("meat-icons");
+        iconsBox.innerHTML = "";
+        others.forEach(function (categoria) {
+            const icon = document.createElement("span");
+            icon.className = "meat-icon";
+            icon.title = categoria;
+
+            // The emoji NEVER carries the meaning on its own — emoji
+            // render differently across phones/desktops and a few of
+            // these are genuinely ambiguous alone (🍖 vs 🥩 vs 🐖). The
+            // caption below it is what actually says which meat this
+            // is; same rule as the per-user colour dots elsewhere.
+            const glyph = document.createElement("span");
+            glyph.className = "meat-icon-glyph";
+            glyph.textContent = ICONOS_TIPO_CARNE[categoria] || "🍽️";
+
+            const label = document.createElement("small");
+            label.className = "meat-icon-label";
+            label.textContent = categoria;
+
+            icon.appendChild(glyph);
+            icon.appendChild(label);
+            iconsBox.appendChild(icon);
+        });
+    }
+
+    // The chips are the single source of truth for which cuts are
+    // selected — each one contains its own hidden input, so reading the
+    // DOM and reading what will be submitted are the same thing.
+    function selectedCorteNames() {
+        return Array.from(
+            document.querySelectorAll("#cortes-chips input[name='corte']")
+        ).map(function (input) { return input.value; });
+    }
+
+    function addCorte(nombre) {
+        if (!nombre || selectedCorteNames().indexOf(nombre) !== -1) {
+            return;  // already picked — silently ignore, not an error
+        }
+
+        const chip = document.createElement("span");
+        chip.className = "corte-chip";
+        chip.dataset.corteNombre = nombre;
+        chip.appendChild(document.createTextNode(nombre));
+
+        const removeButton = document.createElement("button");
+        removeButton.type = "button";
+        removeButton.className = "corte-chip-remove";
+        removeButton.title = "Quitar corte";
+        removeButton.textContent = "✕";
+        removeButton.onclick = function () { removeCorteChip(removeButton); };
+
+        // Same markup the server renders for prefilled chips on edit —
+        // so a chip added by JS and a chip rendered by Jinja are
+        // indistinguishable, and removeCorteChip() works on both.
+        const hidden = document.createElement("input");
+        hidden.type = "hidden";
+        hidden.name = "corte";
+        hidden.value = nombre;
+
+        chip.appendChild(removeButton);
+        chip.appendChild(hidden);
+        document.getElementById("cortes-chips").appendChild(chip);
+    }
+
+    function removeCorteChip(button) {
+        button.closest(".corte-chip").remove();
     }
 
     // -----------------------------------------------------------------
@@ -515,7 +695,23 @@
     // the user touches anything.
     updateWeightHints();
     updateTipoCarneHints();
+    // Also what reveals the cut picker on EDIT, when the asado being
+    // edited is already beef — the chips themselves are rendered
+    // server-side, but the picker around them starts hidden.
+    updateMeatVisuals();
     updatePointsSummary();
+
+    // The cut dropdown is an "add" action, not a field holding a
+    // current value — so it resets to its placeholder after each pick,
+    // ready for the next one. Wired here rather than inline in the
+    // markup, matching how every other listener in this file is set up.
+    document.getElementById("corte-select").addEventListener("change", function (event) {
+        if (!event.target.value) {
+            return;
+        }
+        addCorte(event.target.value);
+        event.target.value = "";
+    });
 
     // -----------------------------------------------------------------
     // DECIMAL FIELDS: live-normalize a typed ',' to '.'

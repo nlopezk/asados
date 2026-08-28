@@ -24,12 +24,45 @@ Social:
 - User statistics.
 - Calendar view
 Improvements:
-- Cow View
-- Favourite cuts (less priority)
+- The cow diagram itself (1.6.0 shipped the cut picker + data; what's
+  left is the clickable drawing — hover a region to name it, click to
+  add it). Must be hand-drawn with CHILEAN cuts; see CLAUDE.md.
+- Favourite cuts (less priority) — much cheaper now that asado_cortes
+  exists: a GROUP BY corte, COUNT(*) per user is most of it.
 - Asado weight calculator
 
 Groups (much later): Creación de grupos, invitaciones y posibilidad de que el usuario pertenezca a distintos grupos.
 
+
+## [1.6.0] - 2026-08-27
+### Added
+- **Cortes de vacuno**: when an asado's Tipo de Carne is "Corte de
+  Vacuno", a sub-picker appears to record which individual cuts were
+  on the grill (Lomo Vetado, Punta de Ganso, Malaya, ... — 21 Chilean
+  cuts to start, easy to extend in `config.py`). Selected cuts show as
+  removable chips, are saved with the asado, appear on its detail page,
+  and are recorded in the activity log when an edit changes them.
+  **They are descriptive only and do not affect points at all.**
+- **Small icons for the other meat types** — 🐑 🐖 🥩 🍖 🍗 🌭 🍔 🐟,
+  each with its label, shown beside the cut picker when both apply.
+- **`/cortes`** — a reference page listing every cut and the icon
+  legend. Linked from the cut picker and from an asado's Cortes row,
+  deliberately not from the navbar.
+- **`asado_cortes` table** + `migrate_add_cortes.py`.
+
+### Changed
+- **First schema change this project ships WITHOUT wiping the
+  database.** Previously the only way to change the schema was
+  `init_db()`, which drops every table — fine with seeded test data,
+  catastrophic now that the database holds the group's real history.
+  Schema changes now ship as additive, idempotent migration scripts
+  that back up first and print before/after row counts;
+  `migrate_add_cortes.py` is the pattern to copy. `schema.sql` is now
+  documented as being for fresh databases only, and CLAUDE.md's old
+  "any schema change requires recreating the DB" advice — which would
+  now destroy 239 asados — has been rewritten.
+- "New Asado" heading is now "Añadir Asado" — it had been sitting in
+  English since Phase 1, against the app's Spanish UI convention.
 
 ## [1.5.0] - 2026-08-27
 ### Changed

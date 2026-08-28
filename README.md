@@ -20,10 +20,18 @@ participant.
    ```
    pip install -r requirements.txt
    ```
-4. **Create the database** (WIPES any existing data — `schema.sql` runs
-   `DROP TABLE` + `CREATE TABLE`, there is no migration system):
+4. **Create the database.** ⚠️ This creates a brand-new, EMPTY one —
+   `schema.sql` runs `DROP TABLE` + `CREATE TABLE`, so running it
+   against a database that already holds asados destroys them:
    ```
    python -c "from app import init_db; init_db()"
+   ```
+   To change the SHAPE of a database that already has data, write an
+   additive migration script instead — `migrate_add_cortes.py` is the
+   worked example (safe to run twice; backs up first; prints
+   before/after row counts so you can confirm nothing was lost):
+   ```
+   python migrate_add_cortes.py
    ```
 5. **Create at least one user account** (there's no public sign-up page —
    you create the first account, an admin, yourself with this script):
@@ -109,6 +117,10 @@ As_app/
   Google Sheets `IMPORTDATA()` → Looker Studio dashboards. See
   `CLAUDE.md`'s "Looker Studio / Google Sheets export" section for
   setup steps and why it's token-gated instead of login-gated.
+- **Cortes de Vacuno** (`/cortes`) — reference list of the individual
+  beef cuts (Chilean names) that can be recorded alongside a "Corte de
+  Vacuno" asado, plus the icon legend for the other meat types. The
+  cuts are descriptive only — **they never affect points**.
 - **Ubicaciones** (`/ubicaciones`) — a reusable pool of saved places to
   quick-fill the asado form, so a recurring spot doesn't need retyping.
 - **Registro de Actividad** (`/actividad`) — who created, edited, or deleted
@@ -127,6 +139,18 @@ There's no CI/CD — deploying is a manual two-step on PythonAnywhere:
 cd ~/asados && git pull
 ```
 Then click **Reload** on the Web tab.
+
+**If the release includes a migration, run it BETWEEN those two steps** —
+after `git pull`, before Reload:
+
+```bash
+python3 migrate_add_cortes.py
+```
+
+Order matters: reloading first would put the new code live against a
+database that doesn't have the new table yet, and pages would error
+until the migration caught up. `git pull` on its own doesn't restart
+the app, so the old code keeps serving safely in between.
 
 **Never run `init_db()` on the server** — it would wipe the live database.
 See `CLAUDE.md`'s Phase 6 section for how the deployment is wired up.

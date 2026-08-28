@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+<!--
+    cortes.html — "Cortes de Vacuno", a standalone reference page.
+
+    Everything here comes from config.py (CORTES_VACUNO and
+    ICONOS_TIPO_CARNE); this page touches no database at all, which
+    makes it the cheapest route in the app.
+
+    Reference only — nothing on this page is saved anywhere, and none
+    of it scores. The same cut list also appears as a picker inside the
+    asado form (see _asado_form.html); this page is for looking one up
+    when you're NOT mid-form. Reached from a link under that picker and
+    from an asado's own "Cortes" row, deliberately rather than from the
+    navbar — see CLAUDE.md on why adding a 9th nav link isn't free.
+-->
+
+{% block content %}
+<h2>Cortes de Vacuno</h2>
+
+<p class="cortes-intro">
+    Los cortes que se pueden registrar en un asado de
+    <strong>Corte de Vacuno</strong>. Son sólo descriptivos: quedan
+    guardados junto al asado, pero <strong>no afectan los puntos</strong>.
+</p>
+
+<!-- A plain list, deliberately. This page's whole job is "tell me the
+     names", and a plain <ul> does that with no JavaScript, on any
+     screen size, and reads correctly to a screen reader. -->
+<ul class="cortes-list">
+    {% for nombre in cortes_options %}
+        <li>{{ nombre }}</li>
+    {% endfor %}
+</ul>
+
+<h3>Otros tipos de carne</h3>
+<p class="cortes-intro">
+    El resto de los tipos de carne no tienen despiece propio en la app —
+    se muestran con un ícono junto al asado.
+</p>
+
+<!-- Each emoji is always paired with its label, never shown alone:
+     emoji render differently across phones and desktops, and a few of
+     these are genuinely ambiguous by themselves. Same rule the
+     per-user colour dots follow elsewhere in this app. -->
+<ul class="meat-icon-legend">
+    {% for categoria, icono in iconos_tipo_carne.items() %}
+        <li>
+            <span class="meat-icon-glyph">{{ icono }}</span>
+            <span>{{ categoria }}</span>
+        </li>
+    {% endfor %}
+</ul>
+{% endblock %}

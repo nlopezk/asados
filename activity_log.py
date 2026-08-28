@@ -109,7 +109,8 @@ SCALAR_FIELDS = [
 ]
 
 
-def diff_asado(old_row, new_values, old_tipo_carne, new_tipo_carne, old_participants, new_participants):
+def diff_asado(old_row, new_values, old_tipo_carne, new_tipo_carne,
+               old_participants, new_participants, old_cortes=None, new_cortes=None):
     """
     Builds the list of (field_label, old_value, new_value) tuples for
     everything that actually CHANGED between an asado's state right
@@ -128,6 +129,14 @@ def diff_asado(old_row, new_values, old_tipo_carne, new_tipo_carne, old_particip
     old_participants / new_participants: lists of "Nombre (Rol)"
         strings, already resolved from user_id to display name by the
         caller — this module has no db access to look names up itself.
+    old_cortes / new_cortes: lists of individual beef cut names
+        ("Lomo Vetado", ...). Default None (treated as empty) rather
+        than being required, so any existing caller that doesn't know
+        about cuts keeps working unchanged. Logged for the same reason
+        everything else here is: this app lets ANY user edit ANY asado,
+        and the log is what makes that openness accountable — an edit
+        that quietly rewrote which cuts were recorded, with nothing in
+        the log, would undercut exactly that.
     """
     changes = []
 
@@ -146,6 +155,14 @@ def diff_asado(old_row, new_values, old_tipo_carne, new_tipo_carne, old_particip
     new_tc_joined = "; ".join(new_tipo_carne)
     if old_tc_joined != new_tc_joined:
         changes.append(("Tipo de Carne", old_tc_joined, new_tc_joined))
+
+    # Sorted before joining, same reasoning as the participants block
+    # below: picking the same three cuts in a different order isn't a
+    # change anyone would want to read about in the log.
+    old_cortes_joined = "; ".join(sorted(old_cortes or []))
+    new_cortes_joined = "; ".join(sorted(new_cortes or []))
+    if old_cortes_joined != new_cortes_joined:
+        changes.append(("Cortes", old_cortes_joined, new_cortes_joined))
 
     # Sorted so the comparison (and the displayed text) doesn't depend
     # on submission order — adding the same two participants in a

@@ -947,6 +947,141 @@ button:hover {
     margin-left: 6px;
 }
 
+/* --- Cortes (beef cuts) + non-beef meat icons ------------------------
+   The strip under "Tipo de Carne" on the asado form: a cut picker when
+   beef is selected, plus one small icon per other selected meat type.
+   Both are DESCRIPTIVE ONLY — nothing here scores (see config.py's
+   NON-SCORING banner).
+
+   flex + flex-wrap rather than fixed widths, matching this app's whole
+   layout language: on a wide screen the icons sit BESIDE the cut
+   picker, and on a phone they wrap underneath it, with no media query
+   needed for either. */
+.meat-visual {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 16px;
+    margin: 10px 0 4px 0;
+}
+
+.cortes-picker {
+    /* Grows to take the room, but never below a width where the
+       dropdown and chips stop being usable — at which point the icons
+       wrap below instead of squeezing this further. */
+    flex: 1 1 320px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+
+.cortes-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+/* One chip per selected cut. Each contains its own hidden input, so
+   what's on screen and what gets submitted can't drift apart. */
+.corte-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--color-surface-alt);
+    border: 1px solid var(--color-border);
+    border-radius: 14px;
+    padding: 3px 6px 3px 12px;
+    font-size: 0.88em;
+}
+
+/* Overrides the bare-<button> baseline (which gives every unclassed
+   button a filled box) — inside a chip it should read as a small ✕
+   affordance, not a second button sitting in a button. */
+.corte-chip-remove {
+    background: none;
+    border: none;
+    padding: 0 4px;
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 0.9em;
+    line-height: 1;
+}
+
+.corte-chip-remove:hover {
+    background: none;
+    color: var(--color-accent-text);
+}
+
+.cortes-note {
+    color: var(--color-text-muted);
+    font-size: 0.85em;
+    margin-top: 10px;
+}
+
+.meat-icons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    /* Deliberately does NOT grow: these are secondary to the cut
+       picker, and should stay compact beside it rather than competing
+       with it for width. */
+    flex: 0 1 auto;
+}
+
+/* Emoji + caption, stacked. The caption is not decoration — emoji
+   render differently across platforms and several of these are
+   ambiguous alone (🍖 vs 🥩 vs 🐖), so the text is what actually
+   identifies the meat. Same rule as .user-color-dot never replacing a
+   name. */
+.meat-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    max-width: 92px;
+    text-align: center;
+}
+
+.meat-icon-glyph {
+    font-size: 1.6em;
+    line-height: 1;
+}
+
+.meat-icon-label {
+    color: var(--color-text-muted);
+    font-size: 0.72em;
+    line-height: 1.2;
+}
+
+/* --- /cortes reference page --- */
+.cortes-intro {
+    color: var(--color-text-muted);
+    max-width: 60ch;  /* prose stays readable rather than running the container's full width */
+}
+
+/* Multi-column so a 21-item list doesn't become a long thin scroll —
+   column-width (not column-count) means the browser picks how many
+   columns actually fit, so this needs no breakpoint of its own. */
+.cortes-list {
+    columns: 200px;
+    margin-top: 12px;
+}
+
+.meat-icon-legend {
+    list-style: none;
+    padding-left: 0;
+    margin-top: 12px;
+}
+
+.meat-icon-legend li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 0;
+}
+
 /* --- Live points summary box --- */
 .points-summary {
     background: var(--color-accent-soft);

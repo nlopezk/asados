@@ -8,7 +8,10 @@
 -->
 
 {% block content %}
-<h2>New Asado</h2>
+<!-- Spanish, like every other user-facing string in this app (see
+     CLAUDE.md's language convention) — this heading had been sitting
+     in English since Phase 1 and was simply missed. -->
+<h2>Añadir Asado</h2>
 {% if error %}
     <p class="error-message">{{ error }}</p>
 {% endif %}
