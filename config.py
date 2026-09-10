@@ -128,11 +128,12 @@ CATEGORIAS_CON_DESPIECE = [
 # them can never be drawn on a side view because they are internal
 # cuts (Asado Carnicero, which the reference chart itself labels
 # "Corte Interno", and Entrana, the diaphragm). The other three simply
-# were not on the chart the diagram was drawn from. MALAYA IS THE ONE
-# WORTH REVISITING: it appears on four of the five reference charts and
-# is this group's 5th most-used cut name (5 of the 239 asado titles).
-# Drawing a region for it later needs no code change at all -- add the
-# path with data-corte="malaya" and swap the None here for "malaya".
+# were not on the chart the diagram was drawn from. Malaya WAS one of
+# them -- it appears on four of the five reference charts and is this
+# group's 5th most-used cut name -- and it got its region in 1.7.1,
+# which is the worked example of how cheap that is: draw the shape in
+# vaca_svg.svg, re-run build_cow_partial.py, swap the None here for
+# the new id. No other code changed.
 #
 # One region covers TWO cuts: "estomagillo_palanca". The reference
 # chart groups them ("Estomaguillo, Coluda y Palanca"), so the drawing
@@ -170,6 +171,7 @@ CORTES_VACUNO = {
     "Asado de Tira":      "asado_tira",
     "Plateada":           "plateada",
     "Pollo Barriga":      "pollo_barriga",
+    "Malaya":             "malaya",
     "Tapabarriga":        "tapa_barriga",
     "Palanca":            "estomagillo_palanca",
     "Coludas":            "coludas",
@@ -185,7 +187,6 @@ CORTES_VACUNO = {
     "Osobuco de Mano":    "osobuco_mano",
     "Osobuco de Pierna":  "osobuco_pierna",
     # --- Sin region en el diagrama (ver el comentario de arriba) ---
-    "Malaya":             None,
     "Entraña":       None,
     "Estomaguillo":       None,
     "Posta Negra":        None,

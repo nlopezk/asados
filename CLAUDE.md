@@ -742,15 +742,43 @@ than a cursor-following tooltip (**there is no hover on a phone**, and
 `getBoundingClientRect()` returns 0 inside `view_asado.html`'s
 `display: none` edit form).
 
-**Five cuts have no region and that is not a bug** — `CORTES_VACUNO`
+**Testing gotcha, hit for real when Malaya was added: a region's
+BOUNDING-BOX CENTRE is often inside a different region.** These shapes
+are concave and interlocking, so `page.hover('[data-corte="malaya"]')`
+failed with "sobrecostilla intercepts pointer events" — Playwright
+aims at the centre of the box by default, and Malaya's box centre sits
+in its neighbour. That is a targeting problem in the test, not a
+reachability problem for a user. To drive a region in a test, ask the
+browser where it actually answers (walk the bounding box calling
+`document.elementFromPoint(x, y)` until it returns the element) and
+click *that* point. The same sweep, run over the whole diagram, is
+also how to check nothing has become unreachable after a redraw —
+tally what `elementFromPoint` returns across the SVG's area and look
+for a region with zero hits. Every region currently has between ~760
+and ~2800 clickable pixels at the 460px desktop size.
+
+**Overlaps resolve by DOCUMENT ORDER, not by z-index.** SVG has no
+z-index; whatever is painted later sits on top. `build_cow_partial.py`
+preserves the drawing's own order, so if a redraw ever makes a region
+hard to hit, the fix is to move it later in the Inkscape layer stack,
+not to add CSS.
+
+**Four cuts have no region and that is not a bug** — `CORTES_VACUNO`
 maps them to `None` and they stay fully selectable from the dropdown.
 Two can never be drawn on a side view because they're internal cuts
 (Asado Carnicero, which the reference chart itself labels "Corte
-Interno", and Entraña, the diaphragm). **Malaya is the one worth
-revisiting**: it's on four of the five reference charts and is the
-group's 5th most-used cut name, but the chart the drawing was traced
-from omits it. Adding it later needs no code change — draw the region
-with `id="malaya"`, re-run the build script, swap the `None`.
+Interno", and Entraña, the diaphragm); Posta Negra and Estomaguillo
+simply weren't on the chart the drawing came from.
+
+**Malaya was the fifth, and getting it a region in 1.7.1 is the worked
+example of how cheap that is.** It's on four of the five reference
+charts and is the group's 5th most-used cut name. The whole change
+was: draw the shape in `vaca_svg.svg` (which also meant reshaping its
+seven neighbours to make room — expected, since the torso was already
+fully tiled), run `check_cow_svg.py`, run `build_cow_partial.py`, and
+swap the `None` in `CORTES_VACUNO` for the new id. No app code moved
+at all. That is the whole point of keeping the artwork as source with
+a build step rather than hand-maintaining the partial.
 
 **One region covers two cuts** (`estomagillo_palanca`), because the
 reference chart groups them ("Estomaguillo, Coluda y Palanca").

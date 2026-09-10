@@ -24,15 +24,22 @@ Social:
 - User statistics.
 - Calendar view
 Improvements:
-- A Malaya region on the cow diagram — it's the one well-used cut with
-  no shape drawn (see CLAUDE.md). Draw it in vaca_svg.svg, re-run
-  build_cow_partial.py, swap its None in config.py. No code change.
 - Favourite cuts (less priority) — much cheaper now that asado_cortes
   exists: a GROUP BY corte, COUNT(*) per user is most of it.
 - Asado weight calculator
 
 Groups (much later): Creación de grupos, invitaciones y posibilidad de que el usuario pertenezca a distintos grupos.
 
+
+## [1.7.1] - 2026-08-27
+### Added
+- **Malaya now has a region on the cow** — 28 clickable cuts, up from
+  27. It was the one well-used cut without a shape (on four of the
+  five reference charts, and the group's 5th most-used cut name). Its
+  seven neighbours were reshaped to make room, since the torso was
+  already fully tiled; all seven re-verified.
+- Only four cuts remain dropdown-only, and two of those can never be
+  drawn on a side view: Asado Carnicero and Entraña are internal cuts.
 
 ## [1.7.0] - 2026-08-27
 ### Added
