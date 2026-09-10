@@ -110,14 +110,25 @@ CATEGORIAS_CON_DESPIECE = [
 #           asado_cortes.corte and shown on screen (the full text, not
 #           a slug — same convention as asado_tipo_carne.tipo_carne).
 #   value = the `data-corte` attribute of the matching region in the
-#           cow diagram, or None for a cut with no drawn region.
+#           cow diagram. May be None for a cut with no drawn region —
+#           the dropdown is the COMPLETE list and the diagram is a
+#           visual shortcut INTO it, so a cut with no region is still
+#           fully selectable, it just can't be clicked on the picture.
+#           (Nothing is None right now: every cut below appears on the
+#           reference charts this list was reconciled against.)
 #
-# The dropdown is the COMPLETE list; the diagram is a visual shortcut
-# INTO it. That's why a None is fine and not a bug — a cut with no
-# region (Entraña, a diaphragm cut, is the obvious case) is still
-# fully selectable, it just can't be clicked on the picture. The
-# values aren't read at all until the diagram itself ships; they're
-# here from the start so that release needs no data migration.
+# The order is ANATOMICAL, front to back, so the dropdown reads in the
+# same order your eye travels across the diagram. That's also why the
+# section comments are here — they're the same groupings a butcher's
+# chart uses (cuarto delantero / lomo / costillar / cuarto trasero).
+#
+# Reconciled in 1.6.1 against five real Chilean despiece charts AND
+# the group's own 239 asado titles, which caught six cuts the first
+# pass had missed: Ganso is its own cut (12 mentions, distinct from
+# Punta de Ganso's 9), plus Posta Paleta, Pollo Barriga, Estomaguillo,
+# Pollo Ganso and Asado Carnicero. Entraña was wrongly marked as
+# having no region; it's drawn on the charts and used twice by the
+# group.
 #
 # Names are CHILEAN, and that is not incidental. This group's own 239
 # asado titles are full of Punta de Ganso, Lomo Vetado, Punta Picana,
@@ -131,27 +142,38 @@ CATEGORIAS_CON_DESPIECE = [
 # "Punta Picana" -> "Picana" — is a one-line edit here that never
 # touches the drawing.
 CORTES_VACUNO = {
-    "Lomo Vetado":     "lomo-vetado",
-    "Lomo Liso":       "lomo-liso",
-    "Filete":          "filete",
-    "Asado de Tira":   "asado-de-tira",
-    "Sobrecostilla":   "sobrecostilla",
-    "Huachalomo":      "huachalomo",
-    "Plateada":        "plateada",
-    "Tapabarriga":     "tapabarriga",
-    "Malaya":          "malaya",
-    "Punta Picana":    "punta-picana",
-    "Punta de Ganso":  "punta-de-ganso",
-    "Punta Paleta":    "punta-paleta",
-    "Posta Rosada":    "posta-rosada",
-    "Posta Negra":     "posta-negra",
-    "Abastero":        "abastero",
-    "Choclillo":       "choclillo",
-    "Palanca":         "palanca",
-    "Asiento":         "asiento",
-    "Tapapecho":       "tapapecho",
-    "Osobuco":         "osobuco",
-    "Entraña":         None,   # diaphragm — no sensible region on a side view
+    # --- Cuarto delantero: cuello, paleta, pecho ---
+    "Huachalomo":       "huachalomo",
+    "Asado Carnicero":  "asado-carnicero",
+    "Punta Paleta":     "punta-paleta",
+    "Posta Paleta":     "posta-paleta",
+    "Choclillo":        "choclillo",
+    "Tapapecho":        "tapapecho",
+    # --- Lomo (la linea del espinazo) ---
+    "Lomo Vetado":      "lomo-vetado",
+    "Lomo Liso":        "lomo-liso",
+    "Filete":           "filete",
+    # --- Costillar y falda ---
+    "Sobrecostilla":    "sobrecostilla",
+    "Asado de Tira":    "asado-de-tira",
+    "Plateada":         "plateada",
+    "Malaya":           "malaya",
+    "Tapabarriga":      "tapabarriga",
+    "Estomaguillo":     "estomaguillo",
+    "Pollo Barriga":    "pollo-barriga",
+    "Entraña":          "entrana",
+    "Palanca":          "palanca",
+    # --- Cuarto trasero: pierna y cadera ---
+    "Punta Picana":     "punta-picana",
+    "Asiento":          "asiento",
+    "Ganso":            "ganso",
+    "Punta de Ganso":   "punta-de-ganso",
+    "Pollo Ganso":      "pollo-ganso",
+    "Posta Rosada":     "posta-rosada",
+    "Posta Negra":      "posta-negra",
+    "Abastero":         "abastero",
+    # --- Patas ---
+    "Osobuco":          "osobuco",
 }
 
 # A small icon for each NON-beef Tipo de Carne, shown beside (or

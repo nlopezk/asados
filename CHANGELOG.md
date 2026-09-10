@@ -34,6 +34,26 @@ Improvements:
 Groups (much later): Creación de grupos, invitaciones y posibilidad de que el usuario pertenezca a distintos grupos.
 
 
+## [1.6.1] - 2026-08-27
+### Changed
+- **Cut list reconciled against five real Chilean despiece charts and
+  the group's own 239 asado titles** — 21 cuts to 27. The first pass
+  had missed six that are both drawn on the charts and actually used
+  here: **Ganso** (12 mentions, a distinct cut from Punta de Ganso's
+  9), **Posta Paleta**, **Pollo Barriga**, **Estomaguillo**, **Pollo
+  Ganso** and **Asado Carnicero**. **Entraña** had been marked as
+  having no place on the diagram, which was simply wrong — it's drawn
+  on the charts and used twice by the group. The list is now ordered
+  anatomically (front to back) rather than arbitrarily, so the
+  dropdown reads in the same order your eye crosses a butcher's chart.
+
+### Added
+- `check_cow_svg.py` — checks a hand-drawn cow diagram against the cut
+  list before it's wired in: every cut has exactly one shape, no
+  duplicate names, a viewBox is present, no embedded bitmap. Each of
+  those fails *silently* once it's in the app, so catching them up
+  front is the point.
+
 ## [1.6.0] - 2026-08-27
 ### Added
 - **Cortes de vacuno**: when an asado's Tipo de Carne is "Corte de
