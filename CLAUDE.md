@@ -668,23 +668,103 @@ doesn't restart the app, so the old code keeps serving safely in
 between. The live database is a different file on a different disk —
 **the migration must be run in both places; there is no sync.**
 
-**Still to come (the actual cow):** an inline SVG partial
-(`templates/_cow_diagram.html`) whose regions are clickable and named
-on hover. Decisions already made for it: **inline SVG**, never
-`<img src="...svg">` (an `<img>`-loaded SVG is an opaque document — no
-per-region events, no page CSS, no access to `:root` custom
-properties, which is the whole styling story); **`data-corte="slug"`
-rather than `id="slug"`**, since duplicate ids break `getElementById`
-and `#id` selectors *silently* and `data-*` also gives one CSS rule for
-all regions; the `CORTES_VACUNO` values are already the region slugs,
-so no data migration is needed. Two constraints that will shape it:
-**there is no hover on a phone** (so a `<title>` per region plus a
-fixed caption strip, and tap-to-select doubling as tap-to-name — not a
-cursor-following tooltip, which would also need
-`getBoundingClientRect()` and that returns 0 inside `view_asado.html`'s
-`display: none` edit form); and **the dropdown stays the primary path
-on mobile**, since 18 regions squeezed to 375px fall under the ~44px
-touch minimum.
+**The cow itself is a hand-drawn Inkscape file, and the repo holds
+BOTH halves.** `vaca_svg.svg` is the source artwork (27 named regions,
+one per cut); `build_cow_partial.py` converts it into
+`templates/_cow_svg.html`, which is generated and must never be edited
+by hand. Editing the drawing is: open the .svg in Inkscape, change it,
+save, re-run the build script. The conversion does four things, each
+load-bearing:
+
+- **`id="filete"` becomes `data-corte="filete"`.** ids must be unique
+  per document; if this partial were ever included twice, duplicate
+  ids would break `getElementById` and `#id` selectors *silently*,
+  picking whichever came first. `data-*` has no such rule, and gives
+  one CSS rule (`[data-corte]`) covering all 27 regions.
+- **The inline `style="fill:#782121"` is stripped.** An inline style
+  beats any stylesheet rule that isn't `!important` — leaving it would
+  make hover and selection impossible, which is the whole point.
+- **`width`/`height` in mm are dropped, `viewBox` is kept** — the mm
+  sizes would pin the drawing to one physical size.
+- **Coordinates are rounded to 3 decimals**, trimming ~20% off a file
+  that gets inlined into every asado form. 3 and not 2 because the
+  path data is mostly RELATIVE commands, where rounding error
+  accumulates along the path rather than cancelling out.
+
+**`_cow_svg.html` (generated) and `_cow_diagram.html` (hand-written)
+are deliberately separate files.** The generated one is markup only;
+the wrapper, caption and all the interaction live in the hand-written
+one, which includes it. That way redrawing the cow can never clobber
+the behaviour, and changing the behaviour never means hand-patching 27
+generated `<path>` elements. **Include `_cow_diagram.html`, never
+`_cow_svg.html` directly**, and only once per page.
+
+**The diagram knows nothing about the asado form.** It exposes exactly
+two globals — `window.onCorteToggled` (the includer assigns a function
+to be told a region was tapped) and `window.paintCowSelection(names)`
+(the includer calls it to say what's currently selected) — and stops
+there. That's what lets one drawing serve both the form, where a tap
+adds a chip, and `/cortes`, where a tap just shows you which cut is
+which. `/cortes` never assigns the hook, so the diagram falls back to
+latching a highlight locally.
+
+**The chips are the state; the diagram is a VIEW of it.** Every change
+— tapping a region, picking from the dropdown, removing a chip — goes
+through `repaintCow()`, which re-reads the hidden inputs and repaints
+from scratch, rather than each path toggling the highlight itself.
+Three input routes converging on one repaint is what stops them
+drifting out of sync.
+
+**Regions share the body's exact fill and are told apart by their
+STROKE, not by shade.** The first version filled them a different
+brown from the silhouette, which made the cow look blotchy rather than
+divided and left hover/selection competing with an already-patterned
+background. Every real despiece chart is one solid animal with the
+cuts ruled onto it; matching that means the only colour anywhere on
+the drawing is the cut you're pointing at. Selected state is BOTH a
+brighter fill and a light outline — not a third shade of red — since
+hover and selected would otherwise be two similar reds telling two
+different stories. Same "never rely on colour alone" rule as the
+per-user colour dots.
+
+**`--color-gold` is deliberately NOT used here** despite being the
+obvious "highlight" colour. CLAUDE.md's own design note limits it to
+exactly one place (the navbar's brass rail), following the colour
+book's warning that overusing gold cheapens it.
+
+**The regions are deliberately NOT focusable.** 27 tab stops would be
+a miserable way through this form and would buy nothing: the dropdown
+beside the diagram offers every cut, *including the five with no
+region drawn*, so keyboard and screen-reader users already have a
+complete and better path. The diagram is a visual shortcut, not the
+only way in — which is also why the caption is a fixed strip rather
+than a cursor-following tooltip (**there is no hover on a phone**, and
+`getBoundingClientRect()` returns 0 inside `view_asado.html`'s
+`display: none` edit form).
+
+**Five cuts have no region and that is not a bug** — `CORTES_VACUNO`
+maps them to `None` and they stay fully selectable from the dropdown.
+Two can never be drawn on a side view because they're internal cuts
+(Asado Carnicero, which the reference chart itself labels "Corte
+Interno", and Entraña, the diaphragm). **Malaya is the one worth
+revisiting**: it's on four of the five reference charts and is the
+group's 5th most-used cut name, but the chart the drawing was traced
+from omits it. Adding it later needs no code change — draw the region
+with `id="malaya"`, re-run the build script, swap the `None`.
+
+**One region covers two cuts** (`estomagillo_palanca`), because the
+reference chart groups them ("Estomaguillo, Coluda y Palanca").
+Palanca owns it — the more-used of the two names — and Estomaguillo
+stays dropdown-only, so hover and click agree rather than the region
+being ambiguous about which cut you get.
+
+**The slugs are the drawing's own element ids, copied verbatim** —
+underscores and all, including the slightly-misspelled
+`estomagillo_palanca`. Matching the artwork exactly means it can be
+reopened and re-exported without anyone remembering a renaming step,
+and a mismatch here fails silently: the region simply never lights up.
+`check_cow_svg.py` exists to catch exactly that class of problem
+before the drawing is wired in.
 
 **The individual weights that fed into `points` are frozen too, not
 just the final number.** `asados.tipo_carne_weight`/`coccion_weight`/

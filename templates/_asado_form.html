@@ -114,6 +114,12 @@
              updateMeatVisuals() when a category in
              CATEGORIAS_CON_DESPIECE is selected. -->
         <div id="cortes-picker" class="cortes-picker hidden">
+            {# The drawing. Included ONCE per page - see the partial's
+               own header. It knows nothing about this form: it just
+               calls onCorteToggled(nombre), which is assigned further
+               down in this file's own <script>. #}
+            {% include "_cow_diagram.html" %}
+
             <label for="corte-select">Cortes (opcional)</label>
             <select id="corte-select">
                 <option value="">— Añadir un corte —</option>
@@ -437,6 +443,17 @@
         ).map(function (input) { return input.value; });
     }
 
+    // The chips are the state; the diagram is a VIEW of that state,
+    // repainted after every change rather than toggled in step with
+    // it. That way clicking a region, picking from the dropdown and
+    // removing a chip all converge on the same code path and can't
+    // drift out of sync with each other.
+    function repaintCow() {
+        if (typeof window.paintCowSelection === "function") {
+            window.paintCowSelection(selectedCorteNames());
+        }
+    }
+
     function addCorte(nombre) {
         if (!nombre || selectedCorteNames().indexOf(nombre) !== -1) {
             return;  // already picked — silently ignore, not an error
@@ -465,10 +482,23 @@
         chip.appendChild(removeButton);
         chip.appendChild(hidden);
         document.getElementById("cortes-chips").appendChild(chip);
+        repaintCow();
     }
 
     function removeCorteChip(button) {
         button.closest(".corte-chip").remove();
+        repaintCow();
+    }
+
+    // Same removal, addressed by name instead of by the button that
+    // was clicked — what a tap on an already-selected region needs.
+    function removeCorteByName(nombre) {
+        const chip = document.querySelector(
+            '#cortes-chips .corte-chip[data-corte-nombre="' + nombre + '"]');
+        if (chip) {
+            chip.remove();
+            repaintCow();
+        }
     }
 
     // -----------------------------------------------------------------
@@ -712,6 +742,21 @@
         addCorte(event.target.value);
         event.target.value = "";
     });
+
+    // Tapping a region on the drawing is the same action as picking
+    // from the dropdown — it toggles, so a second tap removes it.
+    // _cow_diagram.html declares this global and calls it; it knows
+    // nothing about chips or hidden inputs.
+    window.onCorteToggled = function (nombre) {
+        if (selectedCorteNames().indexOf(nombre) === -1) {
+            addCorte(nombre);
+        } else {
+            removeCorteByName(nombre);
+        }
+    };
+
+    // Paint whatever was prefilled server-side on edit.
+    repaintCow();
 
     // -----------------------------------------------------------------
     // DECIMAL FIELDS: live-normalize a typed ',' to '.'

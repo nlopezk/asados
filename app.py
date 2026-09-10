@@ -36,7 +36,7 @@ DATABASE = "asados.db"  # the SQLite database is just a single file on disk
 # version is cut (see CLAUDE.md). Nothing ties these three together
 # automatically; forgetting to bump this is a real, easy-to-repeat
 # mistake, so check it specifically before tagging a new release.
-VERSION = "1.6.1"
+VERSION = "1.7.0"
 
 # How many rows to show per page before showing a "next" arrow, on the
 # home page and on Base de Asados respectively. Base de Asados can show
@@ -999,6 +999,14 @@ def asado_form_context(db):
         # none of these do; keeping them out of it is the same
         # separation config.py and schema.sql already make.
         "cortes_options": CORTES_VACUNO,
+        # slug -> display name, the reverse of cortes_options. The cow
+        # diagram's per-region <title> reads from this, so renaming a
+        # cut in config.py updates the drawing's tooltips with no
+        # rebuild of the generated partial (see build_cow_partial.py).
+        # Built here rather than in config.py because it's a view
+        # concern, and skips the None entries since a cut with no
+        # region has nothing on the diagram to label.
+        "cortes_nombres": {slug: nombre for nombre, slug in CORTES_VACUNO.items() if slug},
         "categorias_con_despiece": CATEGORIAS_CON_DESPIECE,
         "iconos_tipo_carne": ICONOS_TIPO_CARNE,
         # All registered users, for the participant dropdowns —
@@ -1819,6 +1827,7 @@ def cortes_page():
     return render_template(
         "cortes.html",
         cortes_options=CORTES_VACUNO,
+        cortes_nombres={slug: nombre for nombre, slug in CORTES_VACUNO.items() if slug},
         iconos_tipo_carne=ICONOS_TIPO_CARNE,
     )
 

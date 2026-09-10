@@ -108,72 +108,88 @@ CATEGORIAS_CON_DESPIECE = [
 # Every individual beef cut, in the order it appears in the picker.
 #   key   = the cut's display name, exactly as it is STORED in
 #           asado_cortes.corte and shown on screen (the full text, not
-#           a slug — same convention as asado_tipo_carne.tipo_carne).
-#   value = the `data-corte` attribute of the matching region in the
-#           cow diagram. May be None for a cut with no drawn region —
-#           the dropdown is the COMPLETE list and the diagram is a
-#           visual shortcut INTO it, so a cut with no region is still
-#           fully selectable, it just can't be clicked on the picture.
-#           (Nothing is None right now: every cut below appears on the
-#           reference charts this list was reconciled against.)
+#           a slug -- same convention as asado_tipo_carne.tipo_carne).
+#   value = the `data-corte` of the matching region in the cow diagram
+#           (templates/_cow_diagram.html), or None for a cut with no
+#           drawn region.
 #
-# The order is ANATOMICAL, front to back, so the dropdown reads in the
-# same order your eye travels across the diagram. That's also why the
-# section comments are here — they're the same groupings a butcher's
-# chart uses (cuarto delantero / lomo / costillar / cuarto trasero).
+# THE SLUGS ARE THE DRAWING'S OWN ELEMENT IDS, COPIED VERBATIM --
+# underscores and all, including the slightly-misspelled
+# "estomagillo_palanca". That is deliberate: the SVG was hand-drawn in
+# Inkscape, and matching it exactly means the artwork can be reopened,
+# edited and re-exported without anyone having to remember a renaming
+# step in between. A prettier slug here would be one more thing to keep
+# in sync, and a mismatch fails SILENTLY -- the region simply never
+# lights up, with nothing in the console to say why.
 #
-# Reconciled in 1.6.1 against five real Chilean despiece charts AND
-# the group's own 239 asado titles, which caught six cuts the first
-# pass had missed: Ganso is its own cut (12 mentions, distinct from
-# Punta de Ganso's 9), plus Posta Paleta, Pollo Barriga, Estomaguillo,
-# Pollo Ganso and Asado Carnicero. Entraña was wrongly marked as
-# having no region; it's drawn on the charts and used twice by the
-# group.
+# The five None entries are cuts with no region on the diagram, and
+# they are still FULLY SELECTABLE from the dropdown -- the dropdown is
+# the complete list, the diagram is a visual shortcut into it. Two of
+# them can never be drawn on a side view because they are internal
+# cuts (Asado Carnicero, which the reference chart itself labels
+# "Corte Interno", and Entrana, the diaphragm). The other three simply
+# were not on the chart the diagram was drawn from. MALAYA IS THE ONE
+# WORTH REVISITING: it appears on four of the five reference charts and
+# is this group's 5th most-used cut name (5 of the 239 asado titles).
+# Drawing a region for it later needs no code change at all -- add the
+# path with data-corte="malaya" and swap the None here for "malaya".
+#
+# One region covers TWO cuts: "estomagillo_palanca". The reference
+# chart groups them ("Estomaguillo, Coluda y Palanca"), so the drawing
+# does too. Palanca owns the region because it's the more-used name of
+# the two (3 mentions vs 1); Estomaguillo stays dropdown-only. Hover
+# and click therefore agree -- the region says "Palanca" and adds
+# Palanca -- rather than being ambiguous about which one you get.
 #
 # Names are CHILEAN, and that is not incidental. This group's own 239
 # asado titles are full of Punta de Ganso, Lomo Vetado, Punta Picana,
-# Malaya, Plateada, Tapabarriga, Sobrecostilla, Palanca and Abastero —
+# Malaya, Plateada, Tapabarriga, Sobrecostilla, Palanca and Abastero --
 # not Argentine "Bife de Chorizo", not US "Ribeye"/"Brisket". If you
 # extend this list, stay in that vocabulary; a well-meaning swap to a
 # US or Argentine cut chart would be wrong for these users.
 #
-# Slug on one side, display name on the other (rather than putting the
-# full name in the diagram itself) means renaming a label later —
-# "Punta Picana" -> "Picana" — is a one-line edit here that never
-# touches the drawing.
+# The order is ANATOMICAL, front to back, so the dropdown reads in the
+# same order your eye travels across the diagram, and the section
+# comments match the groupings a butcher's chart actually uses.
 CORTES_VACUNO = {
     # --- Cuarto delantero: cuello, paleta, pecho ---
-    "Huachalomo":       "huachalomo",
-    "Asado Carnicero":  "asado-carnicero",
-    "Punta Paleta":     "punta-paleta",
-    "Posta Paleta":     "posta-paleta",
-    "Choclillo":        "choclillo",
-    "Tapapecho":        "tapapecho",
+    "Huachalomo":         "huachalomo",
+    "Cogote":             "cogote",
+    "Charchas":           "charchas",
+    "Punta Paleta":       "punta_paleta",
+    "Posta Paleta":       "posta_paleta",
+    "Choclillo":          "choclillo",
+    "Tapapecho":          "tapa_pecho",
+    "Lagarto de Mano":    "lagarto_mano",
     # --- Lomo (la linea del espinazo) ---
-    "Lomo Vetado":      "lomo-vetado",
-    "Lomo Liso":        "lomo-liso",
-    "Filete":           "filete",
+    "Lomo Vetado":        "lomo_vetado",
+    "Lomo Liso":          "lomo_liso",
+    "Filete":             "filete",
     # --- Costillar y falda ---
-    "Sobrecostilla":    "sobrecostilla",
-    "Asado de Tira":    "asado-de-tira",
-    "Plateada":         "plateada",
-    "Malaya":           "malaya",
-    "Tapabarriga":      "tapabarriga",
-    "Estomaguillo":     "estomaguillo",
-    "Pollo Barriga":    "pollo-barriga",
-    "Entraña":          "entrana",
-    "Palanca":          "palanca",
+    "Sobrecostilla":      "sobrecostilla",
+    "Asado de Tira":      "asado_tira",
+    "Plateada":           "plateada",
+    "Pollo Barriga":      "pollo_barriga",
+    "Tapabarriga":        "tapa_barriga",
+    "Palanca":            "estomagillo_palanca",
+    "Coludas":            "coludas",
     # --- Cuarto trasero: pierna y cadera ---
-    "Punta Picana":     "punta-picana",
-    "Asiento":          "asiento",
-    "Ganso":            "ganso",
-    "Punta de Ganso":   "punta-de-ganso",
-    "Pollo Ganso":      "pollo-ganso",
-    "Posta Rosada":     "posta-rosada",
-    "Posta Negra":      "posta-negra",
-    "Abastero":         "abastero",
+    "Punta Picana":       "punta_picana",
+    "Asiento":            "asiento",
+    "Ganso":              "ganso",
+    "Punta de Ganso":     "punta_ganso",
+    "Pollo Ganso":        "pollo_ganso",
+    "Posta Rosada":       "posta_rosada",
+    "Abastero":           "abastero",
     # --- Patas ---
-    "Osobuco":          "osobuco",
+    "Osobuco de Mano":    "osobuco_mano",
+    "Osobuco de Pierna":  "osobuco_pierna",
+    # --- Sin region en el diagrama (ver el comentario de arriba) ---
+    "Malaya":             None,
+    "Entraña":       None,
+    "Estomaguillo":       None,
+    "Posta Negra":        None,
+    "Asado Carnicero":    None,
 }
 
 # A small icon for each NON-beef Tipo de Carne, shown beside (or

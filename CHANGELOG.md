@@ -24,15 +24,44 @@ Social:
 - User statistics.
 - Calendar view
 Improvements:
-- The cow diagram itself (1.6.0 shipped the cut picker + data; what's
-  left is the clickable drawing — hover a region to name it, click to
-  add it). Must be hand-drawn with CHILEAN cuts; see CLAUDE.md.
+- A Malaya region on the cow diagram — it's the one well-used cut with
+  no shape drawn (see CLAUDE.md). Draw it in vaca_svg.svg, re-run
+  build_cow_partial.py, swap its None in config.py. No code change.
 - Favourite cuts (less priority) — much cheaper now that asado_cortes
   exists: a GROUP BY corte, COUNT(*) per user is most of it.
 - Asado weight calculator
 
 Groups (much later): Creación de grupos, invitaciones y posibilidad de que el usuario pertenezca a distintos grupos.
 
+
+## [1.7.0] - 2026-08-27
+### Added
+- **The cow.** Selecting "Corte de Vacuno" now shows a hand-drawn
+  Chilean despiece diagram with **27 clickable regions**. Hover (or
+  tap) a cut to see its name; click to add it, click again to remove
+  it. The dropdown and the drawing are two views of one selection —
+  picking a cut either way highlights the region and adds the chip.
+- The drawing ships as source (`vaca_svg.svg`, drawn in Inkscape) plus
+  a build step (`build_cow_partial.py`) that generates the inlined
+  partial: it converts ids to `data-corte`, strips the inline fills so
+  CSS can control hover/selection, drops the mm dimensions, and rounds
+  coordinates to 3 decimals (~20% smaller). **Edit the .svg and re-run
+  the script; never edit the generated file.**
+- The same diagram appears on `/cortes` in read-only mode, where
+  tapping a region just names and highlights it.
+
+### Changed
+- **Cut list is now 32, reconciled against the drawing** (was 27).
+  Four cuts the drawing has that the list didn't: **Charchas, Cogote,
+  Coludas, Lagarto de Mano**. Osobuco split into **de Mano** and **de
+  Pierna**, matching the reference chart. Slugs now match the SVG's
+  own element ids verbatim, so the artwork can be re-exported without
+  a renaming step.
+- Five cuts have no region and stay dropdown-only: Asado Carnicero and
+  Entraña are internal cuts that can't appear on a side view; Malaya,
+  Posta Negra and Estomaguillo simply aren't on the chart the drawing
+  came from. **Malaya is worth adding later** — it's on four of the
+  five reference charts and is the group's 5th most-used cut name.
 
 ## [1.6.1] - 2026-08-27
 ### Changed

@@ -1055,6 +1055,73 @@ button:hover {
     line-height: 1.2;
 }
 
+/* --- The cow diagram ---------------------------------------------
+   Colours live HERE, not in the SVG. build_cow_partial.py strips the
+   inline fills the drawing was saved with, precisely so these rules
+   can win — an inline style beats any stylesheet rule that isn't
+   !important, which would have made hover and selection impossible.
+   That, plus reading :root's custom properties, is the whole reason
+   the SVG is inlined rather than loaded through an <img>. */
+.cow-diagram-wrap {
+    margin-bottom: 10px;
+}
+
+.cow-diagram {
+    display: block;
+    width: 100%;
+    /* Capped so it doesn't balloon on a desktop — the drawing is a
+       quick "which cut?" reference, not the subject of the page.
+       height:auto keeps the viewBox's aspect ratio at any width. */
+    max-width: 460px;
+    height: auto;
+}
+
+/* The silhouette. pointer-events:none matters: without it the body
+   sits under the regions and swallows clicks aimed at the thin ones
+   near its edges. */
+.cow-body {
+    fill: var(--color-surface-alt);
+    pointer-events: none;
+}
+
+/* Regions share the body's exact fill, and are told apart by their
+   STROKE rather than by shade. That's how every real despiece chart is
+   drawn — one solid animal with the cuts ruled onto it — and it's what
+   the first version got wrong: filling the regions a different brown
+   from the body made the cow look blotchy rather than divided, and
+   left hover and selection competing against a background that was
+   already patterned. With one flat silhouette, the only colour on the
+   whole drawing is the cut you're pointing at. */
+.cow-region {
+    fill: var(--color-surface-alt);
+    stroke: var(--color-text-muted);
+    stroke-width: 0.3;
+    cursor: pointer;
+    transition: fill 0.12s ease;
+}
+
+.cow-region:hover {
+    fill: var(--color-accent);
+}
+
+/* Selected is deliberately BOTH a brighter fill and a light outline,
+   not just a third shade of red. Hover and selected would otherwise be
+   two similar reds telling two different stories — the outline is a
+   second, non-colour cue, the same reason the per-user colour dots
+   never appear without a name next to them. */
+.cow-region.is-selected {
+    fill: var(--color-accent-text);
+    stroke: var(--color-text);
+    stroke-width: 0.6;
+}
+
+.cow-caption {
+    color: var(--color-text-muted);
+    font-size: 0.85em;
+    min-height: 1.2em;  /* reserve the line so the layout doesn't jump as the text appears and clears */
+    margin: 4px 0 0 0;
+}
+
 /* --- /cortes reference page --- */
 .cortes-intro {
     color: var(--color-text-muted);

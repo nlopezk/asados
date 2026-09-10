@@ -1,0 +1,105 @@
+<!--
+    _cow_diagram.html — the interactive cow: the drawing plus the
+    behaviour that makes its regions hoverable, tappable and
+    highlightable. Hand-written; the SVG markup it includes is
+    generated (see _cow_svg.html / build_cow_partial.py).
+
+    INCLUDE THIS ONCE PER PAGE. Same rule as _location_picker.html,
+    and for the same reason: the script below declares top-level
+    names and reaches for fixed element ids (#cow-caption), which a
+    second copy would fight over.
+
+    This partial knows NOTHING about the asado form. It exposes two
+    globals and stops there:
+
+      window.onCorteToggled  - the includer assigns a function here to
+                               be told when a region was tapped. Left
+                               unset on /cortes, which has nothing to
+                               select into, so the diagram there just
+                               names and highlights.
+      window.paintCowSelection(names) - the includer calls this to say
+                               which cuts are currently selected.
+
+    That split is what lets the same drawing serve the form (where a
+    tap adds a chip) and the reference page (where a tap just shows
+    you which cut is which) with no per-page copies of the markup.
+-->
+
+<div class="cow-diagram-wrap">
+    {% include "_cow_svg.html" %}
+
+    <!-- A fixed caption strip, NOT a tooltip that follows the cursor.
+         THERE IS NO HOVER ON A PHONE, and this app is used mostly on
+         phones — a hover-only reveal would be invisible to most of the
+         people using it. Here the same line serves both: hovering
+         names a cut on a desktop, and on touch the first tap both
+         names and selects it. A cursor-following tooltip would also
+         need getBoundingClientRect(), which returns 0 inside
+         view_asado.html's display:none edit form. -->
+    <p class="cow-caption" id="cow-caption" aria-live="polite"></p>
+</div>
+
+<script>
+(function () {
+    // Scoped in an IIFE so including this alongside the form's own
+    // script can't collide on names — only the two deliberate globals
+    // at the bottom escape.
+    const svg = document.querySelector(".cow-diagram");
+    const caption = document.getElementById("cow-caption");
+    if (!svg || !caption) {
+        return;
+    }
+
+    const regions = Array.from(svg.querySelectorAll("[data-corte]"));
+    // slug -> display name, injected from config.py. Never hand-typed:
+    // these names carry accents ("Entraña") and a mismatch would fail
+    // silently — the region would just show a blank caption.
+    const NOMBRES = {{ cortes_nombres|tojson }};
+    const RESTING = "Pasa el mouse o toca un corte para verlo.";
+
+    caption.textContent = RESTING;
+
+    function show(slug) {
+        caption.textContent = NOMBRES[slug] || "";
+    }
+
+    function rest() {
+        caption.textContent = RESTING;
+    }
+
+    regions.forEach(function (region) {
+        const slug = region.dataset.corte;
+
+        region.addEventListener("mouseenter", function () { show(slug); });
+        region.addEventListener("mouseleave", rest);
+
+        region.addEventListener("click", function () {
+            // Name it either way — on touch this IS the hover, since
+            // the tap that selects is also the first time the cut's
+            // name has been shown.
+            show(slug);
+
+            if (typeof window.onCorteToggled === "function") {
+                window.onCorteToggled(NOMBRES[slug]);
+            } else {
+                // Reference mode (/cortes): nothing to select into, so
+                // a tap just latches the highlight so you can compare
+                // regions without holding the mouse still.
+                region.classList.toggle("is-selected");
+            }
+        });
+    });
+
+    // Called by the includer whenever its own selection changes. Takes
+    // DISPLAY NAMES rather than slugs, because the form's chips and
+    // hidden inputs are keyed by name — this is the one place that
+    // translation happens, instead of the form needing to know slugs.
+    window.paintCowSelection = function (nombres) {
+        const wanted = new Set(nombres || []);
+        regions.forEach(function (region) {
+            const nombre = NOMBRES[region.dataset.corte];
+            region.classList.toggle("is-selected", wanted.has(nombre));
+        });
+    };
+}());
+</script>

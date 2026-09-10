@@ -60,6 +60,13 @@ participant.
 # Make an on-demand backup of asados.db right now (this also happens
 # automatically every time a new asado is added).
 python backup_db.py [retention_days]
+
+# After editing the cow diagram (vaca_svg.svg) in Inkscape: check that
+# every cut still has exactly one correctly-named region, then
+# regenerate the partial the app actually renders. Never edit
+# templates/_cow_svg.html by hand — this overwrites it.
+python check_cow_svg.py vaca_svg.svg
+python build_cow_partial.py
 ```
 
 ## Project structure
@@ -71,6 +78,10 @@ As_app/
 ├── activity_log.py         <- Writes the "who changed what" log + builds edit diffs
 ├── backup_db.py            <- Safe SQLite snapshot helper (used automatically + manually)
 ├── create_user.py          <- Terminal script to create login accounts
+├── migrate_add_cortes.py   <- Additive schema migration (the pattern for future ones)
+├── vaca_svg.svg            <- SOURCE artwork for the cow diagram (edit this in Inkscape)
+├── build_cow_partial.py    <- Turns vaca_svg.svg into templates/_cow_svg.html
+├── check_cow_svg.py        <- Validates the drawing against config.py's cut list
 ├── seed_random_asados.py   <- Fills the DB with random test data
 ├── schema.sql              <- Database table definitions + indexes
 ├── requirements.txt        <- Python packages needed
@@ -89,6 +100,9 @@ As_app/
 │   ├── view_asado.html         (asado detail; edit in place; admin sees delete)
 │   ├── _asado_form.html        (shared create/edit form fields + live points preview)
 │   ├── _location_picker.html   (shared address autocomplete + Leaflet map modal)
+│   ├── _cow_diagram.html       (interactive cow: caption + hover/click behaviour)
+│   ├── _cow_svg.html           (GENERATED from vaca_svg.svg — do not edit by hand)
+│   ├── cortes.html             (beef-cut reference page)
 │   ├── resumen.html            (standings table, sortable + filterable)
 │   ├── base_asados.html        (flat spreadsheet view + CSV export)
 │   ├── ubicaciones.html        (reusable saved-locations pool)
@@ -117,10 +131,12 @@ As_app/
   Google Sheets `IMPORTDATA()` → Looker Studio dashboards. See
   `CLAUDE.md`'s "Looker Studio / Google Sheets export" section for
   setup steps and why it's token-gated instead of login-gated.
-- **Cortes de Vacuno** (`/cortes`) — reference list of the individual
-  beef cuts (Chilean names) that can be recorded alongside a "Corte de
-  Vacuno" asado, plus the icon legend for the other meat types. The
-  cuts are descriptive only — **they never affect points**.
+- **Cortes de Vacuno** — an interactive, hand-drawn Chilean beef-cuts
+  diagram. Pick "Corte de Vacuno" on the asado form and the cow
+  appears: hover or tap a region to see the cut's name, click to
+  record it. `/cortes` shows the same diagram as a read-only
+  reference, plus the icon legend for the other meat types. The cuts
+  are descriptive only — **they never affect points**.
 - **Ubicaciones** (`/ubicaciones`) — a reusable pool of saved places to
   quick-fill the asado form, so a recurring spot doesn't need retyping.
 - **Registro de Actividad** (`/actividad`) — who created, edited, or deleted
