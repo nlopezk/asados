@@ -110,16 +110,29 @@
          Shown/hidden entirely by updateMeatVisuals() below — the
          server always renders it, JS decides what's visible. -->
     <div id="meat-visual" class="meat-visual">
-        <!-- Beef only. Starts hidden and is revealed by
-             updateMeatVisuals() when a category in
-             CATEGORIAS_CON_DESPIECE is selected. -->
-        <div id="cortes-picker" class="cortes-picker hidden">
-            {# The drawing. Included ONCE per page - see the partial's
-               own header. It knows nothing about this form: it just
-               calls onCorteToggled(nombre), which is assigned further
-               down in this file's own <script>. #}
-            {% include "_cow_diagram.html" %}
+        <!-- The pictures: the cow (beef only) and a small icon for
+             every other selected meat type, side by side INSIDE the
+             same frame. They belong together — they're answering one
+             question ("what's on the grill?") — and an icon floating
+             outside the box read as though it belonged to whatever
+             came next in the form. -->
+        <div class="meat-visual-top">
+            <div id="cow-holder" class="hidden">
+                {# The drawing. Included ONCE per page - see the partial's
+                   own header. It knows nothing about this form: it just
+                   calls onCorteToggled(nombre), which is assigned further
+                   down in this file's own <script>. #}
+                {% include "_cow_diagram.html" %}
+            </div>
+            <div id="meat-icons" class="meat-icons"></div>
+        </div>
 
+        <!-- The cut controls sit BELOW the pictures rather than beside
+             them: the dropdown and the chips both grow horizontally,
+             so putting them in the same row as the cow would squeeze
+             one or the other on any narrow screen. Beef only, revealed
+             by updateMeatVisuals(). -->
+        <div id="cortes-picker" class="cortes-picker hidden">
             <label for="corte-select">Cortes (opcional)</label>
             <select id="corte-select">
                 <option value="">— Añadir un corte —</option>
@@ -149,9 +162,6 @@
                 <a href="{{ url_for('cortes_page') }}" target="_blank" rel="noopener">Ver todos los cortes ↗</a>
             </p>
         </div>
-
-        <!-- Filled by updateMeatVisuals(); one icon per non-beef type. -->
-        <div id="meat-icons" class="meat-icons"></div>
     </div>
 
     <label for="coccion">Tipo de Cocción
@@ -400,6 +410,7 @@
         // whether they're actually saved: read_submitted_cortes() drops
         // them if the submission isn't beef after all.)
         document.getElementById("cortes-picker").classList.toggle("hidden", !hasBeef);
+        document.getElementById("cow-holder").classList.toggle("hidden", !hasBeef);
 
         // De-duplicated: two rows can legitimately hold the same
         // category, and two identical 🍗 side by side just looks like a

@@ -31,6 +31,26 @@ Improvements:
 Groups (much later): Creación de grupos, invitaciones y posibilidad de que el usuario pertenezca a distintos grupos.
 
 
+## [1.7.2] - 2026-08-27
+### Changed
+- **The Cortes list is alphabetical** in both the picker and the
+  `/cortes` reference page. `config.py` still stores the cuts
+  anatomically (front to back, with butcher's-chart section comments)
+  because that's what makes it checkable against the drawing — the
+  sort happens at display time. Accents are stripped for the
+  comparison so "Entraña" files under E rather than after Z.
+- **The meat icons moved inside the frame, beside the cow.** They were
+  a sibling of the cow's box, which left them floating outside it,
+  looking like they belonged to whatever came next in the form. Now
+  the cow and the icons share one bordered card, with the cut dropdown
+  and chips below a divider inside it. On a phone the icons wrap under
+  the cow rather than squeezing it.
+- **Detail pages have a "← Volver" link, top right** — on an asado and
+  on a user profile. The navbar's "Inicio" reads as global navigation;
+  on a page you clicked into, "take me back" belongs next to what you
+  were looking at. The old bottom-of-page "Volver al listado" link on
+  the asado page was removed: three ways home on one page is noise.
+
 ## [1.7.1] - 2026-08-27
 ### Added
 - **Malaya now has a region on the cow** — 28 clickable cuts, up from

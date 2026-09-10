@@ -957,23 +957,50 @@ button:hover {
    layout language: on a wide screen the icons sit BESIDE the cut
    picker, and on a phone they wrap underneath it, with no media query
    needed for either. */
+/* The frame is now the OUTER element, so the cow and the meat icons
+   sit inside one box together. They used to be siblings with the
+   border on the cow's box only, which left the icons floating outside
+   it — visually they read as belonging to whatever came next in the
+   form rather than to the meat question they answer. */
 .meat-visual {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 16px;
-    margin: 10px 0 4px 0;
-}
-
-.cortes-picker {
-    /* Grows to take the room, but never below a width where the
-       dropdown and chips stop being usable — at which point the icons
-       wrap below instead of squeezing this further. */
-    flex: 1 1 320px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 8px;
     padding: 12px 14px;
+    margin: 10px 0 4px 0;
+}
+
+/* Cow and icons share a row; on a narrow screen the icons wrap under
+   the cow instead of squeezing it. flex-wrap does that with no media
+   query, same layout language as the rest of this app. */
+.meat-visual-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+/* Holds nothing but the diagram, so it can be shown/hidden
+   independently of the cut controls below it. */
+#cow-holder {
+    /* 0 1 460px, not 1 1 300px: the holder is sized to the drawing and
+       does NOT grow. Letting it grow pushed the icons to the far right
+       edge of the frame — technically beside the cow, but reading as
+       two unrelated things in opposite corners rather than one group.
+       460px matches .cow-diagram's own max-width, so the box tracks
+       the picture exactly and the icons sit right next to it. */
+    flex: 0 1 460px;
+    min-width: 0;  /* lets a flex child actually shrink below its content width */
+}
+
+/* The cut dropdown and chips sit BELOW the pictures — both grow
+   horizontally, so sharing a row with the cow would squeeze one or the
+   other at any narrow width. Only a top border now: the surrounding
+   frame supplies the rest. */
+.cortes-picker {
+    border-top: 1px solid var(--color-border);
+    margin-top: 12px;
+    padding-top: 12px;
 }
 
 .cortes-chips {
@@ -1024,9 +1051,11 @@ button:hover {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
-    /* Deliberately does NOT grow: these are secondary to the cut
-       picker, and should stay compact beside it rather than competing
-       with it for width. */
+    align-content: flex-start;
+    /* Deliberately does NOT grow: these are secondary to the cow, and
+       should stay compact beside it rather than competing for width.
+       With no cow shown (nothing beef selected) they're the only thing
+       in the box and simply sit at its top-left. */
     flex: 0 1 auto;
 }
 
@@ -1053,6 +1082,42 @@ button:hover {
     color: var(--color-text-muted);
     font-size: 0.72em;
     line-height: 1.2;
+}
+
+/* --- Detail-page header: title left, "Volver" right --------------
+   Used on the two pages you reach by clicking INTO something (an
+   asado, a person). align-items:baseline rather than center so the
+   link sits on the title's baseline instead of floating in the middle
+   of a tall heading; gap + flex-wrap keep it from colliding with a
+   long asado name on a phone, where it drops to its own line. */
+.page-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px 14px;
+    margin-bottom: 0.35em;
+}
+
+/* The heading inside already carries the section's bottom margin. */
+.page-header h2 {
+    margin-bottom: 0;
+}
+
+/* :visited repeated for the same reason every other link-styled
+   component in this file does it — the global a:visited rule is
+   (0,1,1) and would otherwise beat a plain single class once the link
+   has been clicked. See the note above that rule. */
+.back-link,
+.back-link:visited {
+    color: var(--color-text-muted);
+    text-decoration: none;
+    font-size: 0.9em;
+    white-space: nowrap;  /* never break "← Volver" across two lines */
+}
+
+.back-link:hover {
+    color: var(--color-accent-text);
 }
 
 /* --- The cow diagram ---------------------------------------------

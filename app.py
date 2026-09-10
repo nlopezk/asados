@@ -15,6 +15,7 @@ import csv
 import io
 import functools
 import collections
+import unicodedata
 import secrets                     # unguessable CSRF tokens + the export-token comparison
 from datetime import date          # "today" for the profile page's monthly bar chart — see build_user_monthly_chart_data()
 from flask import Flask, render_template, request, redirect, url_for, g, jsonify, session, Response
@@ -36,7 +37,7 @@ DATABASE = "asados.db"  # the SQLite database is just a single file on disk
 # version is cut (see CLAUDE.md). Nothing ties these three together
 # automatically; forgetting to bump this is a real, easy-to-repeat
 # mistake, so check it specifically before tagging a new release.
-VERSION = "1.7.1"
+VERSION = "1.7.2"
 
 # How many rows to show per page before showing a "next" arrow, on the
 # home page and on Base de Asados respectively. Base de Asados can show
@@ -998,7 +999,7 @@ def asado_form_context(db):
         # More importantly, "weights" means "things that score", and
         # none of these do; keeping them out of it is the same
         # separation config.py and schema.sql already make.
-        "cortes_options": CORTES_VACUNO,
+        "cortes_options": cortes_alfabeticos(),
         # slug -> display name, the reverse of cortes_options. The cow
         # diagram's per-region <title> reads from this, so renaming a
         # cut in config.py updates the drawing's tooltips with no
@@ -1280,6 +1281,31 @@ def api_points():
 
     points = calculate_points(tipo_carne_list, coccion, superficie, local, rol)
     return jsonify({"points": points})
+
+
+def cortes_alfabeticos():
+    """
+    CORTES_VACUNO's cut names, sorted for display.
+
+    config.py keeps them in ANATOMICAL order (front to back), which is
+    what makes that file readable against the drawing — the section
+    comments there mirror a butcher's chart. But that order is useless
+    for FINDING a cut you already have a name for, which is what the
+    picker and the reference list are actually for. So the storage
+    order and the display order are deliberately different, and this is
+    the one place that decides the display one.
+
+    Sorted on an accent-stripped key so "Entraña" lands under E where a
+    Spanish speaker looks for it. Python's default string sort compares
+    raw code points, which puts every accented letter after the whole
+    unaccented alphabet — fine for the current list, wrong the moment a
+    cut starting with "Ñ" or "Á" is added.
+    """
+    def sort_key(nombre):
+        stripped = unicodedata.normalize("NFD", nombre.lower())
+        return "".join(c for c in stripped if unicodedata.category(c) != "Mn")
+
+    return sorted(CORTES_VACUNO, key=sort_key)
 
 
 def read_submitted_cortes(tipo_carne_list):
@@ -1826,7 +1852,7 @@ def cortes_page():
     """
     return render_template(
         "cortes.html",
-        cortes_options=CORTES_VACUNO,
+        cortes_options=cortes_alfabeticos(),
         cortes_nombres={slug: nombre for nombre, slug in CORTES_VACUNO.items() if slug},
         iconos_tipo_carne=ICONOS_TIPO_CARNE,
     )

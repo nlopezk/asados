@@ -149,9 +149,16 @@ CATEGORIAS_CON_DESPIECE = [
 # extend this list, stay in that vocabulary; a well-meaning swap to a
 # US or Argentine cut chart would be wrong for these users.
 #
-# The order is ANATOMICAL, front to back, so the dropdown reads in the
-# same order your eye travels across the diagram, and the section
-# comments match the groupings a butcher's chart actually uses.
+# The order here is ANATOMICAL, front to back, with section comments
+# matching the groupings a butcher's chart uses -- which is what makes
+# this list readable side by side with the drawing when you're checking
+# that every region has a home.
+#
+# It is NOT the order anyone sees. The picker and the reference page
+# both sort alphabetically (app.py's cortes_alfabeticos()), because
+# anatomical order is useless for finding a cut whose name you already
+# know. Storage order and display order are deliberately different; if
+# you reorder this list, nothing on screen moves.
 CORTES_VACUNO = {
     # --- Cuarto delantero: cuello, paleta, pecho ---
     "Huachalomo":         "huachalomo",

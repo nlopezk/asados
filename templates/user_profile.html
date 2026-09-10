@@ -14,9 +14,22 @@
 -->
 
 {% block content %}
-<div class="profile-header">
-    <span class="profile-color-dot" style="background-color: {{ profile_color }}"></span>
-    <h2>{{ profile_user.name }}</h2>
+{# A way back to the list from a page you clicked INTO. The navbar's
+   "Inicio" already goes home, but it's at the top of a long page and
+   reads as global navigation; landing on a detail page, the thing you
+   want is "done here, take me back", and that belongs next to what
+   you were looking at. Same reasoning that put a duplicate "Añadir
+   Asado" button on the home page rather than trusting the navbar
+   alone. A plain link to index, NOT history.back(): the browser's
+   back could return to a filtered list, another profile, or the form
+   you just submitted, so "Volver" would mean something different
+   every time. #}
+<div class="page-header">
+    <div class="profile-header">
+        <span class="profile-color-dot" style="background-color: {{ profile_color }}"></span>
+        <h2>{{ profile_user.name }}</h2>
+    </div>
+    <a href="{{ url_for('index') }}" class="back-link">← Volver</a>
 </div>
 
 <!-- STAT TILES: label (sentence case) + value (proportional figures,

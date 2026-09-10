@@ -742,6 +742,40 @@ than a cursor-following tooltip (**there is no hover on a phone**, and
 `getBoundingClientRect()` returns 0 inside `view_asado.html`'s
 `display: none` edit form).
 
+**The cut list is stored anatomically and displayed alphabetically,
+on purpose.** `config.py` keeps the cuts front-to-back with butcher's-
+chart section comments, which is what makes that file checkable
+against the drawing; `cortes_alfabeticos()` in app.py sorts them for
+the picker and the reference page, because anatomical order is useless
+for finding a cut whose name you already know. Reordering the config
+list therefore moves nothing on screen. The sort strips accents first
+so "Entraña" files under E — Python's default string sort compares raw
+code points and would put every accented letter after the whole
+unaccented alphabet.
+
+**The cow and the non-beef icons share ONE frame** (`.meat-visual`),
+with the cut dropdown and chips below a divider inside it. The icons
+were originally a sibling of the cow's bordered box, which left them
+floating outside it, reading as though they belonged to whatever came
+next in the form rather than to the same "what's on the grill?"
+question. `#cow-holder` is `flex: 0 1 460px` — sized to the drawing
+and NOT allowed to grow, because letting it grow pushed the icons to
+the frame's far right edge: still technically beside the cow, but
+reading as two unrelated things in opposite corners. On a phone the
+icons wrap underneath instead, via `flex-wrap` and no media query.
+
+**Detail pages carry a "← Volver" link, top right** (`.page-header` +
+`.back-link` on `view_asado.html` and `user_profile.html`). The navbar
+already has "Inicio", but it reads as global navigation; arriving on a
+page you clicked INTO, the thing you want is "done here, take me
+back", and that belongs beside what you were looking at — the same
+reasoning that put a duplicate "Añadir Asado" button on the home page.
+It is a plain link to `index`, **never `history.back()`**: browser
+history could point at a filtered list, another profile, or the form
+you just submitted, so "Volver" would mean something different every
+time. `view_asado.html`'s old bottom-of-page "Volver al listado" link
+was removed when this landed — three routes home on one page is noise.
+
 **Testing gotcha, hit for real when Malaya was added: a region's
 BOUNDING-BOX CENTRE is often inside a different region.** These shapes
 are concave and interlocking, so `page.hover('[data-corte="malaya"]')`
