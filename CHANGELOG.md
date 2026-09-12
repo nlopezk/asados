@@ -31,6 +31,36 @@ Improvements:
 Groups (much later): Creación de grupos, invitaciones y posibilidad de que el usuario pertenezca a distintos grupos.
 
 
+## [1.7.3] - 2026-09-12
+### Changed
+- **The cow was redrawn, and it now has 31 clickable cuts** (was 28).
+  The four that previously had no shape all got one: **Asado
+  Carnicero, Entraña, Estomaguillo and Posta Negra**. **Palanca and
+  Estomaguillo are now separate regions** where a single shape used to
+  cover both, so clicking is no longer ambiguous between them. The
+  torso is re-tiled over a new "meat mass" shape, and every region id
+  was renamed (`lomo_vetado` -> `Lomo_Vetado`).
+- **Coludas lost its region** in the redraw and is now the only
+  dropdown-only cut. It is deliberately still selectable: cuts are
+  stored by display name, so anything already recorded as "Coludas"
+  keeps working.
+- App-side this was three steps and no new code: re-point the slugs in
+  `config.py`, run `check_cow_svg.py`, run `build_cow_partial.py`.
+
+### Fixed
+- **`build_cow_partial.py` would have resurrected hidden shapes.** It
+  strips the drawing's inline styles so CSS can own the colours, and
+  `display:none` lives in that same attribute — so a path hidden in
+  Inkscape came through VISIBLE. The new drawing carried two hidden
+  leftovers that would have appeared as blobs on the cow. Hidden paths
+  are now skipped and reported.
+- **A shape whose layer offset sat on the path instead of its group
+  lost that offset**, rendering far away from the rest of the cow. The
+  same file can legitimately use both forms; the two are now composed
+  together.
+- `check_cow_svg.py` reports hidden shapes, and **fails** if a hidden
+  one is a real cut — the "I hid a region by accident" case.
+
 ## [1.7.2] - 2026-08-27
 ### Changed
 - **The Cortes list is alphabetical** in both the picker and the

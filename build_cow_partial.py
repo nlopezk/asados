@@ -107,6 +107,41 @@ def round_numbers(text, places=3):
     return NUMBER.sub(lambda m: f"{round(float(m.group()), places):g}", text)
 
 
+def is_hidden(element):
+    """
+    True for a path the author hid in Inkscape (display:none).
+
+    These MUST be skipped, and the reason is the conversion itself: this
+    script strips the drawing's inline styles so the app's CSS can own
+    the colours. `display:none` lives in that same style attribute, so
+    stripping it would RESURRECT a hidden path as a visible one — and
+    since a hidden leftover has no matching cut, it would come through
+    as an extra silhouette blob sitting on top of the cow. Hit for real:
+    the 1.7.3 drawing carried two hidden leftovers (path20, path25).
+    """
+    style = element.get("style", "")
+    return "display:none" in style.replace(" ", "") or element.get("display") == "none"
+
+
+def effective_transform(group, path):
+    """
+    The transform to put on this path in the output.
+
+    Inkscape puts the layer offset on the GROUP for some paths and on
+    the PATH ITSELF for others, depending on how the artwork was built
+    and edited - the same drawing can legitimately contain both. An
+    earlier version of this script only read the group's, which silently
+    dropped the offset on any path carrying its own and rendered it tens
+    of units away from the rest of the cow.
+
+    SVG composes a transform list left to right, outermost first, so
+    emitting them space-separated in that order is exactly equivalent to
+    the nesting the source file expressed.
+    """
+    parts = [group.get("transform", ""), path.get("transform", "")]
+    return " ".join(round_numbers(p) for p in parts if p)
+
+
 def main(source=DEFAULT_SOURCE):
     if not os.path.exists(source):
         print(f"ERROR: '{source}' not found.")
@@ -123,16 +158,23 @@ def main(source=DEFAULT_SOURCE):
     body = []      # the cow silhouette: paths with no recognised cut id
     regions = []   # (slug, path data), in document order
 
+    skipped_hidden = []
     for group in root.iter(SVG_NS + "g"):
-        transform = round_numbers(group.get("transform", ""))
         for path in group.findall(SVG_NS + "path"):
             d = round_numbers(path.get("d"))
             if not d:
                 continue
             name = path.get("data-corte") or path.get("id")
+            if is_hidden(path):
+                skipped_hidden.append(name or "(unnamed)")
+                continue
+            transform = effective_transform(group, path)
             if name in expected:
                 regions.append((name, d, transform))
             else:
+                # Anything that isn't a known cut is silhouette: the cow
+                # outline, and the torso mass the cuts are tiled over.
+                # Both are non-interactive and share one style.
                 body.append((d, transform))
 
     missing = sorted(set(expected) - {slug for slug, _, _ in regions})
@@ -167,6 +209,9 @@ def main(source=DEFAULT_SOURCE):
     src_kb = os.path.getsize(source) / 1024
     print(f"Wrote {OUTPUT}")
     print(f"  {len(regions)} cut regions + {len(body)} silhouette path(s)")
+    if skipped_hidden:
+        print(f"  skipped {len(skipped_hidden)} hidden path(s): "
+              f"{', '.join(skipped_hidden)}")
     print(f"  {src_kb:.1f} KB source -> {size_kb:.1f} KB partial")
     return 0
 

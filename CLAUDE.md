@@ -681,7 +681,7 @@ already had it) before this was written down — both come out with every
 existing table's row count untouched.
 
 **The cow itself is a hand-drawn Inkscape file, and the repo holds
-BOTH halves.** `vaca_svg.svg` is the source artwork (27 named regions,
+BOTH halves.** `vaca_svg.svg` is the source artwork (31 named regions,
 one per cut); `build_cow_partial.py` converts it into
 `templates/_cow_svg.html`, which is generated and must never be edited
 by hand. Editing the drawing is: open the .svg in Inkscape, change it,
@@ -692,7 +692,7 @@ load-bearing:
   per document; if this partial were ever included twice, duplicate
   ids would break `getElementById` and `#id` selectors *silently*,
   picking whichever came first. `data-*` has no such rule, and gives
-  one CSS rule (`[data-corte]`) covering all 27 regions.
+  one CSS rule (`[data-corte]`) covering all 31 regions.
 - **The inline `style="fill:#782121"` is stripped.** An inline style
   beats any stylesheet rule that isn't `!important` — leaving it would
   make hover and selection impossible, which is the whole point.
@@ -707,7 +707,7 @@ load-bearing:
 are deliberately separate files.** The generated one is markup only;
 the wrapper, caption and all the interaction live in the hand-written
 one, which includes it. That way redrawing the cow can never clobber
-the behaviour, and changing the behaviour never means hand-patching 27
+the behaviour, and changing the behaviour never means hand-patching 31
 generated `<path>` elements. **Include `_cow_diagram.html`, never
 `_cow_svg.html` directly**, and only once per page.
 
@@ -744,7 +744,7 @@ obvious "highlight" colour. CLAUDE.md's own design note limits it to
 exactly one place (the navbar's brass rail), following the colour
 book's warning that overusing gold cheapens it.
 
-**The regions are deliberately NOT focusable.** 27 tab stops would be
+**The regions are deliberately NOT focusable.** 31 tab stops would be
 a miserable way through this form and would buy nothing: the dropdown
 beside the diagram offers every cut, *including the five with no
 region drawn*, so keyboard and screen-reader users already have a
@@ -788,6 +788,26 @@ you just submitted, so "Volver" would mean something different every
 time. `view_asado.html`'s old bottom-of-page "Volver al listado" link
 was removed when this landed — three routes home on one page is noise.
 
+**Two conversion bugs the 1.7.3 redraw exposed, both of which failed
+SILENTLY and are worth knowing before touching `build_cow_partial.py`:**
+
+- **`display:none` paths must be skipped, not stripped.** The script
+  removes the drawing's inline styles so the app's CSS can own the
+  colours — and `display:none` lives in that same attribute, so
+  stripping it RESURRECTS a hidden path as a visible one. The 1.7.3
+  file carried two hidden leftovers (`path20`, `path25`); without the
+  skip they'd have come through as extra silhouette blobs sitting on
+  the cow. `check_cow_svg.py` now reports hidden shapes too, and treats
+  a hidden shape that IS a known cut as an error rather than a note —
+  that's the case where someone hid a real region by accident.
+- **The layer offset can live on the GROUP or on the PATH, and the
+  same file can contain both.** In 1.7.3 the outline carries it on its
+  layer while the meat mass carries it on the path element itself. An
+  earlier version of the script only read the group's, which silently
+  dropped the offset and rendered that shape tens of units away from
+  the rest of the cow. `effective_transform()` now composes both, outer
+  first — which is exactly what the source file's nesting meant.
+
 **Testing gotcha, hit for real when Malaya was added: a region's
 BOUNDING-BOX CENTRE is often inside a different region.** These shapes
 are concave and interlocking, so `page.hover('[data-corte="malaya"]')`
@@ -800,8 +820,8 @@ browser where it actually answers (walk the bounding box calling
 click *that* point. The same sweep, run over the whole diagram, is
 also how to check nothing has become unreachable after a redraw —
 tally what `elementFromPoint` returns across the SVG's area and look
-for a region with zero hits. Every region currently has between ~760
-and ~2800 clickable pixels at the 460px desktop size.
+for a region with zero hits. Every region currently has between ~575
+and ~4000 clickable pixels at the 460px desktop size.
 
 **Overlaps resolve by DOCUMENT ORDER, not by z-index.** SVG has no
 z-index; whatever is painted later sits on top. `build_cow_partial.py`
@@ -809,36 +829,50 @@ preserves the drawing's own order, so if a redraw ever makes a region
 hard to hit, the fix is to move it later in the Inkscape layer stack,
 not to add CSS.
 
-**Four cuts have no region and that is not a bug** — `CORTES_VACUNO`
-maps them to `None` and they stay fully selectable from the dropdown.
-Two can never be drawn on a side view because they're internal cuts
-(Asado Carnicero, which the reference chart itself labels "Corte
-Interno", and Entraña, the diaphragm); Posta Negra and Estomaguillo
-simply weren't on the chart the drawing came from.
+**ONE cut has no region and that is not a bug** — `CORTES_VACUNO`
+maps Coludas to `None` and it stays fully selectable from the
+dropdown; the dropdown is the complete list, the diagram is a visual
+shortcut into it. It's deliberately not deleted: `asado_cortes` stores
+the display NAME as text, so anything already recorded as "Coludas" on
+the live site keeps rendering correctly and stays re-pickable.
 
-**Malaya was the fifth, and getting it a region in 1.7.1 is the worked
-example of how cheap that is.** It's on four of the five reference
-charts and is the group's 5th most-used cut name. The whole change
-was: draw the shape in `vaca_svg.svg` (which also meant reshaping its
-seven neighbours to make room — expected, since the torso was already
-fully tiled), run `check_cow_svg.py`, run `build_cow_partial.py`, and
-swap the `None` in `CORTES_VACUNO` for the new id. No app code moved
-at all. That is the whole point of keeping the artwork as source with
-a build step rather than hand-maintaining the partial.
+**The 1.7.3 redraw is the worked example of how cheap an artwork
+change is.** It added regions for the four cuts that previously had
+none (Asado Carnicero, Entraña, Estomaguillo, Posta Negra), split
+Palanca and Estomaguillo into separate regions where one shape had
+covered both, dropped Coludas, renamed every id from `lomo_vetado` to
+`Lomo_Vetado` style, and re-tiled the torso over a new "meat mass"
+shape. On the app side that was: re-point the slugs in `CORTES_VACUNO`,
+run `check_cow_svg.py`, run `build_cow_partial.py`. **No route, no
+template, no CSS, and no schema changed.** That is the whole reason the
+artwork is kept as source with a build step rather than hand-maintained
+as a partial.
 
-**One region covers two cuts** (`estomagillo_palanca`), because the
-reference chart groups them ("Estomaguillo, Coluda y Palanca").
-Palanca owns it — the more-used of the two names — and Estomaguillo
-stays dropdown-only, so hover and click agree rather than the region
-being ambiguous about which cut you get.
+**The drawing has TWO silhouette paths, not one** — the outline (head,
+legs, tail, body) and a separate "meat mass" covering just the torso
+that the cut regions tile over. Both are non-interactive and share the
+`.cow-body` style, so wherever the cuts don't perfectly cover the mass
+the seam is invisible. Anything in the file whose id isn't a known cut
+slug is treated as silhouette, so adding another such shape needs no
+code change.
 
 **The slugs are the drawing's own element ids, copied verbatim** —
-underscores and all, including the slightly-misspelled
-`estomagillo_palanca`. Matching the artwork exactly means it can be
-reopened and re-exported without anyone remembering a renaming step,
-and a mismatch here fails silently: the region simply never lights up.
-`check_cow_svg.py` exists to catch exactly that class of problem
-before the drawing is wired in.
+Title_Case, underscores and all. Matching the artwork exactly means it
+can be reopened and re-exported without anyone remembering a renaming
+step, and a mismatch here fails silently: the region simply never
+lights up. `check_cow_svg.py` exists to catch exactly that class of
+problem before the drawing is wired in.
+
+Two consequences of "verbatim" worth not tidying away. The ids are
+Title_Case because the 1.7.3 drawing made them so, not for any reason
+in this codebase — don't normalise them. And **`Entra__a` is Entraña
+with the ñ mangled**: Inkscape strips non-ASCII from object ids, and
+the two-byte UTF-8 ñ became two underscores. It's ugly but stable, and
+the DISPLAY name in `CORTES_VACUNO` is still a proper "Entraña", so
+nothing user-facing shows the mangling. Renaming that one object in
+Inkscape to an ASCII `Entrana` and updating the slug together would be
+a fine tidy-up; changing it in `config.py` alone would break the
+region.
 
 **The individual weights that fed into `points` are frozen too, not
 just the final number.** `asados.tipo_carne_weight`/`coccion_weight`/

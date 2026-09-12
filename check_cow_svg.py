@@ -62,6 +62,7 @@ def main(path):
     # --- Collect every named shape in the document ---
     found = {}
     duplicates = []
+    hidden = []
     for element in root.iter():
         if not element.tag.startswith(SVG_NS):
             continue
@@ -69,6 +70,14 @@ def main(path):
             continue
         name = region_name(element)
         if not name:
+            continue
+        # A shape hidden in Inkscape (display:none) is dropped by
+        # build_cow_partial.py rather than resurrected as a visible
+        # one. That's right for a leftover, and silently wrong for a
+        # real cut someone hid by accident while editing - so report
+        # it either way instead of deciding quietly.
+        if "display:none" in element.get("style", "").replace(" ", ""):
+            hidden.append(name)
             continue
         if name in found:
             duplicates.append(name)
@@ -88,6 +97,18 @@ def main(path):
         problems.append(
             "Duplicate names (ids must be unique — duplicates break lookups "
             f"silently): {', '.join(sorted(set(duplicates)))}")
+    if hidden:
+        hidden_cuts = sorted(set(hidden) & expected)
+        if hidden_cuts:
+            problems.append(
+                "These are CUTS but are hidden (display:none) in the drawing, so "
+                "they will not appear at all: " + ", ".join(hidden_cuts))
+        other_hidden = sorted(set(hidden) - expected)
+        if other_hidden:
+            warnings.append(
+                f"{len(other_hidden)} hidden shape(s) will be skipped (fine if "
+                f"these are leftovers): {', '.join(other_hidden)}")
+
     if extra:
         # Not fatal: a silhouette/outline path is expected to be here and
         # unnamed-or-otherwise-named. Just report so nothing is a surprise.

@@ -105,42 +105,40 @@ CATEGORIAS_CON_DESPIECE = [
     "Corte de Vacuno (Lomo, Tira, Vacío)",
 ]
 
-# Every individual beef cut, in the order it appears in the picker.
+# Every individual beef cut.
 #   key   = the cut's display name, exactly as it is STORED in
 #           asado_cortes.corte and shown on screen (the full text, not
 #           a slug -- same convention as asado_tipo_carne.tipo_carne).
-#   value = the `data-corte` of the matching region in the cow diagram
-#           (templates/_cow_diagram.html), or None for a cut with no
-#           drawn region.
+#   value = the id of the matching region in the cow drawing
+#           (vaca_svg.svg), or None for a cut with no drawn region.
 #
-# THE SLUGS ARE THE DRAWING'S OWN ELEMENT IDS, COPIED VERBATIM --
-# underscores and all, including the slightly-misspelled
-# "estomagillo_palanca". That is deliberate: the SVG was hand-drawn in
-# Inkscape, and matching it exactly means the artwork can be reopened,
-# edited and re-exported without anyone having to remember a renaming
-# step in between. A prettier slug here would be one more thing to keep
-# in sync, and a mismatch fails SILENTLY -- the region simply never
-# lights up, with nothing in the console to say why.
+# THE SLUGS ARE THE DRAWING'S OWN ELEMENT IDS, COPIED VERBATIM. That is
+# deliberate: the SVG is hand-drawn in Inkscape, and matching it exactly
+# means the artwork can be reopened, edited and re-exported without
+# anyone having to remember a renaming step in between. A prettier slug
+# here would be one more thing to keep in sync, and a mismatch fails
+# SILENTLY -- the region simply never lights up, with nothing in the
+# console to say why. check_cow_svg.py exists to catch exactly that.
 #
-# The five None entries are cuts with no region on the diagram, and
-# they are still FULLY SELECTABLE from the dropdown -- the dropdown is
-# the complete list, the diagram is a visual shortcut into it. Two of
-# them can never be drawn on a side view because they are internal
-# cuts (Asado Carnicero, which the reference chart itself labels
-# "Corte Interno", and Entrana, the diaphragm). The other three simply
-# were not on the chart the diagram was drawn from. Malaya WAS one of
-# them -- it appears on four of the five reference charts and is this
-# group's 5th most-used cut name -- and it got its region in 1.7.1,
-# which is the worked example of how cheap that is: draw the shape in
-# vaca_svg.svg, re-run build_cow_partial.py, swap the None here for
-# the new id. No other code changed.
+# Two consequences of "verbatim" worth knowing before you tidy them:
+#   * The ids are Title_Case here and were lowercase before 1.7.3. They
+#     changed because the DRAWING changed, not for any reason in this
+#     file. Don't normalise them.
+#   * "Entra__a" is Entrana with the enye mangled: Inkscape sanitises
+#     non-ASCII out of object ids, and the two-byte UTF-8 enye became
+#     two underscores. Ugly, but stable and correct. Renaming that one
+#     object in Inkscape to a plain ASCII "Entrana" and updating this
+#     line would be a fine tidy-up; changing it HERE alone would break
+#     the region.
 #
-# One region covers TWO cuts: "estomagillo_palanca". The reference
-# chart groups them ("Estomaguillo, Coluda y Palanca"), so the drawing
-# does too. Palanca owns the region because it's the more-used name of
-# the two (3 mentions vs 1); Estomaguillo stays dropdown-only. Hover
-# and click therefore agree -- the region says "Palanca" and adds
-# Palanca -- rather than being ambiguous about which one you get.
+# ONE cut currently has no region: Coludas. It had one until 1.7.3,
+# when the redraw dropped it. It stays fully selectable from the
+# dropdown -- the dropdown is the complete list, the diagram is a
+# visual shortcut into it -- and it is deliberately NOT deleted:
+# asado_cortes stores the display name as text, so anything already
+# recorded as "Coludas" on the live site keeps showing correctly, and
+# stays re-pickable. Draw it again and swap the None for the new id;
+# that is the whole change (see CLAUDE.md).
 #
 # Names are CHILEAN, and that is not incidental. This group's own 239
 # asado titles are full of Punta de Ganso, Lomo Vetado, Punta Picana,
@@ -161,43 +159,43 @@ CATEGORIAS_CON_DESPIECE = [
 # you reorder this list, nothing on screen moves.
 CORTES_VACUNO = {
     # --- Cuarto delantero: cuello, paleta, pecho ---
-    "Huachalomo":         "huachalomo",
-    "Cogote":             "cogote",
-    "Charchas":           "charchas",
-    "Punta Paleta":       "punta_paleta",
-    "Posta Paleta":       "posta_paleta",
-    "Choclillo":          "choclillo",
-    "Tapapecho":          "tapa_pecho",
-    "Lagarto de Mano":    "lagarto_mano",
+    "Charchas":           "Charchas",
+    "Cogote":             "Cogote",
+    "Huachalomo":         "Huachalomo",
+    "Asado Carnicero":    "Asado_Carnicero",
+    "Tapapecho":          "Tapapecho",
+    "Punta Paleta":       "Punta_Paleta",
+    "Posta Paleta":       "Posta_Paleta",
+    "Choclillo":          "Choclillo",
+    "Lagarto de Mano":    "Lagarto",
     # --- Lomo (la linea del espinazo) ---
-    "Lomo Vetado":        "lomo_vetado",
-    "Lomo Liso":          "lomo_liso",
-    "Filete":             "filete",
+    "Lomo Vetado":        "Lomo_Vetado",
+    "Lomo Liso":          "Lomo_Liso",
+    "Filete":             "Filete",
     # --- Costillar y falda ---
-    "Sobrecostilla":      "sobrecostilla",
-    "Asado de Tira":      "asado_tira",
-    "Plateada":           "plateada",
-    "Pollo Barriga":      "pollo_barriga",
-    "Malaya":             "malaya",
-    "Tapabarriga":        "tapa_barriga",
-    "Palanca":            "estomagillo_palanca",
-    "Coludas":            "coludas",
+    "Sobrecostilla":      "Sobrecostilla",
+    "Asado de Tira":      "Asado_Tira",
+    "Plateada":           "Plateada",
+    "Malaya":             "Malaya",
+    "Estomaguillo":       "Estomaguillo",
+    "Pollo Barriga":      "Pollo_Barriga",
+    "Tapabarriga":        "Tapabarriga",
+    "Entraña":       "Entra__a",
+    "Palanca":            "Palanca",
     # --- Cuarto trasero: pierna y cadera ---
-    "Punta Picana":       "punta_picana",
-    "Asiento":            "asiento",
-    "Ganso":              "ganso",
-    "Punta de Ganso":     "punta_ganso",
-    "Pollo Ganso":        "pollo_ganso",
-    "Posta Rosada":       "posta_rosada",
-    "Abastero":           "abastero",
+    "Punta Picana":       "Punta_Picana",
+    "Asiento":            "Asiento",
+    "Ganso":              "Ganso",
+    "Punta de Ganso":     "Punta_Ganso",
+    "Pollo Ganso":        "Pollo_Ganso",
+    "Posta Rosada":       "Posta_Rosada",
+    "Posta Negra":        "Posta_Negra",
+    "Abastero":           "Abastero",
     # --- Patas ---
-    "Osobuco de Mano":    "osobuco_mano",
-    "Osobuco de Pierna":  "osobuco_pierna",
+    "Osobuco de Mano":    "Osobuco_Mano",
+    "Osobuco de Pierna":  "Osobuco_pierna",
     # --- Sin region en el diagrama (ver el comentario de arriba) ---
-    "Entraña":       None,
-    "Estomaguillo":       None,
-    "Posta Negra":        None,
-    "Asado Carnicero":    None,
+    "Coludas":            None,
 }
 
 # A small icon for each NON-beef Tipo de Carne, shown beside (or
