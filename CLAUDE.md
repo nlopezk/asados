@@ -660,13 +660,25 @@ that and the first admin to delete an asado with cuts gets a 500, in a
 route the feature otherwise never touches. That line now carries a
 comment saying any new child table of `asados` belongs there too.
 
-**Rollout order on PythonAnywhere is load-bearing**: `git pull` →
-`python3 migrate_add_cortes.py` → **then** Reload. Reload first and the
-new code runs against a database with no `asado_cortes`, so every asado
-page throws "no such table" until the migration catches up. Pulling
-doesn't restart the app, so the old code keeps serving safely in
-between. The live database is a different file on a different disk —
-**the migration must be run in both places; there is no sync.**
+**Rollout order on PythonAnywhere is load-bearing**: backup →
+`git pull` → `python3 migrate_add_cortes.py` → **then** Reload. Reload
+first and the new code runs against a database with no `asado_cortes`,
+so every asado page throws "no such table" until the migration catches
+up. Pulling doesn't restart the app, so the old code keeps serving
+safely in between. The live database is a different file on a different
+disk — **the migration must be run in both places; there is no sync.**
+README.md has the full checklist with what the output should look like.
+
+**Run the migration on EVERY deploy, not only when you think a release
+needs one.** It's additive and idempotent — against an
+already-migrated database it changes nothing and prints "was ALREADY
+present". Making it unconditional removes the one judgement call in the
+whole procedure, and that call is the dangerous one: skipping a
+migration that WAS needed breaks every asado page the moment you
+Reload, while running one that wasn't needed costs a second. Verified
+against both states (a copy with the table dropped, and a copy that
+already had it) before this was written down — both come out with every
+existing table's row count untouched.
 
 **The cow itself is a hand-drawn Inkscape file, and the repo holds
 BOTH halves.** `vaca_svg.svg` is the source artwork (27 named regions,

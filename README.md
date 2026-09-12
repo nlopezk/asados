@@ -148,28 +148,94 @@ As_app/
 
 ## Deploying an update
 
-There's no CI/CD — deploying is a manual two-step on PythonAnywhere:
+There's no CI/CD. Deploying is a short manual checklist in a
+PythonAnywhere **Bash console**, plus one button on the **Web** tab.
+
+The live site runs against its own `asados.db` on PythonAnywhere's
+disk — a **completely separate file** from your local one, holding the
+group's real entries. Nothing below ever overwrites it; `asados.db` is
+gitignored, so `git pull` cannot touch it.
+
+### The four steps
 
 ```bash
-# In a PythonAnywhere Bash console:
-cd ~/asados && git pull
-```
-Then click **Reload** on the Web tab.
+# 1. Go to the code and take a backup before anything else.
+#    The migration in step 3 backs up too, but this one is yours:
+#    it costs a second and it is the thing you will want if a deploy
+#    ever goes sideways.
+cd ~/asados
+python3 backup_db.py
 
-**If the release includes a migration, run it BETWEEN those two steps** —
-after `git pull`, before Reload:
+# 2. Pull the new code. This does NOT restart the site — the old code
+#    keeps serving visitors while you finish the remaining steps.
+git pull
 
-```bash
+# 3. Apply any schema changes. ALWAYS run this, on every deploy.
+#    It is additive and idempotent: if the table already exists it
+#    changes nothing and says so. You never have to work out whether
+#    this particular release "needs" it.
 python3 migrate_add_cortes.py
 ```
 
-Order matters: reloading first would put the new code live against a
-database that doesn't have the new table yet, and pages would error
-until the migration caught up. `git pull` on its own doesn't restart
-the app, so the old code keeps serving safely in between.
+**4. Click "Reload" on the Web tab.** The new code goes live here, and
+only here.
 
-**Never run `init_db()` on the server** — it would wipe the live database.
-See `CLAUDE.md`'s Phase 6 section for how the deployment is wired up.
+### Why the order matters
+
+**Reload last.** Reloading before step 3 would put new code live
+against a database that doesn't have the new table yet — every asado
+page would throw `no such table` until the migration caught up. Pulling
+and migrating while the *old* code is still serving means visitors
+never see a broken page.
+
+### What step 3 prints, and what to look for
+
+The migration reports every table's row count before and after, so you
+can see with your own eyes that nothing was lost:
+
+```
+asado_cortes created.              <- or "was ALREADY present", both fine
+
+table                      before    after   status
+------------------------------------------------------------
+users                           6        6   ok
+asados                        312      312   ok
+participations                348      348   ok
+...
+------------------------------------------------------------
+Migration OK: asado_cortes present, every existing table untouched.
+```
+
+Your live numbers will be **bigger than your local ones** — the group
+has been adding asados on the live site. That's expected; the script
+compares before against after, not against any fixed number.
+
+If the last line says anything other than `Migration OK`, **stop and
+do not Reload.** Restore from the backup path it printed at the top.
+
+### Checking it worked
+
+1. Open https://asados.pythonanywhere.com — the small version number in
+   the page footer should match `VERSION` in `app.py`.
+2. If it shows the *old* version, the Reload didn't take. Reload again.
+3. If a style change looks missing, hard refresh (Ctrl/Cmd+Shift+R).
+   The stylesheet is cache-busted by that same version number, so this
+   is rare, but a browser can still hold an old copy.
+
+### Things not to do on the server
+
+- **Never run `init_db()`.** It drops every table — it would destroy
+  the group's entire history. It is only ever for a brand-new,
+  empty database.
+- **Don't run `build_cow_partial.py`.** The file it generates
+  (`templates/_cow_svg.html`) is committed, so the server already has
+  it. That script is for your machine, after editing the drawing.
+- **Don't `pip install` unless `requirements.txt` actually changed.**
+  It normally doesn't — the app needs only Flask plus the Python
+  standard library.
+
+See `CLAUDE.md`'s Phase 6 section for how the deployment is wired up
+(paths, virtualenv, the WSGI file's `chdir`).
 
 ## Git release workflow
 
