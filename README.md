@@ -32,6 +32,7 @@ participant.
    before/after row counts so you can confirm nothing was lost):
    ```
    python migrate_add_cortes.py
+   python migrate_fix_schema_drift.py
    ```
 5. **Create at least one user account** (there's no public sign-up page —
    you create the first account, an admin, yourself with this script):
@@ -79,6 +80,7 @@ As_app/
 ├── backup_db.py            <- Safe SQLite snapshot helper (used automatically + manually)
 ├── create_user.py          <- Terminal script to create login accounts
 ├── migrate_add_cortes.py   <- Additive schema migration (the pattern for future ones)
+├── migrate_fix_schema_drift.py <- Adds 3 missing FK indexes + the locations NOT NULL constraints
 ├── vaca_svg.svg            <- SOURCE artwork for the cow diagram (edit this in Inkscape)
 ├── build_cow_partial.py    <- Turns vaca_svg.svg into templates/_cow_svg.html
 ├── check_cow_svg.py        <- Validates the drawing against config.py's cut list
@@ -103,6 +105,7 @@ As_app/
 │   ├── _cow_diagram.html       (interactive cow: caption + hover/click behaviour)
 │   ├── _cow_svg.html           (GENERATED from vaca_svg.svg — do not edit by hand)
 │   ├── cortes.html             (beef-cut reference page)
+│   ├── user_profile.html       (one person's stats, chart and history)
 │   ├── resumen.html            (standings table, sortable + filterable)
 │   ├── base_asados.html        (flat spreadsheet view + CSV export)
 │   ├── ubicaciones.html        (reusable saved-locations pool)
@@ -170,11 +173,13 @@ python3 backup_db.py
 #    keeps serving visitors while you finish the remaining steps.
 git pull
 
-# 3. Apply any schema changes. ALWAYS run this, on every deploy.
-#    It is additive and idempotent: if the table already exists it
-#    changes nothing and says so. You never have to work out whether
-#    this particular release "needs" it.
+# 3. Apply any schema changes. ALWAYS run EVERY migration, oldest
+#    first, on every deploy. Each is additive and idempotent: one
+#    that has already been applied prints "already present" and
+#    changes nothing. That is the point - there is then nothing to
+#    work out about whether this particular release "needs" it.
 python3 migrate_add_cortes.py
+python3 migrate_fix_schema_drift.py
 ```
 
 **4. Click "Reload" on the Web tab.** The new code goes live here, and

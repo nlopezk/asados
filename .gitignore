@@ -30,6 +30,15 @@ secret_key.txt
 # names/addresses/points straight off the live site, no login needed.
 export_token.txt
 
+# The user's own backup of config.py's older point weights, kept in the
+# repo root deliberately and read by nothing. Ignored so that a `git
+# add .` can't commit it: not because it's sensitive (it's weights, not
+# personal data) but because it would land in a public repo as a second,
+# confusingly-similar config file with no way to tell which one the app
+# actually reads. The v1.0.0 audit's lesson was that "untracked" is not
+# the same as "safe from `git add .`".
+config beta.py
+
 # --- Python / editor noise -------------------------------------------
 __pycache__/
 *.pyc

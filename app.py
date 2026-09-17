@@ -37,7 +37,7 @@ DATABASE = "asados.db"  # the SQLite database is just a single file on disk
 # version is cut (see CLAUDE.md). Nothing ties these three together
 # automatically; forgetting to bump this is a real, easy-to-repeat
 # mistake, so check it specifically before tagging a new release.
-VERSION = "1.7.3"
+VERSION = "1.7.4"
 
 # How many rows to show per page before showing a "next" arrow, on the
 # home page and on Base de Asados respectively. Base de Asados can show
@@ -393,6 +393,32 @@ BASE_ASADOS_QUERY = """
 
 app = Flask(__name__)  # __name__ tells Flask where this file lives, for finding templates/static
 
+# --- Session cookie hardening ------------------------------------------
+# HttpOnly and SameSite=Lax are already Flask's defaults and are right
+# for this app, so they aren't restated here. Secure is NOT a default,
+# and the live site is served over HTTPS, so the login cookie was
+# travelling without the one flag that tells a browser never to send it
+# over plain HTTP.
+#
+# IT IS SET CONDITIONALLY, AND FAILING TO DETECT IS THE SAFE DIRECTION.
+# A Secure cookie is simply never sent over http://, so hard-coding
+# True would silently break login for local development on
+# http://127.0.0.1:5000 — you'd type the right password and land back
+# on the login page with no error to explain it. So: on when we can
+# tell we're on PythonAnywhere (it sets PYTHONANYWHERE_DOMAIN in the
+# web app's environment), or whenever ASADOS_HTTPS is set explicitly.
+# If neither is visible, the cookie behaves exactly as it did before —
+# no improvement, but nothing broken either.
+#
+# TO CONFIRM IT ACTUALLY APPLIED after a deploy, don't guess from the
+# environment: open the live site, DevTools -> Application -> Cookies,
+# and check the `session` cookie's Secure column. If it's empty, set
+# ASADOS_HTTPS=1 in the PythonAnywhere Web tab's environment variables
+# and Reload.
+app.config["SESSION_COOKIE_SECURE"] = bool(
+    os.environ.get("ASADOS_HTTPS") or os.environ.get("PYTHONANYWHERE_DOMAIN")
+)
+
 # ---------------------------------------------------------------------
 # SECRET KEY (needed for login sessions)
 # ---------------------------------------------------------------------
@@ -629,6 +655,70 @@ def blank_if_none(value):
     """
     return "" if value is None else value
 
+
+# How many unissued-but-unused form tokens one session remembers. A
+# LIST, oldest dropped first, rather than a single value: someone can
+# legitimately have two asado forms open (two tabs, or a back-button
+# revisit), and a single-slot token would make whichever they submit
+# second look like a duplicate. Eight is far more than this app's
+# real usage and keeps the session cookie small.
+FORM_TOKEN_HISTORY = 8
+
+
+def issue_form_token():
+    """
+    Mints a ONE-SHOT token for a form we are about to render, and
+    remembers it in the session.
+
+    This is NOT the CSRF token and does not replace it. CSRF asks "did
+    this POST come from our own site?" and deliberately reuses one
+    per-session value, so it says nothing about whether a submission
+    has already been processed. This asks a different question: "have
+    I already acted on this exact form?" — the answer that stops a
+    double-tap from creating two asados.
+
+    Memoised on `g` so a template asking for it more than once in a
+    single render gets the same token instead of burning several.
+    """
+    if not hasattr(g, "_form_token"):
+        token = secrets.token_urlsafe(16)
+        tokens = session.get("form_tokens", [])
+        tokens.append(token)
+        # Keep only the newest few — see FORM_TOKEN_HISTORY above.
+        session["form_tokens"] = tokens[-FORM_TOKEN_HISTORY:]
+        g._form_token = token
+    return g._form_token
+
+
+def consume_form_token():
+    """
+    True exactly once per issued token: the first POST that presents it.
+
+    Any later POST carrying the same token — a double-tap, a
+    double-click, an impatient second tap on a slow connection, a
+    resubmitted stale page — finds it already gone and gets False. The
+    caller is expected to bail out WITHOUT writing anything.
+
+    An unrecognised token is treated the same as a used one. That
+    conflates "already submitted" with "this form is older than the
+    last FORM_TOKEN_HISTORY forms you opened", which is why the
+    message the user sees names both possibilities instead of
+    asserting a duplicate.
+    """
+    submitted = request.form.get("form_token")
+    tokens = session.get("form_tokens", [])
+    if not submitted or submitted not in tokens:
+        return False
+    tokens.remove(submitted)
+    session["form_tokens"] = tokens
+    return True
+
+
+@app.context_processor
+def inject_form_token():
+    """Makes form_token() callable from any template, same
+    "inject once, use everywhere" pattern as csrf_token() above."""
+    return {"form_token": issue_form_token}
 
 @app.context_processor
 def inject_version():
@@ -1187,32 +1277,65 @@ def index():
         params + [INDEX_PAGE_SIZE, offset],
     ).fetchall()
 
-    # For each asado, also fetch its participants (a small extra query
-    # per asado — totally fine for Phase 1's scale; we can optimize
-    # with a JOIN later if the dataset grows).
-    asados_with_participants = []
-    for asado in asados:
-        participants = db.execute(
-            """
-            SELECT users.id AS user_id, users.name, participations.rol, participations.points
+    # Participants and Tipo de Carne for the WHOLE PAGE in two queries,
+    # not two per asado.
+    #
+    # This used to run one pair of queries inside the loop below, with a
+    # comment saying it was fine for Phase 1 and could be optimised
+    # later. The v1.7.3 audit measured "later": 68 queries to render one
+    # page of 30 asados. That's ~4ms locally and invisible, but this is
+    # the heaviest page in the app AND the page you land on right after
+    # saving an asado — so its latency is exactly what a user
+    # experiences as "did that work?" right before they tap submit a
+    # second time. Which is the bug that prompted the audit.
+    #
+    # Both queries fetch by `asado_id IN (...)` over just this page's
+    # ids and are then grouped in Python. The placeholders are built
+    # from len(asado_ids), never from any submitted value — the ids come
+    # from the query above, not from the request.
+    asado_ids = [row["id"] for row in asados]
+    participants_by_asado = collections.defaultdict(list)
+    tipos_by_asado = collections.defaultdict(list)
+
+    if asado_ids:
+        placeholders = ",".join("?" * len(asado_ids))
+        # ORDER BY participations.id keeps each asado's participants in
+        # the same order the per-asado query produced (SQLite returned
+        # them in rowid order there), so the cards don't reshuffle.
+        for row in db.execute(
+            f"""
+            SELECT participations.asado_id AS asado_id,
+                   users.id AS user_id, users.name,
+                   participations.rol, participations.points
             FROM participations
             JOIN users ON participations.user_id = users.id
-            WHERE participations.asado_id = ?
+            WHERE participations.asado_id IN ({placeholders})
+            ORDER BY participations.id
             """,
-            (asado["id"],),
-        ).fetchall()
-        # An asado can have more than one Tipo de Carne (minimum one) —
-        # joined into one "Cordero; Pollo" string for the card display,
-        # same "; " separator used in Base de Asados/CSV.
-        tipos_carne = db.execute(
-            "SELECT tipo_carne FROM asado_tipo_carne WHERE asado_id = ? ORDER BY id",
-            (asado["id"],),
-        ).fetchall()
-        asados_with_participants.append({
+            asado_ids,
+        ):
+            participants_by_asado[row["asado_id"]].append(row)
+
+        for row in db.execute(
+            f"""
+            SELECT asado_id, tipo_carne FROM asado_tipo_carne
+            WHERE asado_id IN ({placeholders}) ORDER BY id
+            """,
+            asado_ids,
+        ):
+            tipos_by_asado[row["asado_id"]].append(row["tipo_carne"])
+
+    asados_with_participants = [
+        {
             "asado": asado,
-            "participants": participants,
-            "tipos_carne": "; ".join(row["tipo_carne"] for row in tipos_carne),
-        })
+            "participants": participants_by_asado[asado["id"]],
+            # An asado can have more than one Tipo de Carne (minimum
+            # one) — joined into one "Cordero; Pollo" string for the
+            # card, same "; " separator as Base de Asados/CSV.
+            "tipos_carne": "; ".join(tipos_by_asado[asado["id"]]),
+        }
+        for asado in asados
+    ]
 
     # For the "Usuario" filter dropdown.
     registered_users = db.execute("SELECT id, username, name FROM users ORDER BY name").fetchall()
@@ -1394,6 +1517,50 @@ def new_asado():
         # added to the reusable pool. See maybe_save_location() above.
         save_location = request.form.get("save_location") == "on"
         location_name = request.form.get("location_name", "").strip()
+
+        # --- Was this form already submitted? Check FIRST, before any
+        # read or write, because this is the one failure mode where
+        # doing the work twice produces a real, visible duplicate.
+        #
+        # A user reported adding one asado and getting two, one second
+        # apart. The cause was a double-tap: nothing in the form
+        # stopped a second submission, and /asado/new is the only POST
+        # route in this app with no natural uniqueness backstop (a
+        # duplicate user or location is rejected by a UNIQUE column or
+        # a name check; an edit is idempotent; a delete no-ops). So it
+        # got one here, explicitly.
+        #
+        # Two layers, same shape as every other validated field in this
+        # app: the form also disables its submit button on the way out
+        # (see _asado_form.html), which stops the double-tap before it
+        # becomes a request at all — and this, which holds even with
+        # JavaScript off or against a deliberately replayed POST.
+        #
+        # WHAT THIS DOES AND DOESN'T COVER, measured rather than
+        # assumed. The token is minted per RENDER, so:
+        #   * the same rendered form submitted twice — a double-tap, a
+        #     back-button return to a CACHED page, a replayed POST —
+        #     presents an already-spent token and is refused. This is
+        #     the reported bug, and it is closed.
+        #   * a form the browser genuinely RE-FETCHED carries a fresh,
+        #     valid token and is accepted. From here that is
+        #     indistinguishable from someone deliberately entering a
+        #     second asado with the same details, so it is allowed.
+        # There is deliberately NO content-based check ("same name and
+        # date within N seconds"): the group really does hold two
+        # asados on one day, and silently refusing a legitimate save
+        # would be a worse failure than a rare duplicate that takes
+        # two clicks to delete.
+        #
+        # Deliberately NOT applied to the other POST routes: each is
+        # already protected by a constraint or is idempotent, and a
+        # token on all of them would be machinery guarding nothing.
+        if not consume_form_token():
+            return redirect(url_for(
+                "index",
+                success="Este formulario ya fue enviado. Si no ves tu asado "
+                        "en la lista, volvé a cargarlo.",
+            ))
 
         # --- Participants: read + validate BEFORE inserting anything ---
         # A blank row (nothing selected) is fine — it's just skipped

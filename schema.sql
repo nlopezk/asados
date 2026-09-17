@@ -295,3 +295,11 @@ CREATE INDEX idx_participations_user_id ON participations (user_id);
 CREATE INDEX idx_asado_tipo_carne_asado_id ON asado_tipo_carne (asado_id);
 CREATE INDEX idx_asado_cortes_asado_id ON asado_cortes (asado_id);
 CREATE INDEX idx_activity_log_changes_log_id ON activity_log_changes (log_id);
+-- These three were missed when activity_log and locations were added,
+-- and the v1.7.3 audit caught it: SQLite indexes PRIMARY KEY and
+-- UNIQUE columns only, so a declared FOREIGN KEY gets nothing
+-- automatically. Existing databases get them from
+-- migrate_fix_schema_drift.py; these lines are what a FRESH one uses.
+CREATE INDEX idx_activity_log_asado_id ON activity_log (asado_id);
+CREATE INDEX idx_activity_log_user_id ON activity_log (user_id);
+CREATE INDEX idx_locations_created_by ON locations (created_by);

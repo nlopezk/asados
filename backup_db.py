@@ -51,6 +51,25 @@ def backup_database(database=DATABASE, backup_dir=BACKUP_DIR, retention_days=RET
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     backup_path = os.path.join(backup_dir, f"asados_{timestamp}.db")
 
+    # SECOND RESOLUTION IS NOT ENOUGH ON ITS OWN. Two backups inside the
+    # same second produce the same filename, and the second one silently
+    # overwrote the first — so a burst of activity was quietly protected
+    # by fewer snapshots than the file list suggested. Found by the
+    # v1.7.3 audit while timing this function: five consecutive calls
+    # all wrote to one file.
+    #
+    # A suffix rather than adding microseconds to the name, so the
+    # common case keeps the short readable timestamp it has always had
+    # (and matches the files already sitting in backups/); only an
+    # actual collision gets "-2", "-3". The while loop rather than a
+    # single check because three in one second is no less possible than
+    # two. Still matches the "asados_*.db" glob _prune_old_backups()
+    # looks for, so retention keeps working on these too.
+    collision = 2
+    while os.path.exists(backup_path):
+        backup_path = os.path.join(backup_dir, f"asados_{timestamp}-{collision}.db")
+        collision += 1
+
     source = sqlite3.connect(database)
     try:
         dest = sqlite3.connect(backup_path)

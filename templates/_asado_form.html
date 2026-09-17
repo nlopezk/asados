@@ -61,6 +61,14 @@
 
 <form method="POST" action="{{ form_action }}" class="asado-form" id="asado-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <!-- One-shot token: proves this POST is the FIRST submission of
+         this particular rendered form. csrf_token above answers a
+         different question ("is this really from our site?") and
+         reuses one per-session value, so it can't tell a first
+         submission from a replay. Only new_asado() checks this one;
+         edit is idempotent and needs no protection. See
+         issue_form_token() in app.py. -->
+    <input type="hidden" name="form_token" value="{{ form_token() }}">
 
     <label for="nombre">Nombre Asado</label>
     <input type="text" id="nombre" name="nombre" value="{{ asado.nombre if asado else '' }}" required>
@@ -287,7 +295,7 @@
 
     <hr>
 
-    <button type="submit" class="primary-button">{{ submit_label }}</button>
+    <button type="submit" class="primary-button" id="asado-submit">{{ submit_label }}</button>
 </form>
 
 <script>
@@ -598,6 +606,40 @@
             event.preventDefault();
             alert("Un mismo usuario no puede tener más de un rol en el mismo asado.");
         }
+    });
+
+    // -----------------------------------------------------------------
+    // DOUBLE-SUBMIT GUARD
+    //
+    // A user added one asado and got two, one second apart: a
+    // double-tap on a slow connection, with nothing stopping the
+    // second submission. This disables the button as the form leaves,
+    // so the second tap has nothing to hit.
+    //
+    // REGISTERED LAST ON PURPOSE. Two earlier submit handlers can
+    // cancel a submission — the duplicate-participant check above,
+    // and _location_picker.html's "pick a real point first" check
+    // (which runs first, since the picker is included earlier in this
+    // file than this script). Listeners fire in registration order, so
+    // by the time this one runs `event.defaultPrevented` already tells
+    // us whether the form is actually going anywhere. Disabling the
+    // button on a submission that got cancelled would leave the form
+    // permanently unsubmittable — the user would have to reload to
+    // fix a typo. That is the trap this check exists to avoid.
+    //
+    // Nothing is needed for empty required fields: the browser's own
+    // validation blocks those before a submit event ever fires.
+    // -----------------------------------------------------------------
+    document.getElementById("asado-form").addEventListener("submit", function (event) {
+        if (event.defaultPrevented) {
+            return;  // an earlier handler cancelled this — leave the button alive
+        }
+        const button = document.getElementById("asado-submit");
+        button.disabled = true;
+        // Say why it's greyed out. A disabled button with no
+        // explanation reads as broken, which is what makes people
+        // reach for a second tap in the first place.
+        button.textContent = "Guardando...";
     });
 
     // -----------------------------------------------------------------

@@ -31,6 +31,67 @@ Improvements:
 Groups (much later): Creación de grupos, invitaciones y posibilidad de que el usuario pertenezca a distintos grupos.
 
 
+## [1.7.4] - 2026-09-17
+### Fixed
+- **Adding one asado could create two.** A user double-tapped submit on
+  a phone and got two identical asados a second apart. Nothing in the
+  form stopped a second submission, and `/asado/new` turned out to be
+  the ONLY POST route without a natural backstop (a duplicate user or
+  location is rejected by a constraint; an edit is idempotent; a delete
+  no-ops). Fixed in two layers: the submit button disables itself, and
+  a one-shot per-form token makes the server refuse a replayed POST
+  even with JavaScript off. The button guard deliberately checks
+  whether an earlier handler cancelled the submit first — disabling it
+  on a cancelled submission would have left the form permanently
+  unsubmittable.
+- **Backups could silently overwrite each other.** Filenames are
+  second-resolution, so two backups in the same second collided —
+  measured: five in a row all wrote to one file. They now get a `-2`,
+  `-3` suffix when a name is taken.
+- **`locations.address` / `latitude` / `longitude` were not actually
+  `NOT NULL`** in the real database, despite `schema.sql` declaring
+  them so and the docs describing that as the last-resort backstop.
+  The table predates those constraints and no migration ever applied
+  them. No bad data had slipped through. `migrate_fix_schema_drift.py`
+  applies them, and refuses to run if any offending row exists.
+- **Three foreign keys had no index** — `activity_log.asado_id`,
+  `activity_log.user_id`, `locations.created_by`. Same migration adds
+  them; `schema.sql` now has them too, so fresh databases match.
+- **The session cookie was missing the `Secure` flag** on a public
+  HTTPS site. Now set when the environment shows PythonAnywhere or
+  `ASADOS_HTTPS`, and deliberately left off otherwise so local
+  development over plain HTTP can't lock itself out.
+
+### Changed
+- **The home page went from 68 queries to 10.** Participants and Tipo
+  de Carne are fetched for the whole page in two queries instead of
+  two per asado. This is the page you land on right after saving, so
+  its latency is exactly what reads as "did that work?" — which is
+  what prompts a second tap. Verified to return byte-identical data on
+  every filter combination, including the empty result.
+- `check_cow_svg.py` reports hidden (`display:none`) shapes, and fails
+  if a hidden one is a real cut.
+- `config beta.py` is gitignored — untracked was never the same as
+  safe from `git add .`.
+- **Docs: seven stale claims corrected**, all found by the audit.
+  CLAUDE.md still said "Currently at v1.0.0", described the live site
+  as an empty test database awaiting real data, called the cow diagram
+  a planned follow-up, claimed `__pycache__` files were committed, and
+  said the project has no charting library (Plotly runs on two pages).
+  Asado counts are now described as a snapshot to be counted, not
+  quoted. README's file tree regained `user_profile.html`.
+
+### Audited and found clean
+All 23 routes correctly guarded; CSRF on every POST form; no XSS
+surface; no SQL injection (6 payloads fired at the sort whitelist
+changed nothing); no orphaned rows; `integrity_check` and
+`foreign_key_check` both clean; all 269 participations' points match
+their own frozen weights; `delete_asado()` covers every child table;
+no secrets or data files tracked; VERSION/CHANGELOG/tag in agreement.
+Every page also rendered with Jinja set to error on any undefined
+variable — the five that tripped were all deliberate optional
+prefills, not bugs.
+
 ## [1.7.3] - 2026-09-12
 ### Changed
 - **The cow was redrawn, and it now has 31 clickable cuts** (was 28).

@@ -40,6 +40,9 @@ python -c "from app import init_db; init_db()"
 # `git pull` but BEFORE clicking Reload (see "Rollout" in the Cortes
 # section below for why the order matters).
 python migrate_add_cortes.py [path/to/asados.db]
+python migrate_fix_schema_drift.py [path/to/asados.db]
+# Run every migration on every deploy, oldest first. Each is additive
+# and idempotent, so an already-applied one is a no-op that says so.
 
 # Create a login account (required at least once — no public sign-up page).
 # <name> is a display name; [role] is "admin" or "normal" (default "normal").
@@ -80,22 +83,27 @@ Phase 5 – Make it responsive. Improve CSS/layout so it works well on phones, s
 Phase 6 – Deploy. Put it online (e.g. Render, Railway, Fly.io — all have free tiers) so others can actually use it from their phones.
 Phase 7+ – Advanced. Photo uploads, notifications, a proper mobile app wrapper (e.g. Capacitor) or React Native, richer stats/dashboards, etc.
 
-**Currently at v1.0.0: Phases 1, 2, 3, 5 and 6 are done, and Phase 4 is
-half done.** Phase 4's leaderboard shipped as the "Resumen" page (see
-its own section below); what's still outstanding from Phase 4 is a
-dashboard/KPI view and any charting (Chart.js was floated in the
-roadmap and has never been added — there is no charting library in this
-project). Phases 5 and 6 were deliberately done out of order, ahead of
-Phase 4, at the user's request. Phase 3 deliberately deviated from its
+**Currently at v1.7.4: Phases 1-6 are done, and Phase 4 is complete.**
+Phase 4's leaderboard shipped as the "Resumen" page and its charting
+shipped in 1.2.0 — **Plotly, not the Chart.js the roadmap floated**
+(see "Resumen's chart" for why), now used on both `/resumen` and
+`/usuario/<id>`. The only thing ever dropped from Phase 4 is a
+dashboard/KPI tile row, which is still on the CHANGELOG's wishlist.
+Phases 5 and 6 were deliberately done out of order, ahead of Phase 4,
+at the user's request. Phase 7+ has not been started. Phase 3 deliberately deviated from its
 own description above: editing is open to **every** logged-in user (not
 "only your own entries"), while deleting is **admin-only** — see the
 "Edit/delete permissions" note below.
 
 **v1.0.0 also marks the first release holding the group's REAL data** —
 imported from the historical spreadsheet, replacing the randomly-seeded
-test data. **Currently 234 asados / 264 participations** (v1.0.1's
-corrected `Base Histórica v2.csv` re-import; v1.0.0 shipped with the
-v1 file's 232 / 262 — see the CHANGELOG for what changed). Two
+test data. **The local copy holds 239 asados / 269 participations, and the LIVE
+database holds more still** — the group has been adding asados through
+the live site since the data was last pulled down, so any count
+written down here is a snapshot, not a fact to rely on. (The
+historical import itself was 234/264, from v1.0.1's corrected
+`Base Histórica v2.csv`; v1.0.0 shipped with the v1 file's 232/262 —
+see the CHANGELOG for what changed.) **Count it, don't quote it.** Two
 consequences worth knowing before touching anything data-related:
 - **Local `asados.db` is now real, irreplaceable data.** Before this,
   wiping it via `init_db()` cost nothing. It now costs the group's
@@ -416,14 +424,17 @@ doesn't require rediscovering this):
   PythonAnywhere filesystem from the ones on any local dev machine —
   expected and correct; never try to sync/share a secret key between
   environments.
-- The live site was deliberately started with a **fresh, empty
-  database** (`init_db()` + one throwaway `testadmin` account) rather
-  than the ~195 asados that exist in the local dev DB — the user's
-  explicit call, to use the live deploy for testing first. Bringing
-  the real data over later means uploading the local `asados.db` file
-  directly via PythonAnywhere's Files tab (**not** running `init_db()`
-  again on the server, which would wipe it) — still pending as of this
-  writing.
+- The live site was originally started with a fresh, empty database
+  (`init_db()` + one throwaway `testadmin` account) to use the deploy
+  for testing first. **That is history: the real data is live, and the
+  LIVE database is now the authoritative copy** — the group adds
+  asados through the site, so it runs ahead of any local copy. Pulling
+  it back down is a manual download via PythonAnywhere's Files tab;
+  save it under a dated name rather than straight over the local
+  `asados.db`, and compare before replacing anything (the two diverge
+  in both directions once local testing has happened). **Never run
+  `init_db()` on the server**, and never upload a local `asados.db`
+  over the live one without checking which is ahead.
 - The automatic per-asado backup (`backup_database()`, called from
   `new_asado()` — see "Automatic backups" above) works identically in
   production: backups land in `/home/asados/asados/backups/` on
@@ -585,9 +596,9 @@ Under the Tipo de Carne category sits a finer one: the individual beef
 cuts ("Lomo Vetado", "Punta de Ganso", ...), stored in `asado_cortes`
 and picked from a dropdown that appears on the asado form only when a
 category in `CATEGORIAS_CON_DESPIECE` is selected. There's also a
-standalone reference page at `/cortes`. Shipped in 1.6.0 as the
-plumbing half of the "Cow View" backlog idea; the clickable cow diagram
-itself is the planned follow-up (see the end of this section).
+standalone reference page at `/cortes`. The plumbing shipped in 1.6.0
+and the clickable cow diagram in 1.7.0, completing the "Cow View"
+backlog idea; the drawing was then redrawn in 1.7.3 to 31 regions.
 
 **Cuts are DESCRIPTIVE ONLY, and two separate files are built to keep
 them that way.** `config.py` puts them below a "NON-SCORING DATA BELOW
@@ -1682,6 +1693,62 @@ every POST regardless of route) rejects the request with 400 if the
 submitted token doesn't match the session's. **Any new POST form must
 include that hidden input, or it will always 400.**
 
+### Double-submit protection — why /asado/new alone needs it
+**A user added one asado and got two, one second apart.** The cause was
+a double-tap on a phone: nothing in the form stopped a second
+submission, and the timestamps in `/actividad` proved it was two
+separate POSTs rather than anything server-side (the asado `INSERT` is
+a single statement with no loop, so one request can only ever create
+one asado).
+
+**`/asado/new` is the ONLY POST route in this app that needed fixing,
+and that's worth knowing before "hardening" the others.** Every other
+one already has a natural backstop: a duplicate username hits a
+`UNIQUE` column, a duplicate location name hits an explicit check,
+`edit_asado()` replaces wholesale so running it twice is idempotent,
+and a second delete no-ops. Creating an asado had nothing — no
+uniqueness constraint exists or should (the group really does hold two
+asados on the same day).
+
+**Two layers, the same shape as every other validated thing here.**
+`_asado_form.html` disables its submit button on the way out, which
+stops the tap from becoming a request at all; `issue_form_token()` /
+`consume_form_token()` in app.py mint a ONE-SHOT token per rendered
+form, so a replayed POST is refused even with JavaScript off.
+
+**The client guard is registered LAST on purpose, and checks
+`event.defaultPrevented` first.** Two earlier submit handlers can
+cancel a submission — the duplicate-participant check, and
+`_location_picker.html`'s "pick a real point first" check. Disabling
+the button on a submission that got cancelled would leave the form
+**permanently unsubmittable**: the user couldn't fix the very error
+they were just told about without reloading and retyping everything.
+There is a browser test for exactly that path. Nothing is needed for
+empty required fields — the browser blocks those before a submit
+event fires at all.
+
+**The token is NOT the CSRF token and doesn't replace it.** CSRF asks
+"did this come from our site?" and deliberately reuses one per-session
+value, which says nothing about whether a submission was already
+processed. This asks "have I already acted on this exact form?".
+
+**What it does and does not cover** — measured, not assumed. The token
+is minted per RENDER, so the same rendered form submitted twice (a
+double-tap, a back-button return to a *cached* page, a replayed POST)
+presents a spent token and is refused. A form the browser genuinely
+RE-FETCHED carries a fresh valid token and is accepted, because from
+the server that is indistinguishable from someone deliberately
+entering a second asado with the same details. There is deliberately
+**no content-based check** ("same name and date within N seconds"):
+silently refusing a legitimate save would be a worse failure than a
+rare duplicate that takes two clicks to delete.
+
+**`session["form_tokens"]` is a LIST, not one value**, capped at
+`FORM_TOKEN_HISTORY` (8). Someone can legitimately have two asado
+forms open — two tabs, or a back-button revisit — and a single-slot
+token would make whichever they submitted second look like a
+duplicate. There's a test for the two-tab case.
+
 ### CSV export sanitizes formula-injection payloads
 `sanitize_csv_cell()` in `app.py` prefixes any exported string starting
 with `=`, `+`, `-`, or `@` with a `'`, so a value like `=HYPERLINK(...)`
@@ -2032,11 +2099,12 @@ the app match `config.py`'s formula exactly.
   `asados.db` get committed repeatedly. If `.gitignore` seems not to be
   working, verify with `git check-ignore -v <file>` before assuming
   anything else is wrong.
-- **`__pycache__/*.pyc` files are already committed** in this repo,
-  despite `__pycache__/` being in `.gitignore` — the ignore rule was
-  added after those files were first tracked, and gitignore never
-  retroactively untracks files already known to git. If you notice
-  them, `git rm --cached` is the fix, not editing `.gitignore` again.
+- **`__pycache__/*.pyc` were once committed here and have since been
+  removed** — the ignore rule was added after they were first tracked,
+  and gitignore never retroactively untracks what git already knows
+  about. `git ls-files` is clean as of the 1.7.4 audit. The lesson
+  still applies to the next file it happens to: `git rm --cached` is
+  the fix, not editing `.gitignore` again.
 - **⚠️ NEVER run `init_db()` against a database that holds real data.**
   It runs `DROP TABLE` + `CREATE TABLE` from `schema.sql`, which now
   means destroying the group's entire history — 239 asados, locally
@@ -2051,6 +2119,35 @@ the app match `config.py`'s formula exactly.
   idempotent, and prints before/after row counts for every existing
   table so you can SEE nothing was lost. `schema.sql` is now for
   creating FRESH databases only, and says so at the top.
+- **The session cookie's `Secure` flag is set CONDITIONALLY, and
+  failing to detect is the safe direction.** A `Secure` cookie is
+  never sent over `http://`, so hard-coding it True would silently
+  break login on local `http://127.0.0.1:5000` — right password,
+  straight back to the login page, no error explaining why. It's on
+  when `PYTHONANYWHERE_DOMAIN` or `ASADOS_HTTPS` is visible in the
+  environment, off otherwise. **Confirm it actually applied from the
+  browser** (DevTools → Application → Cookies → the `session` row's
+  Secure column), not by reasoning about the environment; if it's
+  empty, set `ASADOS_HTTPS=1` on the Web tab and Reload.
+- **Backup filenames are second-resolution and so can collide.**
+  `backup_db.py` appends `-2`, `-3` when a name is already taken. The
+  1.7.4 audit found five backups in one second all writing to a single
+  file, silently overwriting each other — so a burst of activity was
+  protected by fewer snapshots than the file list suggested. Keep any
+  new naming scheme matching the `asados_*.db` glob that
+  `_prune_old_backups()` looks for, or retention stops seeing them.
+- **`index()` fetches participants and Tipo de Carne for the WHOLE
+  PAGE in two queries, not two per asado.** It used to do the latter,
+  with a comment saying it was fine for Phase 1 and could be optimised
+  later; the 1.7.4 audit measured "later" at 68 queries for one page
+  of 30 asados, now 10. This is the heaviest page in the app AND the
+  one you land on right after saving an asado, so its latency is
+  exactly what a user reads as "did that work?" just before tapping
+  submit again. The `IN (...)` placeholders are built from
+  `len(asado_ids)` and the ids come from the previous query — never
+  from anything submitted. There is a test asserting the batched
+  version returns byte-identical data to the per-asado one, on every
+  filter combination including the empty result.
 - **`VERSION` (`app.py`) is a THIRD manually-bumped place, alongside
   `CHANGELOG.md` and the git tag.** It's shown in the small footer on
   every page (see below) via `inject_version()`. Nothing automatically
