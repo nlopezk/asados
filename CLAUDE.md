@@ -25,37 +25,47 @@ directly with Python.
 # Install dependencies
 pip install -r requirements.txt
 
-# ⚠️ DANGER — creates a BRAND NEW, EMPTY database. schema.sql runs
-# DROP TABLE + CREATE TABLE, so running this against the real
-# asados.db DESTROYS the group's whole history (239 asados). Only ever
-# use it for a genuinely fresh/throwaway database. To change the SHAPE
-# of a database that already has data, write a migration instead (see
-# below).
-python -c "from app import init_db; init_db()"
+# Groups (v2.0+, see "Groups" below). `create` makes a NEW group's
+# empty database + its first admin, and refuses to touch a file that
+# already exists — it replaced the old init_db() one-liner, which
+# would DROP every table of whatever database it was pointed at.
+python manage_groups.py create <slug> "<Name>" <admin_user> <admin_password> "<Admin name>"
+python manage_groups.py list               # groups, member counts, export tokens
+python manage_groups.py rename <slug> "<New name>"
 
-# Apply a schema change to an EXISTING database without wiping it.
+# One-time conversion of a pre-v2.0 asados.db into accounts.db +
+# groups/parrilla-y-alma.db. Copies, never modifies asados.db. Safe to
+# re-run ("ALREADY migrated"); part of the every-deploy list below.
+python migrate_to_groups.py [--verify]
+
+# Apply a schema change to EXISTING databases without wiping them.
 # Additive and idempotent — safe to run twice, prints before/after row
-# counts so you can confirm nothing was lost. This is the pattern to
-# copy for any future schema change. On PythonAnywhere, run it AFTER
-# `git pull` but BEFORE clicking Reload (see "Rollout" in the Cortes
-# section below for why the order matters).
-python migrate_add_cortes.py [path/to/asados.db]
-python migrate_fix_schema_drift.py [path/to/asados.db]
+# counts so you can confirm nothing was lost. With no argument each
+# runs on EVERY registered group (or on asados.db, before the v2.0
+# conversion); pass a path to target one isolated copy. This is the
+# pattern to copy for any future schema change. On PythonAnywhere, run
+# them AFTER `git pull` but BEFORE clicking Reload (see "Rollout" in
+# the Cortes section below for why the order matters).
+python migrate_add_cortes.py [path/to/group.db]
+python migrate_fix_schema_drift.py [path/to/group.db]
+python migrate_to_groups.py
 # Run every migration on every deploy, oldest first. Each is additive
 # and idempotent, so an already-applied one is a no-op that says so.
 
-# Create a login account (required at least once — no public sign-up page).
-# <name> is a display name; [role] is "admin" or "normal" (default "normal").
-# You need at least one admin to manage further accounts from /config.
-python create_user.py <username> <password> <name> [role]
+# Add a login to a group (no public sign-up page; group admins can also
+# do it from /config). [role] is "admin" or "normal" (default "normal"),
+# per group. Usernames are unique across the WHOLE site.
+python create_user.py <group-slug> <username> <password> <name> [role]
 
-# Fill the DB with <count> randomly-generated asados/participations, for
-# trying out filters/Base de Asados/CSV export without typing real data.
-# Uses your EXISTING users as participants; adds on top, doesn't wipe.
-python seed_random_asados.py <count>
+# Fill ONE group with <count> randomly-generated asados/participations,
+# for trying out filters/Base de Asados/CSV export without typing real
+# data. The group is required on purpose — point it at a throwaway test
+# group, never one whose standings matter.
+python seed_random_asados.py <group-slug> <count>
 
-# Make an on-demand backup of asados.db right now (also happens
-# automatically on every new asado — see "Automatic backups" below).
+# On-demand backup of accounts.db + every group, into backups/accounts/
+# and backups/<slug>/ (each group is also backed up automatically on
+# every new asado — see "Automatic backups" below).
 python backup_db.py [retention_days]
 
 # Run the dev server (debug=True: auto-reloads, verbose error pages)
@@ -83,7 +93,11 @@ Phase 5 – Make it responsive. Improve CSS/layout so it works well on phones, s
 Phase 6 – Deploy. Put it online (e.g. Render, Railway, Fly.io — all have free tiers) so others can actually use it from their phones.
 Phase 7+ – Advanced. Photo uploads, notifications, a proper mobile app wrapper (e.g. Capacitor) or React Native, richer stats/dashboards, etc.
 
-**Currently at v1.7.4: Phases 1-6 are done, and Phase 4 is complete.**
+**Currently at v2.0.0: Phases 1-6 are done, and Phase 4 is complete.**
+2.0.0 also turned the app multi-group (one site, several separate
+competitions, one database file per group) — see "Groups" below. That
+isn't one of the original phases; it was requested once the app was
+in real use and other friend groups wanted their own.
 Phase 4's leaderboard shipped as the "Resumen" page and its charting
 shipped in 1.2.0 — **Plotly, not the Chart.js the roadmap floated**
 (see "Resumen's chart" for why), now used on both `/resumen` and
@@ -105,10 +119,13 @@ historical import itself was 234/264, from v1.0.1's corrected
 `Base Histórica v2.csv`; v1.0.0 shipped with the v1 file's 232/262 —
 see the CHANGELOG for what changed.) **Count it, don't quote it.** Two
 consequences worth knowing before touching anything data-related:
-- **Local `asados.db` is now real, irreplaceable data.** Before this,
-  wiping it via `init_db()` cost nothing. It now costs the group's
-  whole history, and `backups/` is the only copy (same disk — see
-  "Automatic backups"). Never run `init_db()` casually again.
+- **The local data files are real, irreplaceable data.** Before this,
+  wiping the database cost nothing. It now costs the group's whole
+  history, and `backups/` is the only copy (same disk — see
+  "Automatic backups"). Since v2.0 that data lives in
+  `groups/parrilla-y-alma.db` (+ the logins in `accounts.db`); the old
+  `asados.db` is kept untouched as the 1.x fallback. `init_db()` no
+  longer exists, precisely because it was a one-liner that wiped this.
 - **Imported points were frozen exactly as the spreadsheet had already
   calculated them**, not recalculated through `config.py`. That's the
   same freezing rule the app already follows everywhere else, and it's
@@ -410,35 +427,47 @@ doesn't require rediscovering this):
   a file in this repo) does two things beyond the usual
   `sys.path.insert()`: it calls **`os.chdir('/home/asados/asados')`
   before importing `app`**. This matters because `app.py` finds
-  `asados.db`/`secret_key.txt`/`schema.sql` via bare relative paths
-  (`"asados.db"`, not an absolute path) — without the `chdir`,
+  `accounts.db`/`groups/`/`secret_key.txt` via bare relative paths
+  (`"accounts.db"`, not an absolute path) — without the `chdir`,
   PythonAnywhere's WSGI process could run from some other working
-  directory (e.g. the home directory) and the live site would silently
-  look for, or even create, `asados.db` in the wrong place.
+  directory (e.g. the home directory) and the live site would look for
+  its databases in the wrong place. Before v2.0 it would silently
+  CREATE an empty one there; since v2.0 `connect_existing()` refuses
+  to create a missing file, so the same mistake is an error page
+  instead of a quietly empty site. The WSGI file needed no change for
+  v2.0.
 - `app.run(debug=True, ...)` at the bottom of `app.py` was **not**
   changed for deployment, and doesn't need to be: PythonAnywhere's
   WSGI server imports the `app` object directly and never calls
   `app.run()` at all, so that line only ever affects local
   `python app.py` runs.
-- `secret_key.txt` and `asados.db` are separate files on the
+- `secret_key.txt` and the databases are separate files on the
   PythonAnywhere filesystem from the ones on any local dev machine —
   expected and correct; never try to sync/share a secret key between
   environments.
 - The live site was originally started with a fresh, empty database
-  (`init_db()` + one throwaway `testadmin` account) to use the deploy
-  for testing first. **That is history: the real data is live, and the
-  LIVE database is now the authoritative copy** — the group adds
-  asados through the site, so it runs ahead of any local copy. Pulling
-  it back down is a manual download via PythonAnywhere's Files tab;
-  save it under a dated name rather than straight over the local
-  `asados.db`, and compare before replacing anything (the two diverge
-  in both directions once local testing has happened). **Never run
-  `init_db()` on the server**, and never upload a local `asados.db`
-  over the live one without checking which is ahead.
+  (the since-removed `init_db()` + one throwaway `testadmin` account)
+  to use the deploy for testing first. **That is history: the real
+  data is live, and the LIVE files are now the authoritative copy** —
+  the group adds asados through the site, so it runs ahead of any
+  local copy. Pulling it back down is a manual download via
+  PythonAnywhere's Files tab — since v2.0, `accounts.db` AND the
+  group's `groups/<slug>.db` together (a group file without its
+  matching registry has nobody who can log in); README has the
+  procedure. Save under dated names rather than straight over local
+  files, and compare before replacing anything (the two diverge in both
+  directions once local testing has happened). **Never upload a local
+  database over a live one** without checking which is ahead.
+- **The 1.x → 2.0 upgrade is a one-time procedure with its own
+  checklist in README** (download → backup → pull → old migrations →
+  `migrate_to_groups.py` → Reload IMMEDIATELY → `--verify`). The gap
+  between migrating and Reloading is the one moment data can be lost:
+  the old code is still writing to `asados.db`, which has already been
+  copied. `--verify` exists to catch exactly that.
 - The automatic per-asado backup (`backup_database()`, called from
   `new_asado()` — see "Automatic backups" above) works identically in
-  production: backups land in `/home/asados/asados/backups/` on
-  PythonAnywhere's own persistent disk, no extra deployment config
+  production: backups land in `/home/asados/asados/backups/<slug>/`
+  on PythonAnywhere's own persistent disk, no extra deployment config
   needed for it.
 
 ## Architecture
@@ -546,6 +575,150 @@ from the login `username`. `participations.points` is calculated once
 at insert time and frozen — it is never recalculated if weights/formula
 change later, so historical entries keep whatever points they were
 awarded under the rules at the time.
+
+### Groups — one database FILE per group (v2.0)
+One site hosts several groups, each a completely separate competition.
+The layout:
+
+```
+accounts.db              accounts (logins), asado_groups, memberships   <- accounts_schema.sql
+groups/<slug>.db         the full schema.sql schema, one file per group
+```
+
+**Isolation is by file, not by filter — that's the whole design.** The
+alternative (one database, a `group_id` column on every table, `WHERE
+group_id = ?` on every query) was considered and rejected: one missed
+filter in any of this file's dozens of queries would silently show one
+group's asados, names or addresses to another, and nothing would
+error. With a file per group, `get_db()` opens exactly one group's
+file per request, so a query can't reach another group's rows no
+matter how it's written. It also meant every existing query, the
+points maths, Resumen, the cow and the CSV export stayed untouched.
+The known cost: anything that genuinely spans groups (a cross-group
+ranking, one asado counting in two groups) needs to open several files
+and is awkward. The user's answer when asked what "shared" will mean
+was "people in several groups", which this design covers cleanly — if
+cross-group DATA ever becomes a goal, re-weigh this before building it.
+
+**Account vs. member — two different things, deliberately.** An
+ACCOUNT (accounts.db) is "can log in": username + password. A MEMBER
+(a row in the group's own `users` table) is "part of this group's
+competition": display name, role, colour, and what every
+participation/activity-log/location row points at. A MEMBERSHIP links
+one to the other (`member_id` = that group's `users.id`). Members
+stayed inside each group file because those foreign keys only work
+within one SQLite file — moving `users` out would have turned every one
+into decoration. Consequences:
+- **Name and role are per group; the password is per login.**
+  `/config/profile` writes the name to the group file and the password
+  to accounts.db.
+- `users.username` in a group file is a display COPY (Base de Asados
+  and the admin table show it); usernames can't be changed, so it
+  can't drift. `users.password_hash` there is legacy and always `''`
+  — kept rather than dropped so old and new group files have one
+  identical schema. Never read it; always write `''`.
+- `memberships.member_id` can't be a real FK (different file), so
+  `load_logged_in_user()` treats a membership whose member row is
+  missing as "no group" — never as "whoever has that id now".
+
+**`g.user_id` is the MEMBER id, and it's what every route means by
+"the logged-in user".** The session holds only `account_id` (renamed
+from v1's `user_id` on purpose, so old cookies are simply logged out).
+`load_logged_in_user()` resolves account → membership → group → member
+on every request and fills `g.account_id`, `g.user_id`, `g.name`,
+`g.role`, `g.group`. Use `g.user_id` wherever v1 code read
+`session["user_id"]`; templates use `g.user_id` too.
+
+**`current_group()` is the only way a route asks "which group?"**, and
+`accounts.resolve_membership()` is the only place that decides it. The
+rule today is "one account, one group" (the user's explicit call for
+now), enforced in code, NOT in the schema — memberships already allows
+an account in several groups, so lifting the rule later is a code
+change, not a migration (SQLite can't drop a UNIQUE constraint without
+a table rebuild). When multi-group lands, only the code filling
+`g.group` changes. **The trap to remember then:** if the chosen group
+lives in the SESSION, a form open in one tab can be submitted after the
+user switches group in another, saving into the wrong group. Either put
+the group in the URL (`/g/<slug>/...` via Flask's
+`url_value_preprocessor`/`url_defaults`, so templates barely change)
+or carry the group in every POST form and verify it. Today there is
+nothing to switch, so the hazard doesn't exist yet.
+
+**`use_group()`, never a bare `g.group = ...`.** It closes an
+already-open connection to a DIFFERENT group's file first. The export
+route needs it: a logged-in user's request already has their own
+group open when a token names another one, and without the close
+`get_db()` would keep returning the first group's connection.
+
+**The slug is a security boundary.** It names the file
+(`group_db_path()` → `groups/<slug>.db`), so `SLUG_PATTERN` allows only
+lowercase letters, digits and single hyphens, checked every time a path
+is built — not only at creation. No request ever supplies a filename;
+paths only come from registry rows. The filename isn't stored as its
+own column either, so the registry and the filesystem can't disagree.
+Slugs never change; names do (`manage_groups.py rename`).
+
+**Usernames are unique site-wide, case-insensitively** (`COLLATE
+NOCASE` on `accounts.username`) — one login page means "Nico" in one
+group and "nico" in another would be indistinguishable to a human.
+
+**Admin is per group.** `admin_required` checks `g.role`, which comes
+from the current group's file, so an admin of one group has no powers
+elsewhere. `create_user_route`/`delete_user_route` work only on the
+current group's file — a member id from another group simply isn't in
+it. There is deliberately no "superadmin" flag yet: creating groups is
+done from the terminal (`manage_groups.py`), and terminal access IS the
+site-owner role. Add a flag only when a web page for it exists.
+
+**Writes that span both files.** The app can't share one transaction
+between `g.db` and `g.accounts_db`, so `create_member_account()` /
+`delete_member_account()` (accounts.py) commit step by step and UNDO
+earlier steps if a later one fails. The order is chosen so a crash
+mid-way leaves only harmless leftovers (an account with no membership
+can't get past login; a member with no account just can't log in).
+`migrate_to_groups.py` CAN use one transaction — it ATTACHes
+accounts.db to the group file's connection, and a single COMMIT is
+atomic across both, but only in rollback-journal mode, which it forces
+(SQLite's cross-file atomicity does NOT hold in WAL mode).
+
+**`connect_existing()` refuses to create a missing file** (SQLite URI
+`mode=rw`). Plain `sqlite3.connect()` silently creates an empty file;
+with one file per group, a typo, a missing migration or the wrong
+working directory would have meant someone's asados quietly saved into
+a stray empty "group". Use it for every app-side and script-side open
+of an existing database. Only `manage_groups.py create` and
+`migrate_to_groups.py` create files, and both check first that the
+file doesn't exist.
+
+**Every script that touches data now has to say which group, or
+cover all of them.** Schema migrations default to EVERY registered
+group via `accounts.migration_targets()` (or to `asados.db` during the
+v2.0 deploy itself, before conversion); `backup_db.py` covers
+accounts.db + every group; `create_user.py` and `seed_random_asados.py`
+take a slug — the seed script has no default at all, since its v1
+default was "the only, real database". The REGISTRY (not a listing of
+`groups/`) is the authority on what counts as a group — a stray file
+in that folder must never be migrated or backed up as if it were one,
+and a registered group whose file is missing is an error, not a skip.
+
+**Checklist for new code:**
+- A new table in group data → `schema.sql` + a migration (runs on
+  every group automatically via `migration_targets()`), and
+  `migrate_to_groups.py`'s `GROUP_TABLES` if it has an `id` column
+  worth verifying.
+- A new table about logins/groups → `accounts_schema.sql`, which must
+  stay `IF NOT EXISTS` throughout and never DROP anything.
+- A new route → it gets its data through `get_db()`, never by opening
+  a file itself. A route without login (like the export) must call
+  `use_group()` with a group it resolved itself.
+- A new script → never `import app`; use accounts.py's helpers.
+
+**Not built yet, on purpose:** web-based group creation, invitations,
+one login in several groups, per-group scoring weights (every group
+uses the same `config.py` — the user's call for now). If per-group
+weights come, they must stay frozen at save time, and the FORMULA must
+never become editable from the browser: it runs through `eval()`,
+which is only safe because only the developer edits it.
 
 ### Tipo de Carne is multi-select — a junction table, not a CSV string
 An asado can have more than one Tipo de Carne (minimum one) — e.g. both
@@ -905,9 +1078,12 @@ from that asado's participant list via the `INNER JOIN`, not error).
 An admin is also blocked from deleting their own account, to avoid a
 UI-only lockout. `get_db()` also runs `PRAGMA foreign_keys = ON` on
 every connection (SQLite doesn't enforce declared `FOREIGN KEY`
-constraints unless told to) as a backstop behind that manual check —
+constraints unless told to; since v2.0 that happens inside
+`accounts.connect_existing()`) as a backstop behind that manual check —
 don't remove this pragma, it's the only thing making the `FOREIGN KEY`
-lines in `schema.sql` do anything at all.
+lines in `schema.sql` do anything at all. A successful delete removes
+the member row, their membership, and their LOGIN too unless it's in
+another group (`accounts.delete_member_account()`).
 
 **Display name vs. login username**: every user-facing view (home page
 participant list, `view_asado.html`, the participant picker in
@@ -1030,8 +1206,11 @@ re-opens this exact bug for that one field.
 ### Automatic backups — currently only on new_asado(), not edit/delete
 `backup_db.py`'s `backup_database()` is called from `new_asado()`
 right after `db.commit()`, so every new asado triggers a fresh, safe
-copy of the whole database into `backups/` (gitignored, next to
-`app.py`, never served by Flask since it isn't under `static/`). This
+copy of that GROUP's whole database into `backups/<slug>/` (gitignored,
+next to `app.py`, never served by Flask since it isn't under
+`static/`). One folder per group so each group's 14-day retention
+prunes only its own snapshots; `python backup_db.py` (manual) also
+covers `accounts.db`, into `backups/accounts/`. This
 was a deliberate choice to mirror "autosaves whenever something
 changes" (the user's own framing: "like Google Sheets") rather than a
 scheduled/cron backup — cheaper in practice too, since it never backs
@@ -1053,8 +1232,9 @@ add backup calls elsewhere, keep them non-fatal the same way.
 do NOT trigger a backup, only `new_asado()` does — the user's request
 was specifically "every time a new asado is added." If this ever
 matters (e.g. someone wants a backup right before a risky edit), the
-same `try: backup_database(database=DATABASE) except Exception: ...`
-snippet can be dropped into those routes' `db.commit()` too.
+same try/except `backup_database(...)` call new_asado() uses (current
+group's file, `backups/<slug>/`) can be dropped into those routes'
+`db.commit()` too.
 
 **What this does and doesn't protect against**: rolling local backups
 guard against bad data — an accidental edit, a bug, wanting to roll
@@ -1806,20 +1986,25 @@ in principle enough to brute-force the token one character at a time
 given enough requests. Not needed for the CSRF token (too short-lived,
 too low-value a target to be worth the attack); worth it here.
 
-**`export_token.txt` is gitignored, exactly like `secret_key.txt`**,
-and guards the same class of data via a path that skips login entirely
-— generated once (same `os.urandom(24).hex()` pattern as the secret
-key) and reused on every restart. **Rotating it is deleting the file
-and restarting the app** (or Reloading, on PythonAnywhere) — the old
-URL in your Sheet formula stops working the moment you do, and you'd
-paste the new token in. Do this if the token ever leaks (shared in a
-screenshot, a chat log, etc.).
+**Since v2.0 there is one token PER GROUP**, in
+`asado_groups.export_token` (accounts.db), and the token is also what
+decides WHOSE data the CSV contains — there's no login to say which
+group is asking. `find_group_by_export_token()` compares against every
+group's token with `compare_digest()` (and keeps looping after a match,
+so timing reveals nothing about which group matched); the route then
+calls `use_group()`. One token per group means a leaked Sheets link
+exposes one group, never all. `migrate_to_groups.py` copied the old
+`export_token.txt` value into "Parrilla y Alma", so the existing Sheets
+formula kept working; that file (still gitignored) is no longer read.
+**Rotating a group's token** is an UPDATE of that row (there's no
+command for it yet — add one to `manage_groups.py` the first time it's
+needed); the old URL in the Sheet stops working immediately. Do this
+if a token ever leaks (shared in a screenshot, a chat log, etc.).
 
-**Setting it up**: after deploying, get the live token with
-`cat export_token.txt` in a PythonAnywhere Bash console (or locally,
-in the project root) — it's LOCAL to each environment, exactly like
-the secret key, so the dev token and the live token are different
-values on purpose. Then in a Google Sheet:
+**Setting it up**: get the group's live token with `python3
+manage_groups.py list` in a PythonAnywhere Bash console (or locally) —
+tokens are LOCAL to each environment's accounts.db, so dev and live
+differ on purpose. Then in a Google Sheet:
 `=IMPORTDATA("https://asados.pythonanywhere.com/export/base-asados.csv?token=PASTE_HERE")`.
 Point Looker Studio's Google Sheets connector at that sheet. Never
 paste the token itself into the Sheet's visible cells if the Sheet
@@ -2001,15 +2186,22 @@ rate limits), both called directly from the browser in
 
 ### Login: session-based, accounts created manually, no public sign-up
 - No OAuth yet — Flask's built-in `session` (signed cookie) only.
-- There is **no public registration page by design**. The first
-  (admin) account is created by running
-  `create_user.py <username> <password> <name> admin` from the
-  terminal; that admin can then create everyone else's accounts from
-  `/config` in the browser, or you can keep using the script. Don't add
-  a `/register` route without checking first.
+- There is **no public registration page by design**. A group's first
+  admin is created with the group (`manage_groups.py create`); that
+  admin then creates the rest of the group's accounts from `/config` in
+  the browser, or `create_user.py <group-slug> ...` from the terminal.
+  Don't add a `/register` route without checking first. Logins live in
+  accounts.db, not in the group files — see "Groups" above.
 - `users.role` is either `"admin"` or `"normal"` (see the `CHECK`
-  constraint in `schema.sql`). Only admins can create/delete accounts;
-  normal users can only edit their own name/password.
+  constraint in `schema.sql`) — PER GROUP, since it lives in the
+  group's own file. Only admins can create/delete accounts, and only in
+  their own group; normal users can only edit their own name/password.
+- **`?next=` after login only ever goes to a path on this site**
+  (`is_safe_next_url()`). Before v2.0 any value was followed, an open
+  redirect: a crafted `/login?next=https://...` link logged the victim
+  in for real, then bounced them to a look-alike page. Note `"//host"`
+  and `"/\host"` are both other sites to a browser — the function's
+  docstring lists every case it guards.
 - Participants in an asado **must be existing registered users**,
   selected from a dropdown (`participant_user_id`) — this was a
   deliberate choice (not the original Phase 1 design, which allowed
@@ -2105,11 +2297,13 @@ the app match `config.py`'s formula exactly.
   about. `git ls-files` is clean as of the 1.7.4 audit. The lesson
   still applies to the next file it happens to: `git rm --cached` is
   the fix, not editing `.gitignore` again.
-- **⚠️ NEVER run `init_db()` against a database that holds real data.**
-  It runs `DROP TABLE` + `CREATE TABLE` from `schema.sql`, which now
-  means destroying the group's entire history — 239 asados, locally
-  AND on PythonAnywhere, with `backups/` on the same disk as the only
-  copy. This advice used to read "any schema change requires recreating
+- **⚠️ NEVER run `schema.sql` against a database that holds real data.**
+  It runs `DROP TABLE` + `CREATE TABLE`, which means destroying a
+  group's entire history — locally AND on PythonAnywhere, with
+  `backups/` on the same disk as the only copy. The `init_db()`
+  one-liner that used to do exactly this was REMOVED in v2.0; only
+  `manage_groups.py create` runs `schema.sql` now, and only on a file
+  it has just checked doesn't exist. This advice used to read "any schema change requires recreating
   the DB", which was true and harmless when the database held seeded
   test data; following it literally today would be a catastrophe.
   **A schema change now ships as an additive migration script instead**

@@ -49,7 +49,9 @@
                     <td>{{ user.name }}</td>
                     <td>{{ user.role }}</td>
                     <td>
-                        {% if user.id != session.user_id %}
+                        {# g.user_id: the logged-in MEMBER's id in this group
+                           (the session only holds the account id since v2.0). #}
+                        {% if user.id != g.user_id %}
                             <!-- confirm() gives one last chance to back out,
                                  since deletion has no undo in this app. -->
                             <form method="POST" action="{{ url_for('delete_user_route', user_id=user.id) }}"

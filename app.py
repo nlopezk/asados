@@ -18,6 +18,7 @@ import collections
 import unicodedata
 import secrets                     # unguessable CSRF tokens + the export-token comparison
 from datetime import date          # "today" for the profile page's monthly bar chart — see build_user_monthly_chart_data()
+from urllib.parse import urlparse  # checking login's ?next= stays on this site — see is_safe_next_url()
 from flask import Flask, render_template, request, redirect, url_for, g, jsonify, session, Response
 from werkzeug.security import check_password_hash, generate_password_hash
 from config import (
@@ -29,15 +30,38 @@ from config import (
 )
 from backup_db import backup_database
 from activity_log import log_create, log_edit, log_delete, diff_asado, now_timestamp
+from accounts import (
+    connect_existing, group_db_path, find_account_by_username, resolve_membership,
+    find_group_by_export_token, create_member_account, delete_member_account,
+)
 
-DATABASE = "asados.db"  # the SQLite database is just a single file on disk
+# ---------------------------------------------------------------------
+# WHERE THE DATA LIVES (v2.0: one database per group)
+# ---------------------------------------------------------------------
+# Until v1.7 this app had ONE database file, asados.db. It now has:
+#   * ACCOUNTS_DATABASE — logins, the list of groups, and who belongs
+#     to which group (see accounts_schema.sql / accounts.py), and
+#   * one file per group under GROUPS_DIR (groups/<slug>.db), each with
+#     exactly the old asados.db schema (see schema.sql).
+# Every request works on ONE group's file, chosen from who is logged in
+# (see load_logged_in_user() and current_group() below) — so a group's
+# pages physically cannot read another group's asados: there's no
+# "WHERE group_id = ?" anywhere that could be forgotten.
+#
+# These are module-level settings (not imported constants) so a test
+# can point them at throwaway copies.
+ACCOUNTS_DATABASE = "accounts.db"
+GROUPS_DIR = "groups"
+# Automatic backups go to backups/<group-slug>/, one folder per group,
+# so retention (backup_db.py's pruning) is counted per group too.
+BACKUP_ROOT = "backups"
 
 # Shown in the small footer on every page (see base.html) — bumped by
 # hand alongside CHANGELOG.md and the matching git tag each time a
 # version is cut (see CLAUDE.md). Nothing ties these three together
 # automatically; forgetting to bump this is a real, easy-to-repeat
 # mistake, so check it specifically before tagging a new release.
-VERSION = "1.7.4"
+VERSION = "2.0.0"
 
 # How many rows to show per page before showing a "next" arrow, on the
 # home page and on Base de Asados respectively. Base de Asados can show
@@ -449,31 +473,13 @@ else:
 # ---------------------------------------------------------------------
 # EXPORT TOKEN (for the Looker Studio / Google Sheets CSV feed)
 # ---------------------------------------------------------------------
-# Same auto-generate-once-then-reuse pattern as SECRET_KEY_FILE above,
-# for a completely different purpose: this token guards
-# /export/base-asados.csv (see its own section near base_asados_csv()
-# below), a CSV endpoint meant to be fetched by Google Sheets'
-# IMPORTDATA() — which can't log in, so it can't use the normal
-# session-cookie auth every other route relies on. A long random token
-# in the URL is the standard way to let an external, non-interactive
-# fetcher in without a real login system.
-#
-# export_token.txt is gitignored, exactly like secret_key.txt — it
-# guards the same real personal data (names, addresses, points) via a
-# path that skips the login page entirely, so treat it with the same
-# care: never commit it, never paste it somewhere public. Rotating it
-# is just deleting the file and restarting the app (or reloading, on
-# PythonAnywhere) — a fresh token is generated the same way a fresh
-# secret key would be.
-EXPORT_TOKEN_FILE = "export_token.txt"
-
-if os.path.exists(EXPORT_TOKEN_FILE):
-    with open(EXPORT_TOKEN_FILE, "r") as f:
-        EXPORT_TOKEN = f.read().strip()
-else:
-    EXPORT_TOKEN = os.urandom(24).hex()
-    with open(EXPORT_TOKEN_FILE, "w") as f:
-        f.write(EXPORT_TOKEN)
+# Until v2.0 this was ONE token read from export_token.txt. It is now
+# one token PER GROUP, stored in accounts.db's asado_groups table (see
+# accounts_schema.sql) — the token is also what tells the no-login
+# export route WHICH group's data to send. migrate_to_groups.py copied
+# the old file's value into the first group, so existing Sheets links
+# kept working; export_token.txt itself is no longer read by anything.
+# See base_asados_csv_export() below.
 
 # --- Session cookie hardening ---------------------------------------
 # SameSite=Lax tells the browser not to send our session cookie along
@@ -500,47 +506,100 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 # ---------------------------------------------------------------------
 # DATABASE CONNECTION HELPERS
 # ---------------------------------------------------------------------
+def current_group():
+    """
+    The group this request is working in, or None (not logged in, or
+    logged in but not in any group).
+
+    EVERY route that needs "which group?" asks this function — never
+    the session directly. Today the answer comes from the logged-in
+    account's one membership (see load_logged_in_user()); when accounts
+    can belong to several groups, only the code that FILLS g.group has
+    to change (a group switcher, or a group in the URL), not any route.
+    """
+    return g.get("group")
+
+
+def use_group(group):
+    """
+    Makes `group` (a row with at least slug/name/id) this request's
+    group. If a connection to a DIFFERENT group's file is already open,
+    it's closed first — otherwise get_db() would keep handing back the
+    old group's connection and a route would read the wrong group's
+    data while believing it had switched. The export route is the case
+    that needs this today (a logged-in user's request already has their
+    own group open when a token names a different one).
+    """
+    old = g.get("group")
+    if old is not None and old["slug"] != group["slug"]:
+        db = g.pop("db", None)
+        if db is not None:
+            db.close()
+    g.group = group
+
+
 def get_db():
     """
-    Returns a connection to the SQLite database.
-    We store it on Flask's special 'g' object, which is a per-request
-    storage box — this means we only open ONE connection per web
-    request, instead of opening a new one every time we need data.
+    Returns a connection to the CURRENT GROUP's database (see
+    current_group()). We store it on Flask's special 'g' object, which
+    is a per-request storage box — this means we only open ONE
+    connection per web request, instead of opening a new one every time
+    we need data.
+
+    Every query in this file that reads asados, participations, users,
+    locations or the activity log goes through here, so they all see
+    exactly one group's file and nothing else.
+
+    connect_existing() (accounts.py) does the setup that used to live
+    here and adds one rule:
+      * rows behave like dictionaries (row["date"]) instead of tuples;
+      * PRAGMA foreign_keys = ON — SQLite does NOT enforce FOREIGN KEY
+        constraints by default, even though schema.sql declares them
+        (e.g. participations.user_id REFERENCES users(id)); that PRAGMA
+        has to be set on every connection, or the constraints are purely
+        decorative. It's the backstop behind the explicit checks routes
+        already do (like delete_user_route's participation check);
+      * NEW: it refuses to CREATE a missing file. A plain
+        sqlite3.connect() would silently make an empty one, which with
+        one file per group would mean someone's asados quietly saved
+        into a stray, empty "group".
     """
     if "db" not in g:
-        g.db = sqlite3.connect(DATABASE)
-        # This makes query results behave like dictionaries (row["date"])
-        # instead of plain tuples (row[1]) — much easier to read in code.
-        g.db.row_factory = sqlite3.Row
-        # SQLite does NOT enforce FOREIGN KEY constraints by default,
-        # even though schema.sql declares them (e.g.
-        # participations.user_id REFERENCES users(id)) — that PRAGMA
-        # has to be set on every connection, or the constraints are
-        # purely decorative. Turning it on here means SQLite itself
-        # will now refuse an INSERT/DELETE that would orphan a row,
-        # as a backstop alongside the explicit checks the app's own
-        # routes already do (like delete_user_route's participation check).
-        g.db.execute("PRAGMA foreign_keys = ON")
+        group = current_group()
+        if group is None:
+            # A programming error, not a user one: some code path asked
+            # for group data before (or without) a group being chosen.
+            # Failing loudly beats guessing a group.
+            raise RuntimeError("get_db() called with no current group for this request")
+        g.db = connect_existing(group_db_path(group["slug"], GROUPS_DIR))
     return g.db
+
+
+def get_accounts_db():
+    """Connection to the registry (accounts.db): logins, groups,
+    memberships. Same one-per-request pattern as get_db(), and the same
+    refuse-to-create rule — a missing accounts.db means the migration
+    hasn't run, which should be an error page, not an empty login list."""
+    if "accounts_db" not in g:
+        g.accounts_db = connect_existing(ACCOUNTS_DATABASE)
+    return g.accounts_db
 
 
 @app.teardown_appcontext
 def close_db(exception=None):
     """Flask automatically calls this after every request finishes,
-    so we can cleanly close the database connection."""
-    db = g.pop("db", None)
-    if db is not None:
-        db.close()
+    so we can cleanly close both database connections."""
+    for key in ("db", "accounts_db"):
+        db = g.pop(key, None)
+        if db is not None:
+            db.close()
 
-
-def init_db():
-    """Reads schema.sql and runs it to (re)create empty tables.
-    We'll call this once manually to set up the database file."""
-    with app.app_context():
-        db = get_db()
-        with open("schema.sql", "r") as f:
-            db.executescript(f.read())
-        db.commit()
+# NOTE: init_db() used to live here, and it ran schema.sql (DROP TABLE
+# included) against the one database the app used. It's gone on
+# purpose: with real data in every group file, a one-liner that wipes
+# whichever file is current was a loaded gun. A brand-new group's empty
+# database is created by `manage_groups.py create` instead, which refuses to
+# touch a file that already exists.
 
 
 # ---------------------------------------------------------------------
@@ -560,7 +619,12 @@ def login_required(view_function):
     """
     @functools.wraps(view_function)
     def wrapped_view(*args, **kwargs):
-        if session.get("user_id") is None:
+        # g.user_id (the MEMBER id inside the current group — set by
+        # load_logged_in_user()) rather than the session: being logged
+        # in now means "a valid account AND a group to be in". An
+        # account whose membership was removed has a perfectly valid
+        # session cookie but no group, and must not get past here.
+        if g.user_id is None:
             # Not logged in — send them to the login page. We also
             # remember where they were TRYING to go (request.path) as a
             # "next" URL, so login() can send them back there afterward.
@@ -579,8 +643,11 @@ def admin_required(view_function):
     """
     @functools.wraps(view_function)
     def wrapped_view(*args, **kwargs):
-        if session.get("user_id") is None:
+        if g.user_id is None:
             return redirect(url_for("login", next=request.path))
+        # g.role is the role WITHIN THE CURRENT GROUP (it's read from
+        # that group's own users table) — an admin of one group has no
+        # admin powers anywhere else.
         if g.role != "admin":
             return "Acceso denegado: se requieren permisos de administrador.", 403
         return view_function(*args, **kwargs)
@@ -749,19 +816,85 @@ def load_logged_in_user():
     ___" (and check admin-only UI) without each route having to
     re-fetch it individually.
     """
-    user_id = session.get("user_id")
-    if user_id is None:
-        g.username = None
-        g.name = None
-        g.role = None
-    else:
-        db = get_db()
-        user = db.execute(
-            "SELECT username, name, role FROM users WHERE id = ?", (user_id,)
-        ).fetchone()
-        g.username = user["username"] if user else None
-        g.name = user["name"] if user else None
-        g.role = user["role"] if user else None
+    #
+    # Since v2.0 this is also where the request's GROUP is decided, in
+    # three steps — and if any step comes up empty, the request is
+    # simply treated as "not logged in" (login_required then sends it
+    # to /login):
+    #   1. session["account_id"] -> the login, in accounts.db
+    #   2. that account's membership -> which group, and which member
+    #      row inside that group's file (accounts.resolve_membership —
+    #      the one place "which group?" is answered)
+    #   3. the member row in the group's own users table -> the display
+    #      name and the role, both PER GROUP
+    #
+    # What ends up on g:
+    #   g.account_id  the login (accounts.id) — only for password changes
+    #   g.user_id     the MEMBER id inside the current group (users.id).
+    #                 This is what every route means by "the logged-in
+    #                 user": it's what participations, the activity log
+    #                 and locations point at. (Before v2.0 routes read
+    #                 this from session["user_id"]; the session now only
+    #                 ever holds the account id.)
+    #   g.username    the login username
+    #   g.name/g.role display name and role within this group
+    #   g.group       the group itself (id, slug, name) — via current_group()
+    g.account_id = g.user_id = g.username = g.name = g.role = None
+    g.group = None
+
+    account_id = session.get("account_id")
+    if account_id is None:
+        return
+
+    accounts_db = get_accounts_db()
+    account = accounts_db.execute(
+        "SELECT id, username FROM accounts WHERE id = ?", (account_id,)
+    ).fetchone()
+    if account is None:
+        return  # account deleted since this cookie was issued
+
+    group, member_id = resolve_membership(accounts_db, account["id"])
+    if group is None:
+        return  # account exists but isn't in any group (any more)
+
+    use_group(group)
+    member = get_db().execute(
+        "SELECT id, name, role FROM users WHERE id = ?", (member_id,)
+    ).fetchone()
+    if member is None:
+        # The membership points at a member row that isn't in the
+        # group's file — e.g. a group database restored from an older
+        # backup. Treat as "no group" rather than guessing: never let a
+        # stale link resolve to whoever now happens to hold that id.
+        g.group = None
+        return
+
+    g.account_id = account["id"]
+    g.user_id = member["id"]
+    g.username = account["username"]
+    g.name = member["name"]
+    g.role = member["role"]
+
+
+def is_safe_next_url(url):
+    """
+    True only for a path on this same site, like "/resumen".
+
+    The checks, and why each one is needed:
+      * must start with "/" — rules out "https://evil.example";
+      * must NOT start with "//" — browsers read "//evil.example" as
+        "same scheme, OTHER site";
+      * must NOT start with "/\\" — some browsers treat a backslash as
+        a slash, making "/\\evil.example" the same trick;
+      * urlparse() must see no scheme and no host — a final backstop
+        for anything the prefix checks didn't anticipate.
+    login_required() only ever produces plain paths (request.path), so
+    none of this ever rejects a real "send me back where I was".
+    """
+    if not url or not url.startswith("/") or url.startswith("//") or url.startswith("/\\"):
+        return False
+    parsed = urlparse(url)
+    return not parsed.scheme and not parsed.netloc
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -775,28 +908,58 @@ def login():
         username = request.form["username"]
         password = request.form["password"]
 
-        db = get_db()
-        user = db.execute(
-            "SELECT id, password_hash FROM users WHERE username = ?", (username,)
-        ).fetchone()
+        # Logins live in accounts.db (one login page for every group);
+        # the username lookup there is case-insensitive.
+        accounts_db = get_accounts_db()
+        account = find_account_by_username(accounts_db, username)
 
         # check_password_hash() re-hashes the SUBMITTED password using
         # the same method, and compares it to the STORED hash. It
         # returns True only if they match — we never decrypt or see
         # the original stored password, because it was never stored.
-        if user is not None and check_password_hash(user["password_hash"], password):
+        if account is not None and check_password_hash(account["password_hash"], password):
+            # A correct password isn't enough on its own any more: the
+            # account also has to be in a group, or there's nothing to
+            # show it. Say so plainly instead of logging them in to a
+            # redirect loop. (Only reachable with the RIGHT password, so
+            # it reveals nothing to someone guessing.)
+            group, _member_id = resolve_membership(accounts_db, account["id"])
+            if group is None:
+                return render_template(
+                    "login.html",
+                    error="Tu cuenta todavía no pertenece a ningún grupo. Habla con un administrador.",
+                )
+
             # session is a special Flask dictionary that persists
             # across requests for one browser, via a signed cookie.
-            # Storing just the user's id here (not their password!) is
-            # standard practice — it's like a coat-check ticket, not
-            # the coat itself.
+            # Storing just the ACCOUNT's id here (not their password!)
+            # is standard practice — it's like a coat-check ticket, not
+            # the coat itself. The group is deliberately NOT stored in
+            # the session: it's looked up fresh on every request (see
+            # load_logged_in_user()), so removing someone from a group
+            # takes effect on their very next click, not whenever their
+            # cookie happens to expire.
+            #
+            # The key changed from "user_id" (before v2.0) to
+            # "account_id" on purpose: a cookie issued by the old version
+            # carries no account_id, so it's simply treated as logged
+            # out, and everyone logs in once after the upgrade.
             session.clear()
-            session["user_id"] = user["id"]
+            session["account_id"] = account["id"]
 
             # If login_required redirected them here with a "next"
             # parameter, send them back to whatever page they wanted.
             # Otherwise, default to the home page.
-            next_url = request.args.get("next") or url_for("index")
+            #
+            # ONLY if it's a page on THIS site (is_safe_next_url). Before
+            # v2.0 any ?next= value was followed, so a link like
+            # /login?next=https://evil.example would log someone in for
+            # real and then bounce them straight to a look-alike page —
+            # a classic "open redirect", and a convincing phishing setup
+            # since the victim just saw our genuine login page.
+            next_url = request.args.get("next")
+            if not is_safe_next_url(next_url):
+                next_url = url_for("index")
             return redirect(next_url)
 
         # Wrong username or password: show the form again with an error.
@@ -859,15 +1022,18 @@ def update_profile():
     if not name:
         return redirect(url_for("config_page", error="El nombre no puede estar vacío."))
 
-    if new_password:
-        password_hash = generate_password_hash(new_password)
-        db.execute(
-            "UPDATE users SET name = ?, password_hash = ? WHERE id = ?",
-            (name, password_hash, session["user_id"]),
-        )
-    else:
-        db.execute("UPDATE users SET name = ? WHERE id = ?", (name, session["user_id"]))
+    # The display name is PER GROUP (it lives in this group's own users
+    # table); the password belongs to the LOGIN, so it goes to
+    # accounts.db — and changes it for every group the account is in.
+    db.execute("UPDATE users SET name = ? WHERE id = ?", (name, g.user_id))
     db.commit()
+    if new_password:
+        accounts_db = get_accounts_db()
+        accounts_db.execute(
+            "UPDATE accounts SET password_hash = ? WHERE id = ?",
+            (generate_password_hash(new_password), g.account_id),
+        )
+        accounts_db.commit()
 
     return redirect(url_for("config_page", success="Perfil actualizado."))
 
@@ -876,7 +1042,8 @@ def update_profile():
 @admin_required
 def create_user_route():
     """Admin-only: create a new account without needing terminal access
-    to create_user.py."""
+    to create_user.py. The new person joins THIS admin's group (the
+    current group) — a group admin can't create members anywhere else."""
     db = get_db()
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "")
@@ -888,15 +1055,18 @@ def create_user_route():
     if role not in ("admin", "normal"):
         role = "normal"
 
-    password_hash = generate_password_hash(password)
     try:
-        db.execute(
-            "INSERT INTO users (username, password_hash, name, role) VALUES (?, ?, ?, ?)",
-            (username, password_hash, name, role),
+        # Login (accounts.db) + member row (this group's file) +
+        # membership, with the cross-file undo logic — see
+        # accounts.create_member_account().
+        create_member_account(
+            get_accounts_db(), db, current_group()["id"],
+            username, generate_password_hash(password), name, role,
         )
-        db.commit()
     except sqlite3.IntegrityError:
-        # users.username is UNIQUE — this fires if that name is taken.
+        # Usernames are unique across the WHOLE site (one login page for
+        # every group), so this can fire for a name taken in another
+        # group too. The message deliberately doesn't say which.
         return redirect(url_for("config_page", error=f"El usuario '{username}' ya existe."))
 
     return redirect(url_for("config_page", success=f"Usuario '{username}' creado."))
@@ -913,7 +1083,7 @@ def delete_user_route(user_id):
     asado's participant list instead of erroring)."""
     db = get_db()
 
-    if user_id == session["user_id"]:
+    if user_id == g.user_id:
         return redirect(url_for("config_page", error="No puedes eliminar tu propia cuenta."))
 
     has_participations = db.execute(
@@ -925,8 +1095,12 @@ def delete_user_route(user_id):
             error="No se puede eliminar: este usuario tiene asados registrados.",
         ))
 
-    db.execute("DELETE FROM users WHERE id = ?", (user_id,))
-    db.commit()
+    # user_id is a member id in THIS group's file, so an admin can only
+    # ever delete members of their own group — an id belonging to
+    # another group simply isn't in this file. Unknown ids are a no-op.
+    # Removes the member row, the membership, and the login itself if
+    # it isn't in any other group (accounts.delete_member_account()).
+    delete_member_account(get_accounts_db(), db, current_group()["id"], user_id)
     return redirect(url_for("config_page", success="Usuario eliminado."))
 
 
@@ -1001,7 +1175,7 @@ def create_location():
 
     db.execute(
         "INSERT INTO locations (name, address, latitude, longitude, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (name, address, latitude, longitude, session["user_id"], now_timestamp()),
+        (name, address, latitude, longitude, g.user_id, now_timestamp()),
     )
     db.commit()
     return redirect(url_for("locations_page", success=f"Ubicación '{name}' guardada."))
@@ -1670,12 +1844,12 @@ def new_asado():
         # so the log entry and the asado itself are saved together, in
         # the same transaction (either both succeed or, if something
         # above raised first, neither does).
-        log_create(db, session["user_id"], g.name, asado_id, nombre, date)
+        log_create(db, g.user_id, g.name, asado_id, nombre, date)
 
         # If "Guardar esta ubicación" was checked, add it to the
         # reusable pool now — see maybe_save_location() above.
         if save_location:
-            maybe_save_location(db, session["user_id"], location_name, location, latitude, longitude)
+            maybe_save_location(db, g.user_id, location_name, location, latitude, longitude)
 
         db.commit()  # save everything permanently to the database file
 
@@ -1685,12 +1859,17 @@ def new_asado():
         # backup itself ever fails (disk full, permissions, etc.), the
         # user's asado is still saved and the page still loads
         # normally — a failed backup should never look like a failed
-        # save. DATABASE (not backup_db's own default) is passed
-        # explicitly so this always backs up whichever database file
-        # this app instance is actually using, including test runs
-        # that point DATABASE at a throwaway file.
+        # save. The CURRENT GROUP's file is passed explicitly (not
+        # backup_db's own default), into that group's own folder
+        # (backups/<slug>/) — so each group's 14-day retention only ever
+        # counts and prunes its own snapshots, and test runs that point
+        # GROUPS_DIR at throwaway files back those up, not the real ones.
         try:
-            backup_database(database=DATABASE)
+            slug = current_group()["slug"]
+            backup_database(
+                database=group_db_path(slug, GROUPS_DIR),
+                backup_dir=os.path.join(BACKUP_ROOT, slug),
+            )
         except Exception as e:
             print(f"Warning: automatic backup failed: {e}")
 
@@ -1984,12 +2163,12 @@ def edit_asado(asado_id):
         old_participants, new_participants,
         old_cortes, cortes_list,
     )
-    log_edit(db, session["user_id"], g.name, asado_id, nombre, date, changes)
+    log_edit(db, g.user_id, g.name, asado_id, nombre, date, changes)
 
     # If "Guardar esta ubicación" was checked, add it to the reusable
     # pool now — see maybe_save_location() above.
     if save_location:
-        maybe_save_location(db, session["user_id"], location_name, location, latitude, longitude)
+        maybe_save_location(db, g.user_id, location_name, location, latitude, longitude)
 
     db.commit()
     return redirect(url_for("view_asado", asado_id=asado_id, success="Asado actualizado."))
@@ -2045,7 +2224,7 @@ def delete_asado(asado_id):
     # and its ON DELETE SET NULL only nulls it out once the asado row
     # below is actually removed, not before. See activity_log.py's
     # log_delete() docstring for the full reasoning.
-    log_delete(db, session["user_id"], g.name, asado_id, asado["nombre"], asado["date"])
+    log_delete(db, g.user_id, g.name, asado_id, asado["nombre"], asado["date"])
 
     # Every CHILD table first — schema.sql declares each of these
     # asado_id columns as a FOREIGN KEY, and get_db() enforces that
@@ -2219,11 +2398,23 @@ def base_asados_csv():
 # 200 with partial or dummy data, and never a different error message
 # for "missing" vs "wrong" (either would help an attacker narrow down
 # what's going on).
+#
+# Since v2.0 each GROUP has its own token (asado_groups.export_token in
+# accounts.db), and the token is what decides whose data comes back —
+# there's no login here to say which group someone is in.
+# find_group_by_export_token() compares against every group's token in
+# constant time. use_group() (not a plain "g.group = ...") matters
+# here: if the person fetching this happens to be logged in to a
+# DIFFERENT group in the same browser, their own group's database is
+# already open on this request, and use_group() closes it so the CSV
+# can only ever come from the group the token belongs to.
 @app.route("/export/base-asados.csv")
 def base_asados_csv_export():
     submitted = request.args.get("token", "")
-    if not secrets.compare_digest(submitted, EXPORT_TOKEN):
+    group = find_group_by_export_token(get_accounts_db(), submitted)
+    if group is None:
         return "Acceso denegado: token inválido o ausente.", 403
+    use_group(group)
     return build_base_asados_csv_response()
 
 

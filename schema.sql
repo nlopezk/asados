@@ -29,16 +29,28 @@ DROP TABLE IF EXISTS users;
 
 -- ---------------------------------------------------------------------
 -- USERS TABLE
--- One row per person who can log in and participate in asados.
+-- One row per MEMBER of this group — a person who takes part in its
+-- asados. Since v2.0 this file is ONE GROUP's database
+-- (groups/<slug>.db) and LOGINS live elsewhere, in accounts.db (see
+-- accounts_schema.sql); accounts.db's memberships table says which
+-- login is which row here. The table stayed here, instead of moving to
+-- accounts.db, because participations/activity_log/locations all have
+-- FOREIGN KEYs to it, and SQLite only enforces those within one file.
 -- ---------------------------------------------------------------------
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,  -- unique numeric ID, auto-generated
-    username TEXT UNIQUE NOT NULL,         -- must be unique, cannot be empty
-    -- We NEVER store the actual password — only a "hash" of it (a
-    -- scrambled, one-way version). Even if someone read the database
-    -- directly, they couldn't recover the real password from this.
-    -- Accounts are created via the create_user.py script (see README),
-    -- not through a public sign-up page.
+    -- A COPY of the member's login username (the real one is
+    -- accounts.username), kept because Base de Asados, its CSV export
+    -- and the admin table in /config show it. Usernames can't be
+    -- changed, so the copy can't drift.
+    username TEXT UNIQUE NOT NULL,
+    -- LEGACY, ALWAYS '' since v2.0. Password hashes live only in
+    -- accounts.db now; migrate_to_groups.py blanked the ones that used
+    -- to be here. The column is kept (rather than dropped) because it
+    -- is NOT NULL in every group database that already exists, and
+    -- keeping one identical schema across old and new group files is
+    -- worth more than tidying away one empty column. Never read it,
+    -- and always write '' (see accounts.create_member_account()).
     password_hash TEXT NOT NULL,
     name TEXT NOT NULL,                    -- display name, e.g. "Don Nicola" (separate from the login username)
     -- "admin" can create/delete accounts from the Configuración page;

@@ -165,8 +165,14 @@
 
     <!-- Small, unobtrusive version tracker + a personal dedication —
          "version" is injected by app.py's inject_version() context
-         processor, same pattern csrf_token() already uses. -->
+         processor, same pattern csrf_token() already uses.
+         The group name (v2.0+) says WHOSE asados these are — the
+         footer rather than the navbar on purpose: the navbar's
+         collapse breakpoint is measured against its exact contents
+         (see CLAUDE.md), and a group name of unknown length there
+         would silently invalidate that measurement. -->
     <footer class="app-footer">
+        {% if g.group %}<span class="app-group-name">{{ g.group.name }} ·</span>{% endif %}
         <span class="app-version">v{{ version }}</span>
         <span class="app-footer-quote">"Soñás la hoguera donde siempre sos la leña" (Indio, 1949-2026)</span>
     </footer>

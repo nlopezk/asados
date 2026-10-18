@@ -27,7 +27,7 @@
 # would mean the same filename meaning two different things depending
 # on when you ran it. One script per schema change, each idempotent.
 #
-#   python migrate_fix_schema_drift.py                   # -> asados.db
+#   python migrate_fix_schema_drift.py                   # -> every group's database (v2.0+)
 #   python migrate_fix_schema_drift.py path/to/other.db  # -> a copy
 #
 # SAFE TO RUN TWICE. It inspects the current schema first and skips
@@ -42,7 +42,7 @@ import os
 import sqlite3
 import sys
 
-from backup_db import backup_database
+from backup_db import backup_database, backup_dir_for
 
 DATABASE = "asados.db"
 
@@ -139,7 +139,8 @@ def main(database=DATABASE):
     # database being migrated rather than in the current directory's
     # backups/ (so migrating a test copy can't drop a snapshot of that
     # copy into the real backups folder, named like a real one).
-    backup_dir = os.path.join(os.path.dirname(os.path.abspath(database)), "backups")
+    # (backup_dir_for() also sends a group file's backup to backups/<slug>/.)
+    backup_dir = backup_dir_for(database)
     backup_database(database=database, backup_dir=backup_dir)
     print()
 
@@ -218,4 +219,14 @@ def main(database=DATABASE):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else DATABASE))
+    # Every group's database by default since v2.0 — same rule and same
+    # reasoning as migrate_add_cortes.py's entry point.
+    from accounts import migration_targets
+    targets = migration_targets(sys.argv[1:])
+    if not targets:
+        print("No database to migrate (fresh checkout?). Nothing done.")
+    results = []
+    for target in targets:
+        results.append(main(target))
+        print()
+    sys.exit(max(results, default=0))

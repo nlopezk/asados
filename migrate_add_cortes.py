@@ -39,8 +39,12 @@
 # ---------------------------------------------------------------------
 # USAGE
 # ---------------------------------------------------------------------
-#   python migrate_add_cortes.py                   # -> asados.db
+#   python migrate_add_cortes.py                   # -> every group's database (v2.0+)
 #   python migrate_add_cortes.py path/to/other.db  # -> an isolated copy
+#
+# (Before v2.0 the no-argument form meant asados.db. It still does if
+# that's the only database present, which is the case during the v2.0
+# deploy itself, before migrate_to_groups.py has run.)
 #
 # SAFE TO RUN TWICE. Both statements use IF NOT EXISTS, so a second run
 # is a no-op that says "already present" instead of erroring.
@@ -59,7 +63,7 @@ import os
 import sqlite3
 import sys
 
-from backup_db import backup_database
+from backup_db import backup_database, backup_dir_for
 
 DATABASE = "asados.db"
 
@@ -131,7 +135,8 @@ def main(database=DATABASE):
     # database into the real backups/ folder, named exactly like a real
     # one — indistinguishable later, at precisely the moment you'd be
     # reaching for a backup because something went wrong.
-    backup_dir = os.path.join(os.path.dirname(os.path.abspath(database)), "backups")
+    # (backup_dir_for() also sends a group file's backup to backups/<slug>/.)
+    backup_dir = backup_dir_for(database)
     backup_database(database=database, backup_dir=backup_dir)
     print()
 
@@ -185,5 +190,16 @@ def main(database=DATABASE):
 
 
 if __name__ == "__main__":
-    target = sys.argv[1] if len(sys.argv) > 1 else DATABASE
-    sys.exit(main(target))
+    # Since v2.0: with no argument, run on EVERY group's database (or on
+    # the old asados.db, during the one deploy that converts it) — see
+    # accounts.migration_targets(). One failure makes the whole run
+    # fail, but every target is still attempted and reported.
+    from accounts import migration_targets
+    targets = migration_targets(sys.argv[1:])
+    if not targets:
+        print("No database to migrate (fresh checkout?). Nothing done.")
+    results = []
+    for target in targets:
+        results.append(main(target))
+        print()
+    sys.exit(max(results, default=0))

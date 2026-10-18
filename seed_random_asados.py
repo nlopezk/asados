@@ -11,24 +11,30 @@
 # realistic, correctly-frozen points and weights — not fake numbers.
 #
 # It does NOT touch existing data: it only INSERTs new rows on top of
-# whatever's already in the database (unlike init_db(), which wipes
-# everything). Safe to run more than once if you want even more data.
+# whatever's already in the group's database. Safe to run more than
+# once if you want even more data.
 #
-# REQUIRES: the database already created (init_db()) and at least one
-# user account already created (create_user.py) — random asados are
-# assigned to your EXISTING users, never fake/made-up ones, since
-# participants must be registered accounts (see CLAUDE.md).
+# ⚠️ It writes into ONE GROUP'S REAL DATABASE — the group you name.
+# Random asados count in that group's standings like real ones. Point it
+# at a throwaway test group (`python manage_groups.py create prueba ...`),
+# never at a group whose standings matter. That's why the group is a
+# REQUIRED argument rather than defaulting to anything: before v2.0 this
+# script silently wrote into the only database there was.
+#
+# REQUIRES: the group already created (manage_groups.py) with at least
+# one member — random asados are assigned to that group's EXISTING
+# members, never fake/made-up ones, since participants must be
+# registered accounts (see CLAUDE.md).
 #
 # USAGE (from the project folder):
-#   python seed_random_asados.py <count>
+#   python seed_random_asados.py <group-slug> <count>
 #
 # Example:
-#   python seed_random_asados.py 15
+#   python seed_random_asados.py prueba 15
 # =====================================================================
 
 import sys
 import random
-import sqlite3
 from datetime import date, timedelta
 
 from config import (
@@ -36,7 +42,7 @@ from config import (
     ROL_WEIGHTS, get_shared_weights, get_rol_weight, get_tipo_carne_weights, calculate_points,
 )
 
-DATABASE = "asados.db"
+from accounts import ACCOUNTS_DATABASE, GROUPS_DIR, connect_existing, find_group_by_slug, group_db_path
 
 # A handful of fun combinations to build a random-ish "Nombre Asado"
 # from, e.g. "Asado Legendario". Purely cosmetic — real users type
@@ -64,9 +70,18 @@ def random_date_within_last_years(years=2):
     return (date.today() - timedelta(days=days_back)).isoformat()
 
 
-def seed_random_asados(count):
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
+def seed_random_asados(group_slug, count):
+    accounts_db = connect_existing(ACCOUNTS_DATABASE)
+    try:
+        group = find_group_by_slug(accounts_db, group_slug)
+    finally:
+        accounts_db.close()
+    if group is None:
+        print(f"Error: no group with slug '{group_slug}' (`python manage_groups.py list`).")
+        return
+    # connect_existing() sets row_factory and foreign_keys, and refuses
+    # to create a missing file.
+    conn = connect_existing(group_db_path(group["slug"], GROUPS_DIR))
 
     user_ids = [row["id"] for row in conn.execute("SELECT id FROM users").fetchall()]
     if not user_ids:
@@ -154,12 +169,12 @@ def seed_random_asados(count):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python seed_random_asados.py <count>")
+    if len(sys.argv) != 3:
+        print("Usage: python seed_random_asados.py <group-slug> <count>")
         sys.exit(1)
 
     try:
-        count_arg = int(sys.argv[1])
+        count_arg = int(sys.argv[2])
     except ValueError:
         print("Error: <count> must be a whole number.")
         sys.exit(1)
@@ -168,4 +183,4 @@ if __name__ == "__main__":
         print("Error: <count> must be at least 1.")
         sys.exit(1)
 
-    seed_random_asados(count_arg)
+    seed_random_asados(sys.argv[1], count_arg)

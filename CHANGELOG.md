@@ -28,7 +28,64 @@ Improvements:
   exists: a GROUP BY corte, COUNT(*) per user is most of it.
 - Asado weight calculator
 
-Groups (much later): Creación de grupos, invitaciones y posibilidad de que el usuario pertenezca a distintos grupos.
+Groups — the foundation shipped in 2.0.0; still to come: creating
+groups from the web instead of the terminal, invitations, one login in
+several groups (with a group switcher), and per-group scoring weights.
+
+
+## [2.0.0] - 2026-10-18
+### Added
+- **Groups: one site, several separate competitions.** Each group gets
+  its own database file (`groups/<slug>.db`) with its own members,
+  asados, points, locations and activity log. Everyone logs in on the
+  same page and only ever sees their own group — not because queries
+  filter by group, but because each request can only open its group's
+  file, so there is no filter to forget. The existing data became the
+  group **"Parrilla y Alma"**, with every id unchanged.
+- **`accounts.db`**: logins, the list of groups, and memberships. A
+  password now belongs to the login; display name and role belong to
+  the group (an admin of one group has no powers in another). The
+  tables already allow one login in several groups — for now the code
+  keeps it to one, so lifting that later needs no migration.
+- **`manage_groups.py`** (`create` / `list` / `rename`): the site
+  owner's tool for groups. `create` makes the group's database and its
+  first admin, and refuses to touch a file that already exists.
+- **`migrate_to_groups.py`**: the one-time conversion. Copies
+  `asados.db` (never modifies it — that's the rollback plan), moves
+  logins into `accounts.db` in one transaction across both files, and
+  prints row counts to prove nothing was lost. `--verify` checks that
+  nothing was written to the old file between the migration and the
+  Reload.
+- The footer shows which group you're in.
+- Each group has its own export token for the Google Sheets / Looker
+  Studio link. The existing token was carried over, so the current
+  Sheets formula keeps working unchanged.
+
+### Changed
+- **Everyone has to log in once after upgrading** (old login cookies
+  aren't recognised). Passwords are unchanged.
+- **Usernames are unique across the whole site**, case-insensitively.
+- `create_user.py`, `seed_random_asados.py` take a group slug first.
+  `seed_random_asados.py` no longer has a default target at all — it
+  used to write random asados into the real database if you forgot.
+- The schema migrations and `backup_db.py` now run on **every** group
+  (plus `accounts.db`, for backups). Backups go to
+  `backups/<group-slug>/` and `backups/accounts/`.
+- The app refuses to open a database file that doesn't exist, instead
+  of silently creating an empty one (which, with one file per group,
+  would have meant asados quietly saved into a stray empty "group").
+
+### Removed
+- **`init_db()`.** It ran `schema.sql`, `DROP TABLE` included, against
+  whatever database the app was using. `manage_groups.py create`
+  replaces it for new groups, and can't be aimed at existing data.
+- `export_token.txt` is no longer read (its value now lives in
+  `accounts.db`).
+
+### Fixed
+- **Open redirect on login.** `/login?next=https://elsewhere` used to
+  log you in for real and then send you to any website — a convincing
+  phishing setup. `next` now only ever goes to a page on this site.
 
 
 ## [1.7.4] - 2026-09-17

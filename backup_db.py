@@ -4,9 +4,10 @@
 # retention window so backups don't quietly accumulate forever.
 #
 # This is called AUTOMATICALLY by app.py every time a new asado is
-# saved (see new_asado() in app.py) — you don't need to schedule
-# anything yourself. It's also runnable by hand for an on-demand extra
-# backup (e.g. right before you're about to try something risky):
+# saved (see new_asado() in app.py) — backing up that asado's GROUP —
+# so you don't need to schedule anything yourself. It's also runnable
+# by hand for an on-demand extra backup of the login registry AND every
+# group (e.g. right before you're about to try something risky):
 #   python backup_db.py [retention_days]
 #
 # WHY NOT JUST COPY THE FILE (e.g. `shutil.copy` or `cp`)?
@@ -19,7 +20,11 @@
 # even while other connections are reading or writing it.
 #
 # WHERE BACKUPS GO: a "backups/" folder next to this file (created
-# automatically), as asados_YYYY-MM-DD_HHMMSS.db. That folder is NOT
+# automatically), as asados_YYYY-MM-DD_HHMMSS.db — since v2.0 in one
+# subfolder per group (backups/<group-slug>/) plus backups/accounts/
+# for the login registry, so each one's retention is counted separately
+# (the "asados_" filename prefix is kept everywhere, because that's what
+# _prune_old_backups() looks for). That folder is NOT
 # under static/, so Flask never serves it over the web. This protects
 # against accidental bad data (a mistaken delete, a bug, a bad edit) —
 # it does NOT protect against losing the whole server/account, since
@@ -36,6 +41,25 @@ from datetime import datetime, timedelta
 DATABASE = "asados.db"
 BACKUP_DIR = "backups"
 RETENTION_DAYS = 14
+
+
+def backup_dir_for(database):
+    """
+    Where a backup of `database` belongs, for scripts (migrations) that
+    back up whatever file they were pointed at:
+      * a GROUP database, groups/<slug>.db  ->  backups/<slug>/
+        (the same per-group folder app.py's automatic backups use, so
+        each group's snapshots and retention stay together);
+      * anything else  ->  a backups/ folder NEXT TO that file.
+    The second rule is the long-standing one, and it's why a migration
+    run against an isolated TEST copy can never drop a snapshot of that
+    copy into the real backups/ folder, named exactly like a real one.
+    """
+    folder = os.path.dirname(os.path.abspath(database))
+    if os.path.basename(folder) == "groups":
+        slug = os.path.splitext(os.path.basename(database))[0]
+        return os.path.join(os.path.dirname(folder), "backups", slug)
+    return os.path.join(folder, "backups")
 
 
 def backup_database(database=DATABASE, backup_dir=BACKUP_DIR, retention_days=RETENTION_DAYS):
@@ -121,4 +145,18 @@ if __name__ == "__main__":
             print("Usage: python backup_db.py [retention_days]")
             sys.exit(1)
 
-    backup_database(retention_days=retention)
+    # Since v2.0 an on-demand backup covers EVERYTHING: accounts.db
+    # (into backups/accounts/) and every registered group (each into
+    # backups/<slug>/). A backup of the groups without the registry
+    # would restore asados nobody can log in to; the reverse, logins
+    # with no asados. Before the migration (only asados.db exists) it
+    # backs that up, as it always did.
+    from accounts import ACCOUNTS_DATABASE, registered_group_paths
+    if os.path.exists(ACCOUNTS_DATABASE):
+        backup_database(database=ACCOUNTS_DATABASE,
+                        backup_dir=os.path.join(BACKUP_DIR, "accounts"), retention_days=retention)
+        for slug, path in registered_group_paths():
+            backup_database(database=path, backup_dir=os.path.join(BACKUP_DIR, slug),
+                            retention_days=retention)
+    else:
+        backup_database(retention_days=retention)
