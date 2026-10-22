@@ -12,7 +12,10 @@
 -->
 
 {% block content %}
-<h2>Registro de Actividad</h2>
+{# <h1>, not <h2> (UI review, 2.0.2): screen-reader users jump to a
+   page's <h1> to find out where they are, and no page had one. It
+   LOOKS exactly like the old <h2> - see the h1/h2 rule in style.css. #}
+<h1>Registro de Actividad</h1>
 
 {% if entries|length == 0 %}
     <p class="empty-state">Todavía no hay actividad registrada.</p>
@@ -61,7 +64,7 @@
     </div>
 
     {% if total_pages > 1 %}
-        <nav class="pagination">
+        <nav class="pagination" aria-label="Páginas">  {# a name for this landmark, see base.html #}
             {% if page > 1 %}
                 <a href="{{ url_for('activity_log_page', page=page-1) }}" class="secondary-button">← Anterior</a>
             {% endif %}

@@ -29,13 +29,16 @@
          only the highest-weight one actually feeds the points formula
          (see updateTipoCarneHints()/config.py's get_shared_weights),
          but every selected one is still saved and shown. -->
-    <select name="tipo_carne" required>
+    <!-- aria-label: these repeated rows have no visible <label> per
+         row (the section heading labels them visually), so without it
+         a screen reader just says "pop-up button" (UI review, 2.0.2). -->
+    <select name="tipo_carne" required aria-label="Tipo de carne">
         {% for option in tipo_carne_options %}
             <option value="{{ option }}" {% if selected == option %}selected{% endif %}>{{ option }}</option>
         {% endfor %}
     </select>
     <span class="weight-hint tipo-carne-weight-hint"></span>
-    <button type="button" class="remove-tipo-carne-btn" onclick="removeTipoCarneRow(this)" title="Quitar tipo de carne">✕</button>
+    <button type="button" class="remove-tipo-carne-btn" onclick="removeTipoCarneRow(this)" title="Quitar tipo de carne" aria-label="Quitar tipo de carne">✕</button>
 </div>
 {% endmacro %}
 
@@ -43,19 +46,22 @@
 <div class="participant-row">
     <!-- Participants are chosen from REGISTERED accounts only — a
          dropdown of existing users, never a free-text name field. -->
-    <select name="participant_user_id" required>
-        <option value="" disabled {% if not user_id %}selected{% endif %}>Elegir usuario...</option>
+    <!-- aria-label: same reason as the Tipo de Carne row above. -->
+    <select name="participant_user_id" required aria-label="Participante">
+        <option value="" disabled {% if not user_id %}selected{% endif %}>Elegir usuario…</option>
         {% for user in registered_users %}
             <option value="{{ user.id }}" {% if user_id and user_id == user.id %}selected{% endif %}>{{ user.name }}</option>
         {% endfor %}
     </select>
-    <select name="participant_rol" required>
+    <select name="participant_rol" required aria-label="Rol del participante">
         {% for option in rol_options %}
             <option value="{{ option }}" {% if rol == option %}selected{% endif %}>{{ option }}</option>
         {% endfor %}
     </select>
     <span class="weight-hint participant-weight-hint"></span>
-    <button type="button" class="remove-participant-btn" onclick="removeParticipantRow(this)" title="Quitar participante">✕</button>
+    <!-- aria-label: an icon-only button needs a spoken name; title alone
+         is only a hover tooltip, which phones never show. -->
+    <button type="button" class="remove-participant-btn" onclick="removeParticipantRow(this)" title="Quitar participante" aria-label="Quitar participante">✕</button>
 </div>
 {% endmacro %}
 
@@ -201,7 +207,10 @@
 
     <hr>
 
-    <h3>Participantes</h3>
+    {# h2 (was h3, UI review 2.0.2): headings must not skip a level, and
+       the page title above is now an <h1>. .section-title keeps it the
+       same size it always had - see style.css. #}
+    <h2 class="section-title">Participantes</h2>
     <div id="participants-container">
         {% if existing_participants %}
             {% for p in existing_participants %}
@@ -580,7 +589,7 @@
             const selectedElsewhere = userSelects
                 .filter(function (select) { return select !== currentSelect; })
                 .map(function (select) { return select.value; })
-                .filter(function (value) { return value; }); // ignore "Elegir usuario..." (blank)
+                .filter(function (value) { return value; }); // ignore "Elegir usuario…" (blank)
 
             Array.from(currentSelect.options).forEach(function (option) {
                 if (!option.value) return; // the placeholder option always stays enabled
@@ -639,7 +648,7 @@
         // Say why it's greyed out. A disabled button with no
         // explanation reads as broken, which is what makes people
         // reach for a second tap in the first place.
-        button.textContent = "Guardando...";
+        button.textContent = "Guardando…";  // "…": one proper ellipsis character
     });
 
     // -----------------------------------------------------------------

@@ -27,7 +27,10 @@
 <div class="page-header">
     <div class="profile-header">
         <span class="profile-color-dot" style="background-color: {{ profile_color }}"></span>
-        <h2>{{ profile_user.name }}</h2>
+        {# <h1>, not <h2> (UI review, 2.0.2): screen-reader users jump to a
+           page's <h1> to find out where they are, and no page had one. It
+           LOOKS exactly like the old <h2> - see the h1/h2 rule in style.css. #}
+        <h1>{{ profile_user.name }}</h1>
     </div>
     <a href="{{ url_for('index') }}" class="back-link">← Volver</a>
 </div>
@@ -75,7 +78,10 @@
          see build_user_monthly_chart_data()'s docstring in app.py for
          why a bar-per-month replaced the earlier cumulative line). -->
     <script src="https://cdn.jsdelivr.net/npm/plotly.js-cartesian-dist-min@2.35.2/plotly-cartesian.min.js"></script>
-    <h3 class="profile-chart-title">Asados por Mes</h3>
+    {# h2 (was h3, UI review 2.0.2): headings must not skip a level, and
+       the page title above is now an <h1>. .section-title keeps it the
+       same size it always had - see style.css. #}
+    <h2 class="section-title profile-chart-title">Asados por Mes</h2>
     <div class="profile-chart-card">
         <div id="profile-chart"></div>
     </div>
@@ -155,12 +161,16 @@
     </script>
 {% endif %}
 
-<h3 class="profile-history-title">Historial de Asados</h3>
+<h2 class="section-title profile-history-title">Historial de Asados</h2>
 {% if history|length == 0 %}
     <p class="empty-state">Todavía no hay participaciones registradas.</p>
 {% else %}
+    {# history-table: lets style.css give THIS table taller rows on
+       touch screens (its asado links were 16px tall, hard to tap)
+       without also stretching Base de Asados, which shares the
+       spreadsheet-table class but has nothing to tap. #}
     <div class="spreadsheet-wrapper">
-        <table class="spreadsheet-table">
+        <table class="spreadsheet-table history-table">
             <thead>
                 <tr>
                     <th>Fecha</th>

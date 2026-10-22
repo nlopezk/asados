@@ -15,7 +15,10 @@
 -->
 
 {% block content %}
-<h2>Cortes de Vacuno</h2>
+{# <h1>, not <h2> (UI review, 2.0.2): screen-reader users jump to a
+   page's <h1> to find out where they are, and no page had one. It
+   LOOKS exactly like the old <h2> - see the h1/h2 rule in style.css. #}
+<h1>Cortes de Vacuno</h1>
 
 <p class="cortes-intro">
     Los cortes que se pueden registrar en un asado de
@@ -37,7 +40,10 @@
     {% endfor %}
 </ul>
 
-<h3>Otros tipos de carne</h3>
+{# h2 (was h3, UI review 2.0.2): headings must not skip a level, and
+   the page title above is now an <h1>. .section-title keeps it the
+   same size it always had - see style.css. #}
+<h2 class="section-title">Otros tipos de carne</h2>
 <p class="cortes-intro">
     El resto de los tipos de carne no tienen despiece propio en la app —
     se muestran con un ícono junto al asado.

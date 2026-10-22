@@ -8,7 +8,10 @@
 -->
 
 {% block content %}
-<h2>Configuración</h2>
+{# <h1>, not <h2> (UI review, 2.0.2): screen-reader users jump to a
+   page's <h1> to find out where they are, and no page had one. It
+   LOOKS exactly like the old <h2> - see the h1/h2 rule in style.css. #}
+<h1>Configuración</h1>
 
 {% if success %}
     <p class="success-message">{{ success }}</p>
@@ -17,21 +20,27 @@
     <p class="error-message">{{ error }}</p>
 {% endif %}
 
-<h3>Mi Perfil</h3>
+{# h2 (was h3, UI review 2.0.2): headings must not skip a level, and
+   the page title above is now an <h1>. .section-title keeps it the
+   same size it always had - see style.css. #}
+<h2 class="section-title">Mi Perfil</h2>
 <form method="POST" action="{{ url_for('update_profile') }}" class="asado-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="name">Nombre</label>
     <input type="text" id="name" name="name" value="{{ g.name }}" required>
 
     <label for="new_password">Nueva Contraseña</label>
-    <input type="password" id="new_password" name="new_password" placeholder="Dejar en blanco para no cambiarla">
+    <!-- autocomplete="new-password": tells phones and password managers
+         this is a NEW password to save, not a place to fill the current
+         one in (UI review, 2.0.2). -->
+    <input type="password" id="new_password" name="new_password" placeholder="Dejar en blanco para no cambiarla" autocomplete="new-password">
 
     <button type="submit" class="primary-button">Guardar Cambios</button>
 </form>
 
 {% if users is not none %}
     <hr>
-    <h3>Administración de Usuarios</h3>
+    <h2 class="section-title">Administración de Usuarios</h2>
 
     {# detail-table-list: header row labels COLUMNS; table-scroll: on a
        very narrow phone the table scrolls sideways in its own box
@@ -43,7 +52,10 @@
                 <th>Usuario</th>
                 <th>Nombre</th>
                 <th>Rol</th>
-                <th></th>
+                {# Not empty any more: a screen reader announces an empty
+                   header as an unnamed column. visually-hidden keeps it
+                   invisible on screen, as before. #}
+                <th><span class="visually-hidden">Acciones</span></th>
             </tr>
         </thead>
         <tbody>
@@ -71,17 +83,20 @@
     </table>
     </div>
 
-    <h3>Crear Nuevo Usuario</h3>
+    <h2 class="section-title">Crear Nuevo Usuario</h2>
     <form method="POST" action="{{ url_for('create_user_route') }}" class="asado-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label for="new_username">Usuario</label>
-        <input type="text" id="new_username" name="username" required>
+        <!-- autocomplete="off" / "new-password": this form creates SOMEONE
+             ELSE's login, so the browser must not fill in the admin's own
+             saved username and password here. -->
+        <input type="text" id="new_username" name="username" required autocomplete="off" spellcheck="false">
 
         <label for="new_name">Nombre</label>
         <input type="text" id="new_name" name="name" required>
 
         <label for="new_user_password">Contraseña</label>
-        <input type="password" id="new_user_password" name="password" required>
+        <input type="password" id="new_user_password" name="password" required autocomplete="new-password">
 
         <label for="new_role">Rol</label>
         <select id="new_role" name="role">

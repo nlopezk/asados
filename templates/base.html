@@ -11,6 +11,10 @@
     <meta charset="UTF-8">
     <!-- This meta tag is what makes the page responsive on phones -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- theme-color: tints the phone browser's own address bar to match
+         the navbar's burgundy, so the app reads as one surface instead
+         of sitting under a white or grey browser strip (UI review, 2.0.2). -->
+    <meta name="theme-color" content="#6e2020">
     <title>Asados App</title>
     <!-- Google Fonts: EB Garamond (headings — a classic, restrained
          serif in the Garamond tradition, chosen after studying "The
@@ -66,7 +70,10 @@
     {% set ubicaciones_endpoints = ['locations_page', 'create_location', 'edit_location', 'delete_location'] %}
     {% set config_endpoints = ['config_page', 'create_user_route', 'delete_user_route', 'update_profile'] %}
     {% set base_asados_endpoints = ['base_asados', 'base_asados_csv'] %}
-    <nav class="navbar">
+    <!-- aria-label names this landmark: pages with page numbers have a
+         second <nav> (the pagination), and a screen reader listing
+         "navigation, navigation" can't tell them apart (UI review, 2.0.2). -->
+    <nav class="navbar" aria-label="Principal">
         <a href="{{ url_for('index') }}"
            class="nav-title {% if request.endpoint in home_endpoints %}nav-current{% endif %}">🔥 Asados</a>
         <!-- g.username is set on every request by load_logged_in_user()

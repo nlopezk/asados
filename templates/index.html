@@ -29,6 +29,11 @@
      a Año or Usuario filter. -->
 {% if group_summary.participants|length > 0 %}
     <div class="group-summary">
+        {# The home page has two section headings and no page title,
+           so it gets a title only screen readers hear (the
+           .visually-hidden class in style.css). Sighted users already
+           see where they are; the group's name is in the footer. #}
+        <h1 class="visually-hidden">Asados de {{ g.group.name }}</h1>
         <h2 class="group-summary-title">Resumen del Grupo</h2>
         <p class="group-summary-subtitle">
             {{ group_summary.participants|length }}
@@ -266,7 +271,7 @@
             <p class="asado-meta">
                 📅 {{ item.asado.date }} &nbsp;|&nbsp;
                 🥩 {{ item.tipos_carne }} &nbsp;|&nbsp;
-                🔥 {{ item.asado.coccion }} on {{ item.asado.superficie }} &nbsp;|&nbsp;
+                🔥 {{ item.asado.coccion }} en {{ item.asado.superficie }} &nbsp;|&nbsp;
                 📍 {{ item.asado.local }}
             </p>
 
@@ -294,7 +299,7 @@
          only changes, every filter stays put) via url_for's kwargs —
          Flask/Werkzeug drops any kwarg whose value is none from the
          resulting URL, so an unset filter just doesn't appear in it. -->
-    <nav class="pagination">
+    <nav class="pagination" aria-label="Páginas">  {# a name for this landmark, see base.html #}
         {% if page > 1 %}
             <a href="{{ url_for('index', page=page-1, date_from=selected_date_from or none, date_to=selected_date_to or none, year=selected_year or none, month=selected_month or none, user_id=selected_user_id or none) }}"
                class="secondary-button">← Anterior</a>

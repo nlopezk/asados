@@ -53,7 +53,10 @@
 {% block container_extra_class %}container-wide{% endblock %}
 
 {% block content %}
-<h2>Ubicaciones Guardadas</h2>
+{# <h1>, not <h2> (UI review, 2.0.2): screen-reader users jump to a
+   page's <h1> to find out where they are, and no page had one. It
+   LOOKS exactly like the old <h2> - see the h1/h2 rule in style.css. #}
+<h1>Ubicaciones Guardadas</h1>
 
 {% if success %}
     <p class="success-message">{{ success }}</p>
@@ -62,7 +65,10 @@
     <p class="error-message">{{ error }}</p>
 {% endif %}
 
-<h3>Nueva Ubicación</h3>
+{# h2 (was h3, UI review 2.0.2): headings must not skip a level, and
+   the page title above is now an <h1>. .section-title keeps it the
+   same size it always had - see style.css. #}
+<h2 class="section-title">Nueva Ubicación</h2>
 <form method="POST" action="{{ url_for('create_location') }}" class="asado-form form-narrow">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label for="new_location_name">Nombre</label>
@@ -75,7 +81,7 @@
     <button type="submit" class="primary-button">+ Guardar Ubicación</button>
 </form>
 
-<h3>Ubicaciones Existentes</h3>
+<h2 class="section-title">Ubicaciones Existentes</h2>
 {% if locations|length == 0 %}
     <p class="empty-state">
         Todavía no hay ubicaciones guardadas. Agrega una arriba, o marca
@@ -108,11 +114,14 @@
                 {% for loc in locations %}
                     <tr>
                         <td title="{% if loc.created_by_name %}Agregada por {{ loc.created_by_name }} — {{ loc.created_at }}{% endif %}">
-                            <input type="text" name="name" value="{{ loc.name }}" required class="loc-name-input"
+                            <!-- aria-label on each in-row field: the column header labels
+                                 them for sighted users, but a screen reader needs a
+                                 name on the input itself (UI review, 2.0.2). -->
+                            <input type="text" name="name" value="{{ loc.name }}" required class="loc-name-input" aria-label="Nombre"
                                    form="location-form-{{ loc.id }}">
                         </td>
                         <td>
-                            <input type="text" name="address" value="{{ loc.address }}" required class="loc-address-input"
+                            <input type="text" name="address" value="{{ loc.address }}" required class="loc-address-input" aria-label="Dirección"
                                    form="location-form-{{ loc.id }}">
                         </td>
                         <td>
@@ -139,18 +148,18 @@
                                  separator server-side regardless. -->
                             <div class="loc-coord-pair">
                                 <input type="text" inputmode="decimal" name="latitude" value="{{ loc.latitude }}" required
-                                       class="loc-coord-input" title="Latitud" form="location-form-{{ loc.id }}">
+                                       class="loc-coord-input" title="Latitud" aria-label="Latitud" form="location-form-{{ loc.id }}">
                                 <input type="text" inputmode="decimal" name="longitude" value="{{ loc.longitude }}" required
-                                       class="loc-coord-input" title="Longitud" form="location-form-{{ loc.id }}">
+                                       class="loc-coord-input" title="Longitud" aria-label="Longitud" form="location-form-{{ loc.id }}">
                             </div>
                         </td>
                         <td class="spreadsheet-actions">
                             <button type="submit" form="location-form-{{ loc.id }}"
-                                    class="secondary-button" title="Guardar cambios de esta fila">💾</button>
+                                    class="secondary-button" title="Guardar cambios de esta fila" aria-label="Guardar cambios de esta fila">💾</button>
                             {% if g.role == "admin" %}
                                 <button type="submit" form="location-form-{{ loc.id }}"
                                         formaction="{{ url_for('delete_location', location_id=loc.id) }}"
-                                        class="secondary-button" title="Eliminar"
+                                        class="secondary-button" title="Eliminar" aria-label="Eliminar esta ubicación"
                                         onclick="return confirm('¿Eliminar esta ubicación guardada? No afecta a los asados que ya la usaron.');">
                                     🗑
                                 </button>

@@ -17,7 +17,10 @@
 {% block container_extra_class %}container-wide{% endblock %}
 
 {% block content %}
-<h2>Resumen</h2>
+{# <h1>, not <h2> (UI review, 2.0.2): screen-reader users jump to a
+   page's <h1> to find out where they are, and no page had one. It
+   LOOKS exactly like the old <h2> - see the h1/h2 rule in style.css. #}
+<h1>Resumen</h1>
 
 <!-- Plotly powers the cumulative-points chart below the table. Loaded
      from jsdelivr, exact-version-pinned (same pattern as Leaflet in
@@ -138,6 +141,12 @@
                          by it. -->
                     <th class="resumen-rank-header">#</th>
                     {{ sort_header('usuario', 'Usuario', 'asc') }}
+                    {# Puntos Totales is the THIRD column (UI review, 2.0.2), not
+                       the last: it's the number everyone opens this page for,
+                       and on a phone the last column was off-screen behind
+                       four "Suma" columns. Its <td> moved the same way below -
+                       headers and cells must stay in the same order. #}
+                    {{ sort_header('total', 'Puntos Totales') }}
                     {{ sort_header('carne', 'Suma T.Carne') }}
                     {{ sort_header('coccion', 'Suma Cocción') }}
                     {{ sort_header('superficie', 'Suma Superf.') }}
@@ -145,7 +154,6 @@
                     {{ sort_header('rol', 'Suma Rol') }}
                     {{ sort_header('promedio', 'Prom. x Part.') }}
                     {{ sort_header('participaciones', 'Particip.') }}
-                    {{ sort_header('total', 'Puntos Totales') }}
                 </tr>
             </thead>
             <tbody>
@@ -157,6 +165,8 @@
                                 <span class="user-color-dot" style="background-color: {{ user_color(row.user_id) }}"></span>{{ row.name }}
                             </a>
                         </td>
+                        {# Same position as the Puntos Totales header above. #}
+                        <td class="resumen-total">{{ row.total_points | round(2) }}</td>
                         <!-- round(2) on the sums as well as the averages:
                              these are sums of decimal weights (0.3, 0.7,
                              0.8...), and floating-point addition can
@@ -169,7 +179,6 @@
                         <td>{{ row.sum_rol | round(2) }}</td>
                         <td>{{ row.avg_points | round(2) }}</td>
                         <td>{{ row.participations_count }}</td>
-                        <td class="resumen-total">{{ row.total_points | round(2) }}</td>
                     </tr>
                 {% endfor %}
             </tbody>
@@ -207,7 +216,10 @@
      regardless of being inside an HTML comment, since it has no
      concept of HTML comments at all. This exact file hit that once
      already while writing this one.) -->
-<h3 class="resumen-chart-title">Puntos Acumulados en el Tiempo</h3>
+{# h2 (was h3, UI review 2.0.2): headings must not skip a level, and
+   the page title above is now an <h1>. .section-title keeps it the
+   same size it always had - see style.css. #}
+<h2 class="section-title resumen-chart-title">Puntos Acumulados en el Tiempo</h2>
 
 {% if chart_data.series|length == 0 %}
     <p class="empty-state">Todavía no hay datos para graficar.</p>
@@ -485,6 +497,12 @@
             // so it's dropped from the modebar rather than left as a
             // dead button.
             modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+            // No toolbar on narrow screens (UI review, 2.0.2): on a phone
+            // it was drawn ON TOP of the "1a" and "Todo" period
+            // buttons, making them hard to tap. Nothing is lost there:
+            // pinch zooms, the period buttons and the rangeslider move
+            // the view, and a double-tap resets it (the page says so).
+            displayModeBar: !isNarrow,
         };
 
         Plotly.newPlot('resumen-chart', traces, layout, config);

@@ -19,7 +19,10 @@
 {% block container_extra_class %}container-wide{% endblock %}
 
 {% block content %}
-<h2>Base de Asados</h2>
+{# <h1>, not <h2> (UI review, 2.0.2): screen-reader users jump to a
+   page's <h1> to find out where they are, and no page had one. It
+   LOOKS exactly like the old <h2> - see the h1/h2 rule in style.css. #}
+<h1>Base de Asados</h1>
 
 <p><a href="{{ url_for('base_asados_csv') }}" class="secondary-button">⬇ Exportar CSV</a></p>
 
@@ -43,7 +46,11 @@
          a long value noticeably TALLER than every other row, breaking
          the "one row = one line" spreadsheet look. The full value is
          still available via each cell's own title="" tooltip on hover. -->
-    <div class="spreadsheet-wrapper">
+    {# tabindex="0" + role/aria-label: this box scrolls sideways (the
+       table is wider than any screen), and without being focusable a
+       keyboard user can't scroll it to see the right-hand columns.
+       With it, Tab reaches the box and the arrow keys scroll it. #}
+    <div class="spreadsheet-wrapper" tabindex="0" role="region" aria-label="Tabla de participaciones">
         <table class="spreadsheet-table">
             <thead>
                 <tr>
@@ -123,7 +130,7 @@
         <!-- The CSV export link above always exports EVERY row
              regardless of which page is showing here — pagination is
              purely a display convenience for this on-screen table. -->
-        <nav class="pagination">
+        <nav class="pagination" aria-label="Páginas">  {# a name for this landmark, see base.html #}
             {% if page > 1 %}
                 <a href="{{ url_for('base_asados', page=page-1) }}" class="secondary-button">← Anterior</a>
             {% endif %}

@@ -31,7 +31,10 @@
    you just submitted, so "Volver" would mean something different
    every time. #}
 <div class="page-header">
-    <h2>{{ asado.nombre }}</h2>
+    {# <h1>, not <h2> (UI review, 2.0.2): screen-reader users jump to a
+       page's <h1> to find out where they are, and no page had one. It
+       LOOKS exactly like the old <h2> - see the h1/h2 rule in style.css. #}
+    <h1>{{ asado.nombre }}</h1>
     <a href="{{ url_for('index') }}" class="back-link">← Volver</a>
 </div>
 
@@ -82,7 +85,10 @@
         <p class="asado-description">{{ asado.description }}</p>
     {% endif %}
 
-    <h3>Participantes</h3>
+    {# h2 (was h3, UI review 2.0.2): headings must not skip a level, and
+       the page title above is now an <h1>. .section-title keeps it the
+       same size it always had - see style.css. #}
+    <h2 class="section-title">Participantes</h2>
     {# detail-table-list: header row labels COLUMNS - see style.css. #}
     <table class="detail-table detail-table-list">
         <tr><th>Nombre</th><th>Rol</th><th>Puntos</th></tr>
@@ -108,7 +114,7 @@
 </div>
 
 <div id="asado-edit" class="hidden">
-    <h3>Editar Asado</h3>
+    <h2 class="section-title">Editar Asado</h2>
     {% include "_asado_form.html" %}
     <!-- A plain link (not a JS "hide" toggle) so canceling always
          discards any unsaved changes and shows the form fresh next

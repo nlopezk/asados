@@ -51,9 +51,19 @@
        makes it nearly illegible AS text against the walnut-brown
        surfaces (card titles, links). These two are for TEXT instead:
        a brighter brick-red (closer to the book's actual Scarlet
-       swatch) with enough contrast to actually read. */
-    --color-accent-text: #c15a3f;
-    --color-accent-text-hover: #d67256;
+       swatch) with enough contrast to actually read.
+       LIGHTENED in 2.0.2 (UI review): the old #c15a3f measured only
+       2.7:1 against --color-surface (the cards), under the 4.5:1
+       minimum for normal-size text — readable on a monitor indoors,
+       hard on a phone outdoors in sunlight, i.e. exactly where an
+       asado happens. #ea977b is the same brick hue, just lighter:
+       5.2:1 on --color-surface, 6.3:1 on --color-bg, and 4.7:1 on the
+       tables' striped rows (#4b3b2b) - the lightest of the three
+       backgrounds a link sits on, which is what decided the exact
+       value. Hover goes lighter still, so a link still visibly
+       "lights up" under the mouse. */
+    --color-accent-text: #ea977b;
+    --color-accent-text-hover: #f4b29a;
     /* Brass/gold — used SPARINGLY (a rule, a border trim), never as a
        body text color or large fill; matches the book's Metallic
        chapter both in hue and in its explicit warning not to overdo it. */
@@ -81,6 +91,13 @@
        100% already takes over regardless of what the cap is. */
     --content-max-width: 900px;
     --content-max-width-wide: 1500px;
+    /* Tells the BROWSER this is a dark theme (UI review, 2.0.2). The
+       browser draws some things itself, outside our CSS: the date
+       picker's calendar, a <select>'s open list, scrollbars, the
+       autofill highlight. Without this line it draws them for a LIGHT
+       page, which is how the white-on-white popups described in
+       CLAUDE.md (Flatpickr's month dropdown) came about. */
+    color-scheme: dark;
 }
 
 /* Generic show/hide utility (JS toggles this class) — used for the
@@ -99,8 +116,51 @@ h1, h2, h3, h4 {
     color: var(--color-text);
 }
 
+/* h1 shares h2's size on purpose (UI review, 2.0.2). Each page's title
+   is now an <h1> - screen readers use it to tell people which page
+   they're on - but it should LOOK exactly like the <h2> titles did,
+   not jump to the browser's bigger default h1 size. */
+h1,
 h2 {
     font-size: 1.7em; /* EB Garamond is more delicate than a display face at the same size — sized up for presence */
+}
+
+/* Section headings inside a page (Participantes, Mi Perfil, Historial
+   de Asados...) became <h2> in 2.0.2, because each page's title is now
+   the <h1> and headings must not skip a level (h1 straight to h3).
+   This keeps them the size they had as <h3>: 1.17em is the browser's
+   own default h3 size, which is what they always rendered at. One
+   class selector beats the bare h1/h2 rule above, whatever the order. */
+.section-title {
+    font-size: 1.17em;
+}
+
+/* Hidden on screen, still read aloud by screen readers. For text only
+   a screen reader needs: the home page's title, the name of the
+   Config table's button column. (display:none or visibility:hidden
+   would hide it from screen readers too - this standard pattern
+   shrinks it to 1px and clips it instead.) */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* One consistent keyboard-focus ring (UI review, 2.0.2). Until now the
+   app relied on each browser's default ring, which is faint against
+   the burgundy navbar. :focus-visible (not :focus) means it appears
+   when you move around with the KEYBOARD, not on every mouse click or
+   tap. Cream rather than --color-gold: gold is kept for the navbar's
+   brass rail only (see the colour notes at the top). */
+:focus-visible {
+    outline: 2px solid var(--color-text);
+    outline-offset: 2px;
 }
 
 p {
@@ -617,9 +677,14 @@ hr {
     margin: 0 0 4px 0;
 }
 
+/* No list bullet (UI review, 2.0.2): every name already starts with
+   its colour dot, so the browser's bullet in front of it made a
+   double dot "• ● Nombre" that read like a rendering glitch. The
+   colour dot now does the bullet's job, so the indent goes too. */
 .participant-list {
     margin: 0;
-    padding-left: 18px;
+    padding-left: 0;
+    list-style: none;
 }
 
 /* --- Per-user color swatch (shared by index.html + resumen.html) ---
@@ -1159,7 +1224,9 @@ button:hover {
     margin-bottom: 0.35em;
 }
 
-/* The heading inside already carries the section's bottom margin. */
+/* The heading inside already carries the section's bottom margin.
+   h1 too: page titles became <h1> in 2.0.2 (see the h1/h2 rule). */
+.page-header h1,
 .page-header h2 {
     margin-bottom: 0;
 }
@@ -1951,5 +2018,220 @@ button:hover {
 
     .map-picker {
         height: 60vh;
+    }
+}
+
+/* =====================================================================
+   TOUCH SCREENS AND PHONES (UI review, 2.0.2)
+   Kept together at the END of this file on purpose: these override
+   rules defined earlier, and when two rules have the same specificity
+   the LATER one wins. Every rule here only applies on touch screens
+   or narrow screens, so the desktop layout is untouched.
+
+   (pointer: coarse) = "the main pointer is a finger, not a mouse".
+   That's the right test for TAP-TARGET sizes, which matter for fingers
+   whatever the screen width. (max-width: 480px) = "this is a phone",
+   the right test for LAYOUT. Same split this file already uses.
+   ===================================================================== */
+
+@media (pointer: coarse) {
+    /* --- No more iPhone zoom on tap ---
+       iPhones ZOOM the whole page when you tap into any field whose
+       text is smaller than 16px, and you then have to pinch back out.
+       The filters were 15.2px and Ubicaciones' table fields 12.9px.
+       16px exactly is the threshold that stops it. */
+    .filter-field input,
+    .filter-field select,
+    .spreadsheet-table input,
+    .spreadsheet-table select,
+    .asado-form input,
+    .asado-form select,
+    .asado-form textarea,
+    /* Repeated with the attribute: the existing
+       .spreadsheet-table input[type="text"] rule (Ubicaciones' table)
+       is MORE specific than plain .spreadsheet-table input, so without
+       matching it this rule simply lost and those fields stayed 12.9px. */
+    .spreadsheet-table input[type="text"],
+    .spreadsheet-table input[type="number"] {
+        font-size: 16px;
+    }
+
+    /* Ubicaciones' edit-in-place fields were 24px tall. */
+    .spreadsheet-table input[type="text"],
+    .spreadsheet-table input[type="number"] {
+        min-height: 44px;
+    }
+
+    /* --- Tap targets: at least ~44px tall ---
+       44px is the minimum comfortable size for a fingertip (Apple's
+       and WCAG's guidance); below it you hit the wrong thing,
+       especially one-handed. */
+
+    /* The ☰ button: the most-used control on a phone, was 37px tall.
+       Only shown in the collapsed-menu presentation, so this can't
+       move the desktop navbar's measured 1250px breakpoint. */
+    .nav-toggle {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    /* Real buttons and button-styled links (both classes are
+       inline-block, which is what lets min-height work on an <a>). */
+    button,
+    .primary-button,
+    .secondary-button {
+        min-height: 44px;
+    }
+
+    .asado-form input,
+    .asado-form select,
+    .filter-field input,
+    .filter-field select {
+        min-height: 44px;
+    }
+
+    /* Ubicaciones' coordinate boxes were 62x24px - too small to hit. */
+    .loc-coord-input {
+        min-width: 88px;
+        min-height: 44px;
+    }
+
+    /* Participant names on the home cards were 20px tall, stacked 24px
+       apart. Just enlarging each link's tap area would make
+       neighbouring areas OVERLAP, so a tap could open the wrong person.
+       Instead each row really gets 44px: the <li> gets padding, and the
+       link's own tap area is stretched to fill exactly that padding
+       (padding + an equal NEGATIVE margin = bigger tap area, same
+       position on screen). */
+    .participant-list li {
+        padding: 10px 0;
+    }
+
+    .participant-list li > a {
+        display: inline-block;
+        padding: 10px 0;
+        margin: -10px 0;
+    }
+
+    /* Links with nothing tappable right above or below them: only the
+       tap area grows (same padding + negative-margin trick), so
+       nothing on screen moves. */
+    .asado-card h3 a,
+    .back-link,
+    .log-entry-header a,
+    .detail-table td a {  /* e.g. "📍 Ver en el mapa" on an asado's page */
+        display: inline-block;
+        padding: 10px 0;
+        margin: -10px 0;
+    }
+
+    /* Resumen's sortable column headers: a little more, since the
+       header text is small. Same trick, so the header row's height
+       on screen doesn't change. */
+    .resumen-table thead th .sort-link {
+        display: inline-block;
+        padding: 14px 0;
+        margin: -14px 0;
+    }
+
+    /* The profile page's history table (its own class, see
+       user_profile.html): taller rows, so each asado link fills a
+       44px row instead of a 16px line. Base de Asados shares
+       .spreadsheet-table but has nothing to tap, so it stays compact. */
+    .history-table td {
+        padding-top: 12px;
+        padding-bottom: 12px;
+    }
+
+    .history-table td a {
+        display: inline-block;
+        padding: 12px 0;
+        margin: -12px 0;
+    }
+}
+
+@media (max-width: 480px) {
+    /* --- Asado form rows: side by side instead of stacked ---
+       Before, each participant row stacked FOUR full-width pieces on a
+       phone (user dropdown, Rol dropdown, weight hint, and a
+       full-width red ✕ bar), so a six-person asado meant a lot of
+       scrolling, and the remove button looked bigger and scarier than
+       "+ Añadir otro participante". Now two lines:
+           [ Usuario      ][ Rol          ]
+           (peso: 1)                   [✕]
+       The ✕ sits on the second line, not beside the dropdowns: with
+       three things on one line each dropdown was only ~140px wide on a
+       375px phone, and "Elegir usuario…" / "Co-parrillero" got cut off
+       mid-word (seen in a screenshot, so it was moved).
+       A GRID (not flex) because the pieces need fixed spots, and
+       grid-row/grid-column place each one explicitly: their order in
+       the HTML (select, select, hint, button) isn't the order on
+       screen. */
+    .participant-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        align-items: center;
+    }
+
+    .participant-row select[name="participant_user_id"] {
+        grid-column: 1;
+        grid-row: 1;
+        min-width: 0;  /* lets a long name shrink inside its column instead of widening it */
+    }
+
+    .participant-row select[name="participant_rol"] {
+        grid-column: 2;
+        grid-row: 1;
+        min-width: 0;
+    }
+
+    .participant-row .participant-weight-hint {
+        grid-column: 1;
+        grid-row: 2;
+    }
+
+    .participant-row .remove-participant-btn {
+        grid-column: 2;
+        grid-row: 2;
+        justify-self: end;  /* hug the right edge, under the Rol dropdown */
+    }
+
+    /* Same two-line idea for Tipo de Carne: the dropdown keeps the FULL
+       width on line 1 (its longest option, "Corte de Vacuno (Lomo,
+       Tira, Vacío)", got cut off with the ✕ squeezed in beside it -
+       measured, not guessed), and the hint + ✕ share line 2. When only
+       one Tipo de Carne is left its ✕ is hidden, and line 2 is just
+       the hint. */
+    .tipo-carne-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 6px;
+        align-items: center;
+    }
+
+    .tipo-carne-row select {
+        grid-column: 1 / -1;
+        grid-row: 1;
+        min-width: 0;
+    }
+
+    .tipo-carne-row .tipo-carne-weight-hint {
+        grid-column: 1;
+        grid-row: 2;
+    }
+
+    .tipo-carne-row .remove-tipo-carne-btn {
+        grid-column: 2;
+        grid-row: 2;
+    }
+
+    /* The ✕ itself: a compact square, still a full 44px fingertip
+       target, instead of a full-width red bar. */
+    .remove-participant-btn,
+    .remove-tipo-carne-btn {
+        width: 44px;
+        height: 44px;
+        padding: 0;
     }
 }

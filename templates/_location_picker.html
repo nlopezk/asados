@@ -55,7 +55,7 @@
          suggestions from covering up our custom dropdown below. -->
     <input type="text" id="location" name="{{ location_field_name or 'location' }}" autocomplete="off"
            value="{{ location_value or '' }}"
-           placeholder="Escribe una dirección..."
+           placeholder="Escribe una dirección…"
            {% if location_required %}required{% endif %}>
     <!-- This div holds the live search-suggestion list, positioned
          right under the text input via CSS. -->
@@ -275,7 +275,7 @@
     function reverseGeocode(lat, lon) {
         const url = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lon;
 
-        pickedAddressLabel.textContent = "Buscando dirección...";
+        pickedAddressLabel.textContent = "Buscando dirección…";
 
         fetch(url, { headers: { "Accept-Language": "es" } })
             .then(function (response) { return response.json(); })
