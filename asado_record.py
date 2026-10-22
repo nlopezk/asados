@@ -5,7 +5,7 @@
 # An "asado record" is more than the `asados` row: it is that row PLUS
 # its child rows (participations, asado_tipo_carne, asado_cortes), the
 # weights frozen onto all of them, and the activity-log entry that says
-# who changed it. Before v2.0.2 that knowledge was written out three
+# who changed it. Before v2.1.0 that knowledge was written out three
 # times - in new_asado(), in edit_asado() and in seed_random_asados.py -
 # and adding one child table meant touching about seven places. Now the
 # routes and the seed script all go through this module:
@@ -151,7 +151,7 @@ def read_form(form):
     them is create()/update()'s job, so the same rules apply whether
     data came from a form, the seed script or a test.
 
-    A missing field reads as "" rather than raising. Before 2.0.2,
+    A missing field reads as "" rather than raising. Before 2.1.0,
     request.form["nombre"] on a missing field gave the user a bare
     "400 Bad Request" page; now it's a friendly "Falta el nombre" error.
     """
@@ -212,7 +212,7 @@ def _validate(db, data):
     writes need: (participants, cortes), where participants is a list of
     (user_id, name, rol) for the members who actually exist.
 
-    Until 2.0.2 the server only enforced "no duplicate participant";
+    Until 2.1.0 the server only enforced "no duplicate participant";
     everything else trusted the browser. These rules are the server-side
     half of what the form already enforces - the same "friendly client,
     authoritative server" layering as everywhere else in this app:

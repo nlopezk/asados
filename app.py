@@ -31,7 +31,7 @@ from config import (
 from backup_db import backup_database
 from activity_log import now_timestamp
 # Saving, editing and deleting an asado (and its child rows, frozen
-# weights and activity log) all live in asado_record.py since 2.0.2 -
+# weights and activity log) all live in asado_record.py since 2.1.0 -
 # the routes below only handle the HTTP side. parse_decimal moved there
 # with it; /ubicaciones uses it too.
 import asado_record
@@ -67,7 +67,7 @@ BACKUP_ROOT = "backups"
 # version is cut (see CLAUDE.md). Nothing ties these three together
 # automatically; forgetting to bump this is a real, easy-to-repeat
 # mistake, so check it specifically before tagging a new release.
-VERSION = "2.0.1"
+VERSION = "2.1.0"
 
 # How many rows to show per page before showing a "next" arrow, on the
 # home page and on Base de Asados respectively. Base de Asados can show
@@ -314,7 +314,7 @@ def parse_page_number(value):
 
 
 # parse_decimal() - accepting "2,5" as well as "2.5" - lives in
-# asado_record.py since 2.0.2 (imported at the top of this file).
+# asado_record.py since 2.1.0 (imported at the top of this file).
 
 # ---------------------------------------------------------------------
 # "BASE DE ASADOS" QUERY (spreadsheet-style export)
@@ -1255,7 +1255,7 @@ def asado_form_context(db):
 
 
 # maybe_save_location() (the asado form's "Guardar esta ubicación"
-# checkbox) lives in asado_record.py since 2.0.2.
+# checkbox) lives in asado_record.py since 2.1.0.
 
 def build_group_summary(db):
     """

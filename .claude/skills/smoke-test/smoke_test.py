@@ -437,7 +437,7 @@ def run_functional(app_module, tmp, ids):
 # asado_record.py, tested DIRECTLY - no HTTP, no login, no HTML scraping
 # ---------------------------------------------------------------------
 def run_record_module(app_module, tmp, ids):
-    """The asado record module (2.0.2) is the one place an asado is
+    """The asado record module (2.1.0) is the one place an asado is
     saved, so its rules are tested here at its own interface - the
     same calls the routes and the seed script make."""
     import sqlite3
@@ -729,7 +729,7 @@ def run_browser(app_module, tmp):
                         check(f"{width}px (the breakpoint): hamburger menu takes over", toggle,
                               f"the {bp}px media query isn't applying")
 
-            # --- Stored XSS through a display name (fixed in 2.0.2) ---
+            # --- Stored XSS through a display name (fixed in 2.1.0) ---
             # Every member can set their own display name, so it's the
             # one piece of user text that reaches EVERY page. The asado
             # form's live points preview once glued it into innerHTML.

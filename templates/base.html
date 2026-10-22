@@ -15,9 +15,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- theme-color: tints the phone browser's own address bar to match
          the navbar's burgundy, so the app reads as one surface instead
-         of sitting under a white or grey browser strip (UI review, 2.0.2). -->
+         of sitting under a white or grey browser strip (UI review, 2.1.0). -->
     <meta name="theme-color" content="#6e2020">
-    <!-- One title PER PAGE (UI refresh, 2.0.2): each page fills the
+    <!-- One title PER PAGE (UI refresh, 2.1.0): each page fills the
          "title" block with its own name (e.g. "Resumen"), so browser
          tabs, history and bookmarks say which page they are instead of
          eleven identical "Asados App" entries. -->
@@ -81,7 +81,7 @@
     {% set base_asados_endpoints = ['base_asados', 'base_asados_csv'] %}
     <!-- aria-label names this landmark: pages with page numbers have a
          second <nav> (the pagination), and a screen reader listing
-         "navigation, navigation" can't tell them apart (UI review, 2.0.2). -->
+         "navigation, navigation" can't tell them apart (UI review, 2.1.0). -->
     <nav class="navbar" aria-label="Principal">
         <a href="{{ url_for('index') }}"
            class="nav-title {% if request.endpoint in home_endpoints %}nav-current{% endif %}">{{ brand_mark() }}<span class="nav-title-text">Asados</span></a>
@@ -141,7 +141,7 @@
                      a section you're IN, it's an action that ends the
                      session, so highlighting it as "current" would be
                      misleading regardless of which route you're on. -->
-                {# The ACCOUNT area (UI refresh, 2.0.2): who's logged in, and
+                {# The ACCOUNT area (UI refresh, 2.1.0): who's logged in, and
                    Salir, grouped at the end behind a thin divider - they're
                    about YOU, not sections of the app, so they sit apart from
                    the section links. (Actividad moved in front of the name

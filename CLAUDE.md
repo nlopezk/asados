@@ -132,7 +132,7 @@ Phase 5 – Make it responsive. Improve CSS/layout so it works well on phones, s
 Phase 6 – Deploy. Put it online (e.g. Render, Railway, Fly.io — all have free tiers) so others can actually use it from their phones.
 Phase 7+ – Advanced. Photo uploads, notifications, a proper mobile app wrapper (e.g. Capacitor) or React Native, richer stats/dashboards, etc.
 
-**Currently at v2.0.1: Phases 1-6 are done, and Phase 4 is complete.**
+**Currently at v2.1.0: Phases 1-6 are done, and Phase 4 is complete.**
 2.0.0 also turned the app multi-group (one site, several separate
 competitions, one database file per group) — see "Groups" below. That
 isn't one of the original phases; it was requested once the app was
@@ -238,11 +238,11 @@ class.
 
 **On-screen order (both presentations share it): Añadir Asado, Inicio,
 Resumen, Base de Asados, Ubicaciones, Config, Actividad, then the
-ACCOUNT group (username + Salir) behind a thin divider.** (2.0.2 moved
+ACCOUNT group (username + Salir) behind a thin divider.** (2.1.0 moved
 Actividad in front of the name: it's a section, while the name and
 Salir are about the person, so they're grouped apart. The links are
-quiet text with Lucide line icons since 2.0.2, no filled pills - see
-"UI refresh (2.0.2)" below.) Añadir Asado leads because it's the one ACTION among
+quiet text with Lucide line icons since 2.1.0, no filled pills - see
+"UI refresh (2.1.0)" below.) Añadir Asado leads because it's the one ACTION among
 otherwise purely navigational links (see `.nav-link-add` below);
 Inicio comes right after it — the 🔥 Asados logo has always linked
 home too, but a logo isn't always registered as clickable NAVIGATION
@@ -270,7 +270,7 @@ Three things here are load-bearing and easy to undo by accident:
   cap), which makes the worst case a fixed number (measured: one 67px
   row down to 1228px with any name), and the breakpoint is that worst
   case plus ~20px for font-rendering differences between browsers/OSes
-  — 1250px. **2.0.2's quiet navbar re-measured to 1218px with the
+  — 1250px. **2.1.0's quiet navbar re-measured to 1218px with the
   longest name, so it's 1240px now** (the icons ate roughly what
   dropping the pill padding saved). Left at an old number, every width between the new
   and old breakpoints would have silently gone back to the squeezed,
@@ -394,7 +394,7 @@ Ubicaciones' spreadsheet, which could genuinely use more room. Fixed
 by giving `.container` a wider default (900px) and letting specific
 pages opt into an even wider cap (1500px) via a new
 `{% block container_extra_class %}` in `base.html` — only
-`base_asados.html` sets this block to `container-wide` since 2.0.2
+`base_asados.html` sets this block to `container-wide` since 2.1.0
 (Ubicaciones dropped it: its in-table fields now fill their cells, so
 the page fits one 900px column with its form; Resumen uses its own
 `container-resumen`, one 1180px width for every block on the page); every other page keeps the moderate 900px default
@@ -873,8 +873,8 @@ a one-line edit with zero code or schema impact.
 
 **Non-beef categories get an emoji + caption, not sourced icon files.**
 Eight images would mean eight licence checks and a set that doesn't
-look like a set; emoji cost nothing. (Since 2.0.2 the INTERFACE uses Lucide line icons
-instead of emoji - see "UI refresh (2.0.2)"; the meat emoji stay
+look like a set; emoji cost nothing. (Since 2.1.0 the INTERFACE uses Lucide line icons
+instead of emoji - see "UI refresh (2.1.0)"; the meat emoji stay
 because they're content, not chrome.) But emoji render differently across platforms
 and several of these are ambiguous alone (🍖 vs 🥩 vs 🐖), so **the
 glyph never appears without its label** — same rule as the per-user
@@ -905,7 +905,7 @@ both.
 **The delete had to learn about the new table.** Children are
 deleted before the parent because `PRAGMA foreign_keys = ON` — miss
 that and the first admin to delete an asado with cuts gets a 500, in a
-route the feature otherwise never touches. Since 2.0.2 the list of
+route the feature otherwise never touches. Since 2.1.0 the list of
 child tables lives in ONE place, `asado_record.CHILD_TABLES`, used by
 both delete and the edit's wholesale replace, and the smoke test
 compares it against schema.sql's foreign keys.
@@ -1161,8 +1161,8 @@ itself is the relevant piece of information. Keep this split when
 adding new views: `name` for anything a group member reads, `username`
 only where you're specifically talking about the login credential.
 
-### asado_record.py — the ONE place an asado is written (v2.0.2)
-Before 2.0.2, saving an asado was written out three times: in
+### asado_record.py — the ONE place an asado is written (v2.1.0)
+Before 2.1.0, saving an asado was written out three times: in
 `new_asado()`, in `edit_asado()` (line for line, with the comments
 thinned out), and in `seed_random_asados.py`, which had already drifted
 (no cortes, no activity log). Adding one child table meant touching
@@ -1191,7 +1191,7 @@ commit (it must never make a save look failed).
 compares it to schema.sql's foreign keys, so a forgotten new child
 table fails a check instead of 500-ing the first admin who deletes.
 
-**Server-side validation was added here (2.0.2), and it's new
+**Server-side validation was added here (2.1.0), and it's new
 behaviour:** before, only "no duplicate participant" was enforced; now
 also nombre, a real ISO date, at least one Tipo de Carne, every
 category/rol/corte known to config.py, numeric participant ids. Each
@@ -1303,7 +1303,7 @@ function then converts it to '.' live, so what's ON SCREEN always
 matches what gets submitted (duplicated once per template rather than
 shared — this app has no shared/common JS file, by design, matching
 its no-build-step approach). `parse_decimal()` (in `asado_record.py`
-since 2.0.2, imported by app.py) is the
+since 2.1.0, imported by app.py) is the
 SERVER-side backstop — a straight `.replace(",", ".")` before
 `float()`, same technique the 1.0.0 historical CSV import already used
 for the same reason — so a value reaches the database correctly parsed
@@ -1473,7 +1473,7 @@ each header link carries the current `year`/`semester` — so changing
 one control never silently resets the other. If you add a third
 control, it needs to be carried in both directions too.
 
-**(Superseded in 2.0.2: Resumen now uses `.container-resumen`, ONE
+**(Superseded in 2.1.0: Resumen now uses `.container-resumen`, ONE
 1180px width for the filters, table, note and chart, so their edges
 line up; what follows is the history.) `.resumen-wrapper` capped the
 table's width to 1180px inside the 1500px `.container-wide` tier** (10 short-value columns don't need the
@@ -1804,7 +1804,7 @@ fine — they're two peer sections, not a hierarchy violation.
 
 **v1.5.0's full home-page order, top to bottom**: success/error
 messages, "Resumen del Grupo", "Listado de Asados" with a green "Añadir
-Asado" shortcut button on the same row (`.section-header`, since 2.0.2
+Asado" shortcut button on the same row (`.section-header`, since 2.1.0
 - it used to take a row of its own), the filter form, then the asado
 card list + pagination. The shortcut button (an
 `<a class="primary-button primary-button-green">`) duplicates the
@@ -2183,7 +2183,7 @@ that drove decisions, if this direction ever needs revisiting:
   APPLICATIONS") are small, uppercase, and letter-spaced rather than
   plain bold text — copied into this app's table headers and tiny meta
   labels (`text-transform: uppercase; letter-spacing: ...`). Form and
-  filter labels used it too until 2.0.2, which moved them to sentence
+  filter labels used it too until 2.1.0, which moved them to sentence
   case: in caps everywhere it read as a generic template tell rather
   than as a choice.
 
@@ -2196,7 +2196,7 @@ legibility — both loaded from Google Fonts in `base.html` (same CDN
 pattern as Leaflet), with system-font fallbacks if that CDN is
 unreachable.
 
-### UI refresh (2.0.2) — one visual system
+### UI refresh (2.1.0) — one visual system
 From a full look-and-feel review, every item approved by the user (and
 previewed on a branch first). The palette and both fonts were kept on
 purpose; what changed is CONSISTENCY:
@@ -2238,7 +2238,7 @@ purpose; what changed is CONSISTENCY:
   aligned name/rol/points columns; Actividad is one panel with a
   divided timeline; form buttons size to their label on desktop and go
   full width on phones; "+ Añadir otro…" are light dashed buttons.
-- **The CSS lives in a marked "UI REFRESH (2.0.2)" section** in
+- **The CSS lives in a marked "UI REFRESH (2.1.0)" section** in
   style.css, placed before the touch/phone section (which must keep
   the last word). It deliberately never sets `display` on
   `.navbar-right` — that would beat the phone menu's media query (the
@@ -2435,7 +2435,7 @@ three f-string queries interpolate only hard-coded fragments and a
 whitelisted sort column — all user values go through `?` placeholders);
 no XSS through templates (Jinja autoescaping is on everywhere, no
 `|safe` anywhere) — **but autoescaping only covers what the SERVER
-renders**: 2.0.2 found a stored XSS in JavaScript, where
+renders**: 2.1.0 found a stored XSS in JavaScript, where
 `_asado_form.html`'s points preview glued a participant's display name
 (free text, editable by every member) into `innerHTML`. Any user text
 handled in JS must go through `textContent`/DOM nodes, never

@@ -32,7 +32,7 @@
          but every selected one is still saved and shown. -->
     <!-- aria-label: these repeated rows have no visible <label> per
          row (the section heading labels them visually), so without it
-         a screen reader just says "pop-up button" (UI review, 2.0.2). -->
+         a screen reader just says "pop-up button" (UI review, 2.1.0). -->
     <select name="tipo_carne" required aria-label="Tipo de carne">
         {% for option in tipo_carne_options %}
             <option value="{{ option }}" {% if selected == option %}selected{% endif %}>{{ option }}</option>
@@ -208,7 +208,7 @@
 
     <hr>
 
-    {# h2 (was h3, UI review 2.0.2): headings must not skip a level, and
+    {# h2 (was h3, UI review 2.1.0): headings must not skip a level, and
        the page title above is now an <h1>. .section-title keeps it the
        same size it always had - see style.css. #}
     <h2 class="section-title">Participantes</h2>
@@ -399,7 +399,7 @@
             const isMax = rowWeights[index] === maxWeight;
             // "peso 1" as a small tag; the winning type also gets the
             // is-max class, which style.css turns into a second "mayor"
-            // tag (UI refresh, 2.0.2 - was "(peso: 1) ★ mayor" in coral).
+            // tag (UI refresh, 2.1.0 - was "(peso: 1) ★ mayor" in coral).
             hint.textContent = "peso " + rowWeights[index];
             hint.classList.toggle("is-max", isMax && rows.length > 1);
         });
@@ -748,7 +748,7 @@
             // is a participant's DISPLAY NAME, which every member can
             // set freely on /config. Glued into innerHTML, a name like
             // <img src=x onerror=...> ran as script for whoever opened
-            // this form - a stored XSS (fixed in 2.0.2; the smoke test's
+            // this form - a stored XSS (fixed in 2.1.0; the smoke test's
             // browser sweep now checks it). textContent always treats
             // the text as text. Same rule for any new user-supplied text
             // on this page: textContent, or Jinja's autoescaping.

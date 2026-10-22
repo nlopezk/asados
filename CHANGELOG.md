@@ -17,6 +17,75 @@ wasn't carried over: it was already built (`new_asado()`/`edit_asado()`
 refuse a repeated participant).
 
 
+## [2.1.0] - 2026-10-22
+No database changes in this release: the migrations all report "already
+present".
+
+### Fixed
+- **Security: a display name could run code in other people's
+  browsers.** The asado form's live points preview inserted each
+  participant's name as HTML, and anyone can set their own name on
+  Configuración, so a name containing a script ran for whoever opened
+  the form next (a "stored XSS"). Names are now always shown as plain
+  text. The smoke test checks this in a real browser.
+- **On phones, the Resumen chart's toolbar covered the "1a" and "Todo"
+  buttons.** The toolbar is hidden on narrow screens (pinch to zoom,
+  double-tap to reset).
+- **The server now checks a submitted asado itself**, instead of
+  trusting the browser: a missing name or date, no Tipo de Carne, or a
+  category the app doesn't know now gets a clear message. Before, an
+  asado with no Tipo de Carne was saved and scored as weight 1, and a
+  missing field showed a bare error page. Existing asados are all
+  valid under the new rules (checked first).
+- "Gas **on** Kanka" on the home cards now reads "Gas **en** Kanka",
+  and the double dot before each participant's name is gone.
+
+### Changed
+- **A new look, same colours.** The app now uses one consistent set of
+  thin line icons instead of emoji (the meat-type emoji stay), a flame
+  logo that is also the browser-tab icon, and fewer sizes, frames and
+  shadows overall. Each browser tab shows the page's name.
+- **A calmer navigation bar:** plain links with icons instead of nine
+  boxes, a brass underline under the page you're on, "Añadir Asado" as
+  the one green button, and your name with "Salir" grouped at the end.
+- **The login page** is a centred card with the logo and the Indio
+  quote.
+- **Home:** "Añadir Asado" sits next to the "Listado de Asados"
+  heading; each card shows its date top right, the details with small
+  icons instead of "|" separators, and the participants in aligned
+  columns (name, rol, points).
+- **Resumen:** "Puntos Totales" is now the third column, so it's
+  visible on a phone without scrolling sideways; the filters, table and
+  chart line up at one width; the sorted column is no longer a solid
+  red block.
+- **Actividad** is one panel with a divided list instead of a separate
+  box per entry.
+- **Forms:** labels in normal sentence case instead of ALL CAPS;
+  buttons as wide as their label on a computer (full width on phones);
+  light dashed "+ Añadir otro…" buttons; the weights shown as small
+  "peso 1" tags, with "mayor" marking the Tipo de Carne that counts.
+- **Easier to read and to tap:** links are a lighter brick red (the old
+  one was too faint on the brown cards, especially outdoors); on phones
+  every button and link is at least a fingertip in size, iPhones no
+  longer zoom in when you tap a filter, and each participant row on
+  the form takes two lines instead of four.
+- **Screen readers:** every page has a proper title heading, and the
+  form's repeated dropdowns and icon-only buttons have spoken names.
+
+### Added (for development, not visible on the site)
+- `asado_record.py`: the one place an asado is saved, edited and
+  deleted, used by the web pages and the seed script alike (it was
+  written out three times before, and the copies had drifted). Tested
+  directly in the smoke test. Changing it doesn't change any stored
+  data: the same 18 saves through old and new code gave identical
+  results.
+- `WORKFLOW.md`: a step-by-step guide to working on the app, with every
+  command, including what to do when something goes wrong.
+- The `ui-review` skill (`/ui-review`), and new smoke-test checks: the
+  asado module without the website, and the display-name XSS guard in
+  a real browser.
+
+
 ## [2.0.1] - 2026-10-22
 > **Includes a migration: `migrate_locations_unique_name.py`.** On the
 > server, run it with the others (README, "Deploying an update", step

@@ -315,13 +315,13 @@ git push
 ```
 /release
 ```
-(Or `/release 2.0.2` if you already know the number.) Claude:
+(Or `/release 2.1.1` if you already know the number.) Claude:
 
 1. checks that no data files or secrets would be committed, and runs
    the full smoke test,
 2. suggests the version number:
-   - **patch** (2.0.1 → 2.0.2): fixes only
-   - **minor** (2.0 → 2.1): new features
+   - **patch** (2.1.0 → 2.1.1): fixes only
+   - **minor** (2.1 → 2.2): new features, or a visibly new look (2.1.0 was the UI refresh)
    - **major** (→ 3.0): a change in how the whole app is structured or deployed
 3. updates it in all four places (`app.py`, `CHANGELOG.md`, `CLAUDE.md`,
    and the git tag) and writes the CHANGELOG entry **for you to review**,

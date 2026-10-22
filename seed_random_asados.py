@@ -8,7 +8,7 @@
 # Each random asado is saved through asado_record.create() — the SAME
 # module the real "Añadir Asado" form uses — so the rows get the same
 # validation, correctly-frozen points and weights, child rows and
-# activity-log entry as a real submission. (Before 2.0.2 this script
+# activity-log entry as a real submission. (Before 2.1.0 this script
 # had its own copy of the INSERTs, which had already drifted: it wrote
 # no cortes and no activity log.)
 #

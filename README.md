@@ -409,10 +409,10 @@ this repo is public, and `git add .` is how the group's real data
 nearly got published twice.
 
 ```bash
-python .claude/skills/release/release_check.py 2.0.2   # all four places agree, no data files staged
+python .claude/skills/release/release_check.py 2.1.1   # all four places agree, no data files staged
 git add -- app.py CHANGELOG.md CLAUDE.md <the files you changed>
-git commit -m "v2.0.2: what changed"
-git tag -a v2.0.2 -m "v2.0.2: what changed"
+git commit -m "v2.1.1: what changed"
+git tag -a v2.1.1 -m "v2.1.1: what changed"
 git push
-git push origin v2.0.2
+git push origin v2.1.1
 ```

@@ -16,14 +16,14 @@
     unaffected.
 -->
 
-{# container-resumen (UI refresh, 2.0.2): ONE width for the whole page.
+{# container-resumen (UI refresh, 2.1.0): ONE width for the whole page.
    Under container-wide the filter box, table, note and chart each had
    a different width (full, 1180px, full, 1300px), so no two edges lined
    up. See .container-resumen in style.css. #}
 {% block container_extra_class %}container-resumen{% endblock %}
 
 {% block content %}
-{# <h1>, not <h2> (UI review, 2.0.2): screen-reader users jump to a
+{# <h1>, not <h2> (UI review, 2.1.0): screen-reader users jump to a
    page's <h1> to find out where they are, and no page had one. It
    LOOKS exactly like the old <h2> - see the h1/h2 rule in style.css. #}
 <h1>Resumen</h1>
@@ -147,7 +147,7 @@
                          by it. -->
                     <th class="resumen-rank-header">#</th>
                     {{ sort_header('usuario', 'Usuario', 'asc') }}
-                    {# Puntos Totales is the THIRD column (UI review, 2.0.2), not
+                    {# Puntos Totales is the THIRD column (UI review, 2.1.0), not
                        the last: it's the number everyone opens this page for,
                        and on a phone the last column was off-screen behind
                        four "Suma" columns. Its <td> moved the same way below -
@@ -222,7 +222,7 @@
      regardless of being inside an HTML comment, since it has no
      concept of HTML comments at all. This exact file hit that once
      already while writing this one.) -->
-{# h2 (was h3, UI review 2.0.2): headings must not skip a level, and
+{# h2 (was h3, UI review 2.1.0): headings must not skip a level, and
    the page title above is now an <h1>. .section-title keeps it the
    same size it always had - see style.css. #}
 <h2 class="section-title resumen-chart-title">Puntos Acumulados en el Tiempo</h2>
@@ -503,7 +503,7 @@
             // so it's dropped from the modebar rather than left as a
             // dead button.
             modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-            // No toolbar on narrow screens (UI review, 2.0.2): on a phone
+            // No toolbar on narrow screens (UI review, 2.1.0): on a phone
             // it was drawn ON TOP of the "1a" and "Todo" period
             // buttons, making them hard to tap. Nothing is lost there:
             // pinch zooms, the period buttons and the rangeslider move

@@ -52,11 +52,11 @@
     <form> inside the table itself.
 -->
 
-{# No longer container-wide (UI refresh, 2.0.2): the form and the table
+{# No longer container-wide (UI refresh, 2.1.0): the form and the table
    now share one column, see .locations-table in style.css. #}
 
 {% block content %}
-{# <h1>, not <h2> (UI review, 2.0.2): screen-reader users jump to a
+{# <h1>, not <h2> (UI review, 2.1.0): screen-reader users jump to a
    page's <h1> to find out where they are, and no page had one. It
    LOOKS exactly like the old <h2> - see the h1/h2 rule in style.css. #}
 <h1>Ubicaciones Guardadas</h1>
@@ -68,7 +68,7 @@
     <p class="error-message">{{ error }}</p>
 {% endif %}
 
-{# h2 (was h3, UI review 2.0.2): headings must not skip a level, and
+{# h2 (was h3, UI review 2.1.0): headings must not skip a level, and
    the page title above is now an <h1>. .section-title keeps it the
    same size it always had - see style.css. #}
 <h2 class="section-title">Nueva Ubicación</h2>
@@ -119,7 +119,7 @@
                         <td title="{% if loc.created_by_name %}Agregada por {{ loc.created_by_name }} — {{ loc.created_at }}{% endif %}">
                             <!-- aria-label on each in-row field: the column header labels
                                  them for sighted users, but a screen reader needs a
-                                 name on the input itself (UI review, 2.0.2). -->
+                                 name on the input itself (UI review, 2.1.0). -->
                             <input type="text" name="name" value="{{ loc.name }}" required class="loc-name-input" aria-label="Nombre"
                                    form="location-form-{{ loc.id }}">
                         </td>

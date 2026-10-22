@@ -68,7 +68,7 @@ loudly if one changed**. If that last check ever fails, stop everything and look
     seed script saving through the module.
 
 The browser layer (`--browser`) also plants a display name containing markup and checks no
-page runs it (the stored XSS fixed in 2.0.2).
+page runs it (the stored XSS fixed in 2.1.0).
 
 ## Extending it (do this as part of the change, not later)
 - **New feature or route:** add a check for its core behaviour to the matching section, in the

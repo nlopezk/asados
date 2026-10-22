@@ -10,7 +10,7 @@
 -->
 
 {% block content %}
-{# <h1>, not <h2> (UI review, 2.0.2): screen-reader users jump to a
+{# <h1>, not <h2> (UI review, 2.1.0): screen-reader users jump to a
    page's <h1> to find out where they are, and no page had one. It
    LOOKS exactly like the old <h2> - see the h1/h2 rule in style.css. #}
 <h1>Configuración</h1>
@@ -22,7 +22,7 @@
     <p class="error-message">{{ error }}</p>
 {% endif %}
 
-{# h2 (was h3, UI review 2.0.2): headings must not skip a level, and
+{# h2 (was h3, UI review 2.1.0): headings must not skip a level, and
    the page title above is now an <h1>. .section-title keeps it the
    same size it always had - see style.css. #}
 <h2 class="section-title">Mi Perfil</h2>
@@ -34,7 +34,7 @@
     <label for="new_password">Nueva contraseña</label>
     <!-- autocomplete="new-password": tells phones and password managers
          this is a NEW password to save, not a place to fill the current
-         one in (UI review, 2.0.2). -->
+         one in (UI review, 2.1.0). -->
     <input type="password" id="new_password" name="new_password" placeholder="Dejar en blanco para no cambiarla" autocomplete="new-password">
 
     <button type="submit" class="primary-button">Guardar Cambios</button>

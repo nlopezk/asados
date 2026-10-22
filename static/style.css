@@ -52,7 +52,7 @@
        surfaces (card titles, links). These two are for TEXT instead:
        a brighter brick-red (closer to the book's actual Scarlet
        swatch) with enough contrast to actually read.
-       LIGHTENED in 2.0.2 (UI review): the old #c15a3f measured only
+       LIGHTENED in 2.1.0 (UI review): the old #c15a3f measured only
        2.7:1 against --color-surface (the cards), under the 4.5:1
        minimum for normal-size text — readable on a monitor indoors,
        hard on a phone outdoors in sunlight, i.e. exactly where an
@@ -89,7 +89,7 @@
        (Base de Asados, Ubicaciones) genuinely benefit from a lot more
        horizontal room. Neither affects mobile: below the cap, width:
        100% already takes over regardless of what the cap is. */
-    /* ---- TYPE SCALE (UI refresh, 2.0.2) ----
+    /* ---- TYPE SCALE (UI refresh, 2.1.0) ----
        Six sizes, and every font-size in this file uses one of them.
        Before this there were TWENTY different sizes (0.5em to 1.7em,
        six of them between 0.85 and 0.95em), so text hierarchy varied
@@ -116,7 +116,7 @@
     --radius-pill: 999px;
     --content-max-width: 900px;
     --content-max-width-wide: 1500px;
-    /* Tells the BROWSER this is a dark theme (UI review, 2.0.2). The
+    /* Tells the BROWSER this is a dark theme (UI review, 2.1.0). The
        browser draws some things itself, outside our CSS: the date
        picker's calendar, a <select>'s open list, scrollbars, the
        autofill highlight. Without this line it draws them for a LIGHT
@@ -141,7 +141,7 @@ h1, h2, h3, h4 {
     color: var(--color-text);
 }
 
-/* h1 shares h2's size on purpose (UI review, 2.0.2). Each page's title
+/* h1 shares h2's size on purpose (UI review, 2.1.0). Each page's title
    is now an <h1> - screen readers use it to tell people which page
    they're on - but it should LOOK exactly like the <h2> titles did,
    not jump to the browser's bigger default h1 size. */
@@ -151,7 +151,7 @@ h2 {
 }
 
 /* Section headings inside a page (Participantes, Mi Perfil, Historial
-   de Asados...) became <h2> in 2.0.2, because each page's title is now
+   de Asados...) became <h2> in 2.1.0, because each page's title is now
    the <h1> and headings must not skip a level (h1 straight to h3).
    This keeps them the size they had as <h3>: 1.17em is the browser's
    own default h3 size, which is what they always rendered at. One
@@ -177,7 +177,7 @@ h2 {
     border: 0;
 }
 
-/* One consistent keyboard-focus ring (UI review, 2.0.2). Until now the
+/* One consistent keyboard-focus ring (UI review, 2.1.0). Until now the
    app relied on each browser's default ring, which is faint against
    the burgundy navbar. :focus-visible (not :focus) means it appears
    when you move around with the KEYBOARD, not on every mouse click or
@@ -276,7 +276,7 @@ hr {
     font-weight: 700;
     letter-spacing: 0.02em;
     text-decoration: none;
-    /* The flame mark sits beside the word (UI refresh, 2.0.2). */
+    /* The flame mark sits beside the word (UI refresh, 2.1.0). */
     display: inline-flex;
     align-items: center;
     gap: 9px;
@@ -293,7 +293,7 @@ hr {
     flex: none;
 }
 
-/* QUIET LINKS (UI refresh, 2.0.2). The links used to be nine filled
+/* QUIET LINKS (UI refresh, 2.1.0). The links used to be nine filled
    pills in a row, which read as busy. Now they're plain text with a
    small line icon: no box at rest, a faint wash on hover, and the brass
    underline marks the page you're on (.nav-current below). Only "Añadir
@@ -376,7 +376,7 @@ hr {
    muddy it), so it gets its own follow-up rule instead. */
 .nav-link.nav-current:not(.nav-link-add),
 .nav-link.nav-current:not(.nav-link-add):visited {
-    /* Quiet nav (2.0.2): the current page is full white plus the brass
+    /* Quiet nav (2.1.0): the current page is full white plus the brass
        underline - no filled box any more, the underline IS the marker. */
     box-shadow: inset 0 -2px 0 0 var(--color-gold);
     background-color: transparent;
@@ -401,7 +401,7 @@ hr {
    of cutting through them. */
 /* The logo no longer gets an underline when you're home: "Inicio"
    right beside it already shows that, and two brass marks for one page
-   read as a mistake (UI refresh, 2.0.2). The rule stays, deliberately
+   read as a mistake (UI refresh, 2.1.0). The rule stays, deliberately
    empty of decoration, so the class keeps a documented meaning. */
 .nav-title.nav-current,
 .nav-title.nav-current:visited {
@@ -454,7 +454,7 @@ hr {
 }
 
 /* WHO IS LOGGED IN + Salir, grouped at the end of the bar behind a thin
-   divider (UI refresh, 2.0.2): they're about you, not sections of the app. */
+   divider (UI refresh, 2.1.0): they're about you, not sections of the app. */
 .nav-account {
     display: inline-flex;
     align-items: center;
@@ -508,7 +508,7 @@ hr {
    LONGEST possible display name (which .nav-username's 14ch cap now
    bounds): one clean 67px row down to 1228px, below that the labels
    wrap their own text and it jumps to 104px. 1250 was that worst case
-   plus ~20px of margin (2.0.2's quiet navbar re-measured to 1218px,
+   plus ~20px of margin (2.1.0's quiet navbar re-measured to 1218px,
    hence 1240 now), because the exact pixel differs a little
    between browsers and operating systems (font rendering), and an
    exact-to-the-pixel number already failed once — see below.
@@ -525,7 +525,7 @@ hr {
    it's documented this way**: the number was 1024px with six links,
    became 1125px the moment a seventh link ("🏆 Resumen") was added,
    became 1168px when an eighth ("Inicio") was added, 1250px with
-   the name-length fix above, and 1240px with the 2.0.2 quiet navbar
+   the name-length fix above, and 1240px with the 2.1.0 quiet navbar
    (text links with line icons + the account group; re-measured: one
    row down to 1218px with the longest name, +~20px margin) — each time
    walking a real browser width by width to find the new exact
@@ -601,7 +601,7 @@ hr {
 
     /* The account group in the dropdown: stacked like the other rows,
        with the existing line above the name instead of the desktop
-       bar's vertical divider (UI refresh, 2.0.2). */
+       bar's vertical divider (UI refresh, 2.1.0). */
     .navbar-right.open .nav-account {
         display: flex;
         flex-direction: column;
@@ -708,7 +708,7 @@ hr {
     padding: 6px 14px 6px 10px;
     text-decoration: none;
     font-size: var(--text-s);
-    /* (drop shadow removed, UI refresh 2.0.2 - see :root) */
+    /* (drop shadow removed, UI refresh 2.1.0 - see :root) */
 }
 
 .group-summary-card:hover {
@@ -737,7 +737,7 @@ hr {
     border-radius: var(--radius-m);
     padding: 14px 16px;
     margin-bottom: 12px;
-    /* (drop shadow removed, UI refresh 2.0.2 - see :root) */
+    /* (drop shadow removed, UI refresh 2.1.0 - see :root) */
 }
 
 /* NOTE: this targets h3 because that's what index.html's card actually
@@ -782,7 +782,7 @@ hr {
     margin: 0 0 4px 0;
 }
 
-/* No list bullet (UI review, 2.0.2): every name already starts with
+/* No list bullet (UI review, 2.1.0): every name already starts with
    its colour dot, so the browser's bullet in front of it made a
    double dot "• ● Nombre" that read like a rendering glitch. The
    colour dot now does the bullet's job, so the indent goes too. */
@@ -830,7 +830,7 @@ hr {
     border-radius: var(--radius-m);
     padding: 10px 16px;
     margin-bottom: 10px;
-    /* (drop shadow removed, UI refresh 2.0.2 - see :root) */
+    /* (drop shadow removed, UI refresh 2.1.0 - see :root) */
 }
 
 .log-entry-header {
@@ -1326,7 +1326,7 @@ button:hover {
 }
 
 /* The heading inside already carries the section's bottom margin.
-   h1 too: page titles became <h1> in 2.0.2 (see the h1/h2 rule). */
+   h1 too: page titles became <h1> in 2.1.0 (see the h1/h2 rule). */
 .page-header h1,
 .page-header h2 {
     margin-bottom: 0;
@@ -1577,7 +1577,7 @@ button:hover {
     border-radius: var(--radius-m);
     padding: 12px 16px;
     margin-bottom: 14px;
-    /* (drop shadow removed, UI refresh 2.0.2 - see :root) */
+    /* (drop shadow removed, UI refresh 2.1.0 - see :root) */
 }
 
 .filter-field {
@@ -1651,7 +1651,7 @@ button:hover {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-m);
-    /* (drop shadow removed, UI refresh 2.0.2 - see :root) */
+    /* (drop shadow removed, UI refresh 2.1.0 - see :root) */
 }
 
 .spreadsheet-table {
@@ -1935,7 +1935,7 @@ button:hover {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-m);
-    /* (drop shadow removed, UI refresh 2.0.2 - see :root) */
+    /* (drop shadow removed, UI refresh 2.1.0 - see :root) */
 }
 
 /* Plotly's `responsive: true` config (see resumen.html) makes it
@@ -2019,7 +2019,7 @@ button:hover {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-m);
     padding: 14px 16px;
-    /* (drop shadow removed, UI refresh 2.0.2 - see :root) */
+    /* (drop shadow removed, UI refresh 2.1.0 - see :root) */
 }
 
 .stat-tile-label {
@@ -2064,7 +2064,7 @@ button:hover {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-m);
-    /* (drop shadow removed, UI refresh 2.0.2 - see :root) */
+    /* (drop shadow removed, UI refresh 2.1.0 - see :root) */
     margin-bottom: 22px;
 }
 
@@ -2123,7 +2123,7 @@ button:hover {
 }
 
 /* =====================================================================
-   UI REFRESH (2.0.2) - one visual system for the whole app
+   UI REFRESH (2.1.0) - one visual system for the whole app
    Approved changes from the look-and-feel review. Kept together here so
    they read as one design decision. Placed AFTER the component rules
    they refine (later wins at equal specificity) but BEFORE the
@@ -2638,7 +2638,7 @@ body > main {
 }
 
 /* =====================================================================
-   TOUCH SCREENS AND PHONES (UI review, 2.0.2)
+   TOUCH SCREENS AND PHONES (UI review, 2.1.0)
    Kept together at the END of this file on purpose: these override
    rules defined earlier, and when two rules have the same specificity
    the LATER one wins. Every rule here only applies on touch screens
@@ -2843,7 +2843,7 @@ body > main {
     }
 
     /* A form's main button goes full width again on a phone (UI refresh,
-       2.0.2): on a narrow screen that IS the natural size, and the
+       2.1.0): on a narrow screen that IS the natural size, and the
        easiest target for a thumb. Desktop sizes it to its label. */
     .asado-form > .primary-button {
         align-self: stretch;

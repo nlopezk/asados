@@ -29,7 +29,7 @@
 <div class="page-header">
     <div class="profile-header">
         <span class="profile-color-dot" style="background-color: {{ profile_color }}"></span>
-        {# <h1>, not <h2> (UI review, 2.0.2): screen-reader users jump to a
+        {# <h1>, not <h2> (UI review, 2.1.0): screen-reader users jump to a
            page's <h1> to find out where they are, and no page had one. It
            LOOKS exactly like the old <h2> - see the h1/h2 rule in style.css. #}
         <h1>{{ profile_user.name }}</h1>
@@ -80,7 +80,7 @@
          see build_user_monthly_chart_data()'s docstring in app.py for
          why a bar-per-month replaced the earlier cumulative line). -->
     <script src="https://cdn.jsdelivr.net/npm/plotly.js-cartesian-dist-min@2.35.2/plotly-cartesian.min.js"></script>
-    {# h2 (was h3, UI review 2.0.2): headings must not skip a level, and
+    {# h2 (was h3, UI review 2.1.0): headings must not skip a level, and
        the page title above is now an <h1>. .section-title keeps it the
        same size it always had - see style.css. #}
     <h2 class="section-title profile-chart-title">Asados por Mes</h2>
