@@ -127,6 +127,7 @@ As_app/
 ├── accounts_schema.sql     <- Tables of accounts.db (never drops anything)
 ├── schema.sql              <- Tables of a group's database (only ever for a NEW, empty group)
 ├── config.py               <- Point weights + the points formula (EDIT HERE to tweak scoring)
+├── asado_record.py         <- THE place an asado is saved/edited/deleted (validation, frozen weights, child rows)
 ├── activity_log.py         <- Writes the "who changed what" log + builds edit diffs
 ├── backup_db.py            <- Safe SQLite snapshot helper (used automatically + manually)
 ├── manage_groups.py        <- Terminal tool: create / list / rename groups

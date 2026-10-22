@@ -5,10 +5,12 @@
 # filters, Base de Asados, CSV export, etc. without typing in real data
 # by hand every time.
 #
-# It reuses the SAME weight-lookup helpers app.py uses when you submit
-# the real "New Asado" form (get_shared_weights/get_rol_weight/
-# calculate_points from config.py), so the random rows end up with
-# realistic, correctly-frozen points and weights — not fake numbers.
+# Each random asado is saved through asado_record.create() — the SAME
+# module the real "Añadir Asado" form uses — so the rows get the same
+# validation, correctly-frozen points and weights, child rows and
+# activity-log entry as a real submission. (Before 2.0.2 this script
+# had its own copy of the INSERTs, which had already drifted: it wrote
+# no cortes and no activity log.)
 #
 # It does NOT touch existing data: it only INSERTs new rows on top of
 # whatever's already in the group's database. Safe to run more than
@@ -37,9 +39,10 @@ import sys
 import random
 from datetime import date, timedelta
 
+import asado_record
 from config import (
     TIPO_CARNE_WEIGHTS, COCCION_WEIGHTS, SUPERFICIE_WEIGHTS, LOCAL_WEIGHTS,
-    ROL_WEIGHTS, get_shared_weights, get_rol_weight, get_tipo_carne_weights, calculate_points,
+    ROL_WEIGHTS, CATEGORIAS_CON_DESPIECE, CORTES_VACUNO,
 )
 
 from accounts import ACCOUNTS_DATABASE, GROUPS_DIR, connect_existing, find_group_by_slug, group_db_path
@@ -101,13 +104,6 @@ def seed_random_asados(group_slug, count):
         superficie = random.choice(list(SUPERFICIE_WEIGHTS.keys()))
         local = random.choice(list(LOCAL_WEIGHTS.keys()))
 
-        # Same lookup helpers app.py uses — keeps the "weights are
-        # looked up and frozen once, at creation time" behavior
-        # consistent for seeded data too (see the comment on these
-        # columns in schema.sql). "carne" ends up as the MAX weight
-        # across tipo_carne_list, same rule as a real submission.
-        shared_weights = get_shared_weights(tipo_carne_list, coccion, superficie, local)
-
         # Location is optional in the real form too, so leave it empty
         # about a third of the time rather than always filling it in.
         if random.random() < 0.7:
@@ -115,56 +111,42 @@ def seed_random_asados(group_slug, count):
         else:
             location, latitude, longitude = "", None, None
 
-        nombre = f"{random.choice(NAME_ADJECTIVES)} {random.choice(NAME_NOUNS)}"
-
-        cursor = conn.execute(
-            """
-            INSERT INTO asados
-                (date, nombre, description, coccion,
-                 superficie, local, location, latitude, longitude, people, total_weight,
-                 tipo_carne_weight, coccion_weight, superficie_weight, local_weight)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                random_date_within_last_years(), nombre, "Asado de prueba generado automáticamente.",
-                coccion, superficie, local, location, latitude, longitude,
-                random.randint(4, 20), round(random.uniform(2.0, 12.0), 1),
-                shared_weights["carne"], shared_weights["coccion"],
-                shared_weights["superficie"], shared_weights["local"],
-            ),
-        )
-        asado_id = cursor.lastrowid
-
-        # Freeze each selected Tipo de Carne's own weight too (see
-        # schema.sql's asado_tipo_carne table).
-        tipo_carne_weights = get_tipo_carne_weights(tipo_carne_list)
-        for tc in tipo_carne_list:
-            conn.execute(
-                "INSERT INTO asado_tipo_carne (asado_id, tipo_carne, tipo_carne_weight) VALUES (?, ?, ?)",
-                (asado_id, tc, tipo_carne_weights[tc]),
-            )
+        # A few cuts when a beef category with a despiece was picked, so
+        # /cortes-related views have something to show. (asado_record
+        # drops cuts for any other category anyway.)
+        cortes = []
+        if any(tc in CATEGORIAS_CON_DESPIECE for tc in tipo_carne_list):
+            cortes = random.sample(list(CORTES_VACUNO), random.randint(0, 3))
 
         # Between 1 participant and everyone you have registered, each
-        # user appearing at most once (random.sample never repeats).
-        num_participants = random.randint(1, len(user_ids))
-        participant_ids = random.sample(user_ids, num_participants)
+        # member appearing at most once (random.sample never repeats).
+        participant_ids = random.sample(user_ids, random.randint(1, len(user_ids)))
 
-        for user_id in participant_ids:
-            rol = random.choice(list(ROL_WEIGHTS.keys()))
-            rol_weight = get_rol_weight(rol)
-            points = calculate_points(tipo_carne_list, coccion, superficie, local, rol)
+        asado_record.create(
+            conn,
+            asado_record.AsadoInput(
+                date=random_date_within_last_years(),
+                nombre=f"{random.choice(NAME_ADJECTIVES)} {random.choice(NAME_NOUNS)}",
+                description="Asado de prueba generado automáticamente.",
+                tipos_carne=tipo_carne_list,
+                cortes=cortes,
+                coccion=coccion,
+                superficie=superficie,
+                local=local,
+                location=location,
+                latitude=latitude,
+                longitude=longitude,
+                people=random.randint(4, 20),
+                total_weight=round(random.uniform(2.0, 12.0), 1),
+                participants=[(uid, random.choice(list(ROL_WEIGHTS.keys()))) for uid in participant_ids],
+            ),
+            # Not a person: user_id None (activity_log.user_id allows
+            # it), and a name that says plainly where the entry came from.
+            asado_record.Actor(user_id=None, name="Datos de prueba (seed_random_asados.py)"),
+        )
+        total_participations += len(participant_ids)
 
-            conn.execute(
-                """
-                INSERT INTO participations (asado_id, user_id, rol, rol_weight, points)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (asado_id, user_id, rol, rol_weight, points),
-            )
-            total_participations += 1
-
-    conn.commit()
-    conn.close()
+    conn.close()  # asado_record.create() commits each asado itself
     print(f"Created {count} random asados with {total_participations} total participations.")
 
 

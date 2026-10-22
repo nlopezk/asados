@@ -722,12 +722,27 @@
 
             // Show the equation immediately, with a "..." placeholder
             // for the result while we wait for the server's real answer.
+            //
+            // Built from DOM nodes + textContent, NEVER innerHTML: `name`
+            // is a participant's DISPLAY NAME, which every member can
+            // set freely on /config. Glued into innerHTML, a name like
+            // <img src=x onerror=...> ran as script for whoever opened
+            // this form - a stored XSS (fixed in 2.0.2; the smoke test's
+            // browser sweep now checks it). textContent always treats
+            // the text as text. Same rule for any new user-supplied text
+            // on this page: textContent, or Jinja's autoescaping.
             const line = document.createElement("div");
             line.className = "points-summary-line";
-            line.innerHTML =
-                "<strong>" + name + "</strong> (" + rolSelect.value + "): " +
-                formulaWithLabels +
-                " = <strong>...</strong> pts";
+            const nameTag = document.createElement("strong");
+            nameTag.textContent = name;
+            const resultTag = document.createElement("strong");
+            resultTag.textContent = "...";
+            line.append(
+                nameTag,
+                " (" + rolSelect.value + "): " + formulaWithLabels + " = ",
+                resultTag,
+                " pts"
+            );
             summaryDiv.appendChild(line);
 
             // Ask the SERVER for the real points value for THIS

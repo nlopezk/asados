@@ -22,14 +22,20 @@ from urllib.parse import urlparse  # checking login's ?next= stays on this site 
 from flask import Flask, render_template, request, redirect, url_for, g, jsonify, session, Response
 from werkzeug.security import check_password_hash, generate_password_hash
 from config import (
-    calculate_points, get_shared_weights, get_rol_weight, get_tipo_carne_weights,
+    calculate_points,  # only for /api/points' live preview; saving goes through asado_record
     TIPO_CARNE_WEIGHTS, COCCION_WEIGHTS, SUPERFICIE_WEIGHTS,
     LOCAL_WEIGHTS, ROL_WEIGHTS, FORMULA, VARIABLE_LABELS,
     # Descriptive-only, never scored — see config.py's NON-SCORING banner.
     CATEGORIAS_CON_DESPIECE, CORTES_VACUNO, ICONOS_TIPO_CARNE,
 )
 from backup_db import backup_database
-from activity_log import log_create, log_edit, log_delete, diff_asado, now_timestamp
+from activity_log import now_timestamp
+# Saving, editing and deleting an asado (and its child rows, frozen
+# weights and activity log) all live in asado_record.py since 2.0.2 -
+# the routes below only handle the HTTP side. parse_decimal moved there
+# with it; /ubicaciones uses it too.
+import asado_record
+from asado_record import parse_decimal
 from accounts import (
     connect_existing, group_db_path, find_account_by_username, resolve_membership,
     find_group_by_export_token, create_member_account, delete_member_account,
@@ -307,50 +313,8 @@ def parse_page_number(value):
     return page if page >= 1 else 1
 
 
-def parse_decimal(raw_value):
-    """
-    Parses a hand-typed form field into a float, accepting BOTH '.' and
-    ',' as the decimal separator.
-
-    This app's users are Spanish/Latin-American, where ',' is the
-    everyday decimal separator ("2,5 kg") — but a plain
-    request.form.get(field, type=float) (Werkzeug's built-in
-    conversion, used everywhere in this file before this function
-    existed) calls Python's own float(), which only ever accepts '.'.
-    Worse, the matching HTML side (<input type="number">) doesn't even
-    surface an error when someone types a comma: per the HTML spec,
-    that input type only accepts the "." separator regardless of the
-    page's language, and typing "2,5" doesn't get rejected — the
-    comma keystroke is just silently DROPPED, leaving "25" in the
-    field. The browser reports that as perfectly valid. That's a
-    genuine, silent data-corruption risk for exactly the audience this
-    app is built for (someone meaning to log 2.5 kg of meat would
-    actually save 25kg), not just a cosmetic inconvenience — confirmed
-    by literally typing it into a real browser before this existed.
-
-    Used for every hand-typed decimal field in the app (asado
-    total_weight; the Ubicaciones "Existentes" table's latitude/
-    longitude, which unlike the map-picker's own hidden inputs ARE
-    plain, hand-editable number fields) — see _asado_form.html/
-    ubicaciones.html, where those inputs were switched from
-    type="number" to type="text" inputmode="decimal" specifically so a
-    typed comma actually reaches this function instead of being eaten
-    by the browser before the page even sees it.
-
-    Returns None for a blank/missing/unparseable value, matching how
-    Werkzeug's own `type=float` already behaves on request.form.get()
-    — a drop-in replacement, not a new calling convention.
-    """
-    if raw_value is None:
-        return None
-    raw_value = raw_value.strip()
-    if not raw_value:
-        return None
-    try:
-        return float(raw_value.replace(",", "."))
-    except ValueError:
-        return None
-
+# parse_decimal() - accepting "2,5" as well as "2.5" - lives in
+# asado_record.py since 2.0.2 (imported at the top of this file).
 
 # ---------------------------------------------------------------------
 # "BASE DE ASADOS" QUERY (spreadsheet-style export)
@@ -1143,7 +1107,7 @@ def create_location():
     """Manual "add a saved location" form on /ubicaciones itself. The
     MORE common way a location gets added is opportunistically, via the
     "Guardar esta ubicación" checkbox on the asado form (see
-    maybe_save_location() below) — this route exists so the pool can
+    asado_record.maybe_save_location()) — this route exists so the pool can
     also be built up directly, without needing to create/edit an asado
     first."""
     db = get_db()
@@ -1290,39 +1254,8 @@ def asado_form_context(db):
     }
 
 
-def maybe_save_location(db, user_id, name, address, latitude, longitude):
-    """
-    Called from new_asado()/edit_asado() when the "Guardar esta
-    ubicación" checkbox was ticked — inserts a new row into `locations`
-    so it shows up in the "Ubicación guardada" dropdown next time (see
-    CLAUDE.md's "Recurring locations" section). A no-op (returns
-    without inserting) if:
-      - `name` is blank,
-      - `address`/`latitude`/`longitude` are missing — locations.* are
-        NOT NULL (see schema.sql), and unlike /ubicaciones' OWN "Nueva
-        Ubicación" form, the asado form's location stays fully
-        optional/free-typed, so it's entirely possible to reach here
-        with an address that was never actually geocoded (no
-        suggestion/map point ever picked). Silently not saving it to
-        the pool is the right behavior — a location with no real
-        coordinates would be useless as a map quick-fill anyway — and
-        this asado itself must still save normally either way,
-      - a location with that exact name (case-insensitive) already
-        exists — silently skipping a duplicate is simpler and less
-        surprising than erroring out an otherwise-successful asado save
-        over a naming collision; renaming/fixing an existing saved
-        location is what the /ubicaciones page itself is for.
-    """
-    if not name or not address or latitude is None or longitude is None:
-        return
-    existing = db.execute("SELECT 1 FROM locations WHERE LOWER(name) = LOWER(?)", (name,)).fetchone()
-    if existing:
-        return
-    db.execute(
-        "INSERT INTO locations (name, address, latitude, longitude, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (name, address, latitude, longitude, user_id, now_timestamp()),
-    )
-
+# maybe_save_location() (the asado form's "Guardar esta ubicación"
+# checkbox) lives in asado_record.py since 2.0.2.
 
 def build_group_summary(db):
     """
@@ -1605,42 +1538,11 @@ def cortes_alfabeticos():
     return sorted(CORTES_VACUNO, key=sort_key)
 
 
-def read_submitted_cortes(tipo_carne_list):
-    """
-    Reads the individual beef cuts ("Lomo Vetado", "Punta de Ganso", ...)
-    off a submitted asado form. Shared by new_asado() and edit_asado()
-    so the two can't drift on what counts as a valid submission — the
-    same reason asado_form_context() exists for the render side.
-
-    NOTHING HERE FEEDS THE POINTS FORMULA. Cortes are descriptive only
-    (see config.py's NON-SCORING banner and schema.sql's asado_cortes
-    table, which deliberately has no weight column). This function's
-    result is written straight to that table and read by nothing else.
-
-    Two rules, both deliberate:
-
-    1. Cuts are DROPPED ENTIRELY unless a category that has a despiece
-       (CATEGORIAS_CON_DESPIECE) is among the submitted types. This
-       happens legitimately, not just under tampering: someone picks
-       three cuts, then changes the Tipo de Carne to something else
-       before saving. The form deliberately KEEPS their picks visible
-       client-side in case they change back, and the server makes the
-       final call about what's actually saved — the same "friendly
-       client behaviour, authoritative server rule" layering this app
-       already uses for required fields and duplicate participants.
-
-    2. Duplicates are removed while PRESERVING ORDER. dict.fromkeys()
-       rather than set(), because a set would scramble the order, and
-       the order cuts were picked in is the order they'll be listed
-       back. The UI can't produce a duplicate, but a stale or tampered
-       form can, and a duplicate is meaningless here (a cut is either
-       on the grill or it isn't) rather than something to reject the
-       whole submission over.
-    """
-    if not any(tc in CATEGORIAS_CON_DESPIECE for tc in tipo_carne_list):
-        return []
-    return list(dict.fromkeys(c for c in request.form.getlist("corte") if c))
-
+def current_actor():
+    """Who is making this change, in the shape asado_record wants for
+    the activity log: the logged-in MEMBER id and display name (see
+    load_logged_in_user())."""
+    return asado_record.Actor(user_id=g.user_id, name=g.name)
 
 @app.route("/asado/new", methods=["GET", "POST"])
 @login_required
@@ -1653,48 +1555,9 @@ def new_asado():
     db = get_db()
 
     if request.method == "POST":
-        # --- Step 1: read the shared asado fields from the submitted form ---
-        # request.form is a dictionary-like object holding whatever the
-        # <input name="..."> fields sent.
-        date = request.form["date"]
-        nombre = request.form["nombre"]
-        description = request.form.get("description", "")  # .get() with default = optional field
-        # An asado can have more than one Tipo de Carne (minimum one) —
-        # getlist() reads every "tipo_carne" field the form submitted,
-        # not just the first. The blank-filter is defensive (the UI
-        # never lets you remove the last row or leave one unselected,
-        # but a tampered/malformed request shouldn't crash the route).
-        tipo_carne_list = [tc for tc in request.form.getlist("tipo_carne") if tc]
-        cortes_list = read_submitted_cortes(tipo_carne_list)
-        coccion = request.form["coccion"]
-        superficie = request.form["superficie"]
-        local = request.form["local"]
-        location = request.form.get("location", "")
-        # These are hidden inputs, filled in by the map-picker
-        # JavaScript (see new_asado.html) — always '.'-formatted, so
-        # parse_decimal() is only strictly needed for total_weight
-        # below, but using it here too costs nothing and keeps ONE
-        # function deciding "how this app reads a hand-or-JS-typed
-        # decimal" rather than two different rules for two paths.
-        latitude = parse_decimal(request.form.get("latitude"))
-        longitude = parse_decimal(request.form.get("longitude"))
-        people = request.form.get("people", type=int)
-        # total_weight IS hand-typed (see _asado_form.html's
-        # type="text" inputmode="decimal" input) — parse_decimal()
-        # accepts "2,5" the way this app's Spanish-speaking users
-        # actually type it, not just "2.5". See parse_decimal()'s own
-        # docstring for what silently went wrong before this existed.
-        total_weight = parse_decimal(request.form.get("total_weight"))
-        # "Guardar esta ubicación" checkbox (see _asado_form.html) — an
-        # UNCHECKED box, the default, means today's original one-off
-        # behavior: this location is used for THIS asado only and never
-        # added to the reusable pool. See maybe_save_location() above.
-        save_location = request.form.get("save_location") == "on"
-        location_name = request.form.get("location_name", "").strip()
-
         # --- Was this form already submitted? Check FIRST, before any
-        # read or write, because this is the one failure mode where
-        # doing the work twice produces a real, visible duplicate.
+        # write, because this is the one failure mode where doing the
+        # work twice produces a real, visible duplicate.
         #
         # A user reported adding one asado and getting two, one second
         # apart. The cause was a double-tap: nothing in the form
@@ -1726,9 +1589,8 @@ def new_asado():
         # would be a worse failure than a rare duplicate that takes
         # two clicks to delete.
         #
-        # Deliberately NOT applied to the other POST routes: each is
-        # already protected by a constraint or is idempotent, and a
-        # token on all of them would be machinery guarding nothing.
+        # It stays HERE, not in asado_record: it's about HTTP
+        # double-submits, not about what makes an asado valid.
         if not consume_form_token():
             return redirect(url_for(
                 "index",
@@ -1736,134 +1598,27 @@ def new_asado():
                         "en la lista, volvé a cargarlo.",
             ))
 
-        # --- Participants: read + validate BEFORE inserting anything ---
-        # A blank row (nothing selected) is fine — it's just skipped
-        # further down, same as always. What's NOT allowed is the SAME
-        # registered user appearing in more than one row: one person
-        # can't hold two Roles (or the same Role twice) at the same
-        # asado. Checked here, before the asado INSERT below, so an
-        # invalid submission fails fast instead of doing (uncommitted,
-        # but still wasted) writes first. Blank rows are excluded from
-        # the comparison — two rows both left on "Elegir usuario..." is
-        # not a duplicate, it's just two empty rows.
-        participant_user_ids = request.form.getlist("participant_user_id")
-        participant_roles = request.form.getlist("participant_rol")
-        non_blank_participant_ids = [uid for uid in participant_user_ids if uid]
-        if len(non_blank_participant_ids) != len(set(non_blank_participant_ids)):
-            return redirect(url_for(
-                "new_asado",
-                error="Un mismo usuario no puede tener más de un rol en el mismo asado.",
-            ))
-
-        # --- Step 2: insert the asado row and get its new auto-generated id ---
-        # Look up (and freeze) the shared weights NOW, at creation time
-        # — see the comment on these columns in schema.sql for why this
-        # matters (config.py's weights could change later). "carne" here
-        # is the MAX weight across every selected Tipo de Carne — the
-        # one that actually feeds the points formula.
-        shared_weights = get_shared_weights(tipo_carne_list, coccion, superficie, local)
-
-        cursor = db.execute(
-            """
-            INSERT INTO asados
-                (date, nombre, description, coccion,
-                 superficie, local, location, latitude, longitude, people, total_weight,
-                 tipo_carne_weight, coccion_weight, superficie_weight, local_weight)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (date, nombre, description, coccion,
-             superficie, local, location, latitude, longitude, people, total_weight,
-             shared_weights["carne"], shared_weights["coccion"],
-             shared_weights["superficie"], shared_weights["local"]),
-        )
-        asado_id = cursor.lastrowid  # the id SQLite just assigned to this new row
-
-        # Freeze EVERY selected Tipo de Carne's own weight too, not just
-        # the winning max above — see schema.sql's asado_tipo_carne
-        # table for why (full audit trail: which types were chosen, and
-        # each one's own weight, not just the final number that won).
-        tipo_carne_weights = get_tipo_carne_weights(tipo_carne_list)
-        for tc in tipo_carne_list:
-            db.execute(
-                "INSERT INTO asado_tipo_carne (asado_id, tipo_carne, tipo_carne_weight) VALUES (?, ?, ?)",
-                (asado_id, tc, tipo_carne_weights[tc]),
-            )
-
-        # The individual cuts, if any. Note there's no weight to freeze
-        # here and no lookup to do — unlike the loop just above, these
-        # are descriptive only (see read_submitted_cortes() and
-        # schema.sql's asado_cortes table). Nothing about this loop can
-        # change the points already computed above.
-        for corte in cortes_list:
-            db.execute(
-                "INSERT INTO asado_cortes (asado_id, corte) VALUES (?, ?)",
-                (asado_id, corte),
-            )
-
-        # --- Step 3: handle participants ---
-        # The form now sends a REGISTERED user's id (from a dropdown,
-        # not free-typed text) alongside their Rol for this asado.
-        # This matches your decision: only registered accounts can be
-        # participants, no more auto-creating users on the fly.
-        # user_ids/roles were already read (and checked for a duplicate
-        # user) above, before Step 2 — reused here rather than reading
-        # request.form a second time.
-        user_ids = participant_user_ids
-        roles = participant_roles
-
-        for user_id_str, rol in zip(user_ids, roles):
-            if not user_id_str:
-                continue  # skip any row where nothing was selected
-
-            user_id = int(user_id_str)
-
-            # Safety check: confirm this id really matches an existing
-            # user, in case of any tampering with the submitted form
-            # (e.g. someone editing the HTML before submitting).
-            user_row = db.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
-            if user_row is None:
-                continue  # silently skip an invalid id rather than crashing
-
-            # Calculate this participant's points using our formula from config.py.
-            # Rol is per-participant, so points (and its weight) can
-            # differ between people even though they were at the SAME
-            # asado — freeze rol_weight here for the same reason as
-            # shared_weights above.
-            points = calculate_points(tipo_carne_list, coccion, superficie, local, rol)
-            rol_weight = get_rol_weight(rol)
-
-            db.execute(
-                """
-                INSERT INTO participations (asado_id, user_id, rol, rol_weight, points)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (asado_id, user_id, rol, rol_weight, points),
-            )
-
-        # Log the creation — see activity_log.py. Called before commit()
-        # so the log entry and the asado itself are saved together, in
-        # the same transaction (either both succeed or, if something
-        # above raised first, neither does).
-        log_create(db, g.user_id, g.name, asado_id, nombre, date)
-
-        # If "Guardar esta ubicación" was checked, add it to the
-        # reusable pool now — see maybe_save_location() above.
-        if save_location:
-            maybe_save_location(db, g.user_id, location_name, location, latitude, longitude)
-
-        db.commit()  # save everything permanently to the database file
+        # Everything else — validation, frozen weights, the child rows,
+        # the activity log, "Guardar esta ubicación", the commit — is
+        # asado_record.create(). If it raises AsadoInvalid, nothing was
+        # written; the message is meant for the user.
+        try:
+            asado_record.create(db, asado_record.read_form(request.form), current_actor())
+        except asado_record.AsadoInvalid as e:
+            return redirect(url_for("new_asado", error=str(e)))
 
         # Automatic backup, every time a new asado is added — see
         # backup_db.py for why this is a safe SQLite-level backup and
-        # not just a file copy. Wrapped in try/except so that if the
-        # backup itself ever fails (disk full, permissions, etc.), the
-        # user's asado is still saved and the page still loads
-        # normally — a failed backup should never look like a failed
-        # save. The CURRENT GROUP's file is passed explicitly (not
-        # backup_db's own default), into that group's own folder
-        # (backups/<slug>/) — so each group's 14-day retention only ever
-        # counts and prunes its own snapshots, and test runs that point
-        # GROUPS_DIR at throwaway files back those up, not the real ones.
+        # not just a file copy. AFTER the commit, and wrapped in
+        # try/except so that if the backup itself ever fails (disk full,
+        # permissions, etc.), the user's asado is still saved and the
+        # page still loads normally — a failed backup should never look
+        # like a failed save. The CURRENT GROUP's file is passed
+        # explicitly (not backup_db's own default), into that group's
+        # own folder (backups/<slug>/) — so each group's 14-day
+        # retention only counts and prunes its own snapshots, and test
+        # runs that point GROUPS_DIR at throwaway files back those up,
+        # not the real ones.
         try:
             slug = current_group()["slug"]
             backup_database(
@@ -1979,198 +1734,19 @@ def edit_asado(asado_id):
     asado — unlike deleting (admin-only, see delete_asado below), Phase
     3 deliberately does NOT restrict editing to "your own" entries.
 
-    Recalculates and re-freezes the shared weights AND every
-    participant's rol_weight/points from config.py's CURRENT values,
-    exactly like new_asado()'s POST branch does for a brand new asado.
-    An edit counts as a new "freezing moment" — see CLAUDE.md for the
-    full reasoning on why weights/points are frozen at all; the same
-    logic means the numbers shown after a save should always match
-    what's actually on the form, not whatever was frozen back when the
-    asado was first created (which may have used different config.py
-    weights, if they've since changed).
-
-    Participants are replaced WHOLESALE: every existing participation
-    for this asado is deleted, then fresh rows are inserted from
-    whatever the form submitted — simpler and correct for a small edit
-    form, rather than diffing which rows are new/removed/changed. The
-    cost: participation ids change on every edit of that asado's
-    participants, but nothing in this app treats participation id as a
-    stable reference across edits.
+    The work itself is asado_record.update(): it re-freezes every weight
+    from config.py's CURRENT values (an edit is a new "freezing
+    moment"), replaces participants / tipos / cortes WHOLESALE, logs
+    exactly which fields changed, and commits — or raises without
+    writing anything, so a refused edit leaves the asado as it was.
     """
     db = get_db()
-
-    # Fetch the FULL "before" state now, not just id — diff_asado()
-    # below needs it to compare against what's being submitted.
-    # Participations and asado_tipo_carne are captured too, since
-    # they're about to be deleted and replaced wholesale further down
-    # (see their own comments) — their old state wouldn't exist to look
-    # up anymore by the time the diff is built otherwise.
-    old_asado = db.execute("SELECT * FROM asados WHERE id = ?", (asado_id,)).fetchone()
-    if old_asado is None:
+    try:
+        asado_record.update(db, asado_id, asado_record.read_form(request.form), current_actor())
+    except asado_record.AsadoNotFound:
         return "Asado no encontrado.", 404
-
-    old_tipo_carne_rows = db.execute(
-        "SELECT tipo_carne FROM asado_tipo_carne WHERE asado_id = ? ORDER BY id", (asado_id,)
-    ).fetchall()
-    old_tipo_carne = [row["tipo_carne"] for row in old_tipo_carne_rows]
-
-    # Captured before the wholesale delete further down, same reason as
-    # the two lists either side of it — by the time the diff is built,
-    # the old rows are gone.
-    old_cortes_rows = db.execute(
-        "SELECT corte FROM asado_cortes WHERE asado_id = ? ORDER BY id", (asado_id,)
-    ).fetchall()
-    old_cortes = [row["corte"] for row in old_cortes_rows]
-
-    old_participant_rows = db.execute(
-        """
-        SELECT users.name, participations.rol
-        FROM participations JOIN users ON participations.user_id = users.id
-        WHERE participations.asado_id = ?
-        ORDER BY participations.id
-        """,
-        (asado_id,),
-    ).fetchall()
-    old_participants = [f"{p['name']} ({p['rol']})" for p in old_participant_rows]
-
-    date = request.form["date"]
-    nombre = request.form["nombre"]
-    description = request.form.get("description", "")
-    tipo_carne_list = [tc for tc in request.form.getlist("tipo_carne") if tc]
-    cortes_list = read_submitted_cortes(tipo_carne_list)
-    coccion = request.form["coccion"]
-    superficie = request.form["superficie"]
-    local = request.form["local"]
-    location = request.form.get("location", "")
-    # parse_decimal() (not Werkzeug's type=float) — see its own
-    # docstring: an <input type="number"> silently mangles a
-    # hand-typed "2,5" into "25" rather than erroring, a real risk for
-    # this app's Spanish-speaking users. latitude/longitude are always
-    # '.'-formatted (JS-filled hidden inputs), but routing them through
-    # the same function costs nothing and keeps one rule for "how this
-    # app reads a decimal from a form."
-    latitude = parse_decimal(request.form.get("latitude"))
-    longitude = parse_decimal(request.form.get("longitude"))
-    people = request.form.get("people", type=int)
-    total_weight = parse_decimal(request.form.get("total_weight"))
-    save_location = request.form.get("save_location") == "on"
-    location_name = request.form.get("location_name", "").strip()
-
-    # --- Participants: read + validate BEFORE the UPDATE/DELETE below ---
-    # Same rule and same reasoning as new_asado(): the same registered
-    # user can't appear in more than one row (two Roles, or the same
-    # Role twice, at the same asado). Checked here, before touching the
-    # database at all, so a failed validation can't leave the OLD
-    # participants deleted with nothing valid to replace them — the
-    # whole route bails out with everything still exactly as it was.
-    participant_user_ids = request.form.getlist("participant_user_id")
-    participant_roles = request.form.getlist("participant_rol")
-    non_blank_participant_ids = [uid for uid in participant_user_ids if uid]
-    if len(non_blank_participant_ids) != len(set(non_blank_participant_ids)):
-        return redirect(url_for(
-            "view_asado",
-            asado_id=asado_id,
-            error="Un mismo usuario no puede tener más de un rol en el mismo asado.",
-        ))
-
-    shared_weights = get_shared_weights(tipo_carne_list, coccion, superficie, local)
-
-    db.execute(
-        """
-        UPDATE asados
-        SET date = ?, nombre = ?, description = ?, coccion = ?,
-            superficie = ?, local = ?, location = ?, latitude = ?, longitude = ?,
-            people = ?, total_weight = ?,
-            tipo_carne_weight = ?, coccion_weight = ?, superficie_weight = ?, local_weight = ?
-        WHERE id = ?
-        """,
-        (date, nombre, description, coccion, superficie, local,
-         location, latitude, longitude, people, total_weight,
-         shared_weights["carne"], shared_weights["coccion"],
-         shared_weights["superficie"], shared_weights["local"],
-         asado_id),
-    )
-
-    # Replace selected Tipo de Carne types wholesale, same pattern (and
-    # same reasoning) as participants below.
-    db.execute("DELETE FROM asado_tipo_carne WHERE asado_id = ?", (asado_id,))
-    tipo_carne_weights = get_tipo_carne_weights(tipo_carne_list)
-    for tc in tipo_carne_list:
-        db.execute(
-            "INSERT INTO asado_tipo_carne (asado_id, tipo_carne, tipo_carne_weight) VALUES (?, ?, ?)",
-            (asado_id, tc, tipo_carne_weights[tc]),
-        )
-
-    # Cuts, same wholesale replace. cortes_list is already empty if the
-    # edit moved this asado away from a beef category, so switching
-    # Tipo de Carne correctly clears any cuts that no longer apply —
-    # see read_submitted_cortes() for why the server decides that
-    # rather than trusting the form to have cleared them.
-    db.execute("DELETE FROM asado_cortes WHERE asado_id = ?", (asado_id,))
-    for corte in cortes_list:
-        db.execute(
-            "INSERT INTO asado_cortes (asado_id, corte) VALUES (?, ?)",
-            (asado_id, corte),
-        )
-
-    # Replace participants wholesale (see docstring above).
-    db.execute("DELETE FROM participations WHERE asado_id = ?", (asado_id,))
-
-    # user_ids/roles were already read (and checked for a duplicate
-    # user) above, before any database write — reused here rather than
-    # reading request.form a second time.
-    user_ids = participant_user_ids
-    roles = participant_roles
-
-    new_participants = []  # "Nombre (Rol)" strings, for the activity log diff below
-    for user_id_str, rol in zip(user_ids, roles):
-        if not user_id_str:
-            continue  # skip any row where nothing was selected
-
-        user_id = int(user_id_str)
-
-        # Safety check: confirm this id really matches an existing
-        # user, in case of any tampering with the submitted form. Also
-        # fetches "name" now (not just "id"), needed for the activity
-        # log's participant diff below.
-        user_row = db.execute("SELECT id, name FROM users WHERE id = ?", (user_id,)).fetchone()
-        if user_row is None:
-            continue
-
-        points = calculate_points(tipo_carne_list, coccion, superficie, local, rol)
-        rol_weight = get_rol_weight(rol)
-
-        db.execute(
-            """
-            INSERT INTO participations (asado_id, user_id, rol, rol_weight, points)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (asado_id, user_id, rol, rol_weight, points),
-        )
-        new_participants.append(f"{user_row['name']} ({rol})")
-
-    # Log this edit: one activity_log row, plus one activity_log_changes
-    # row per field that actually differs from the "before" state
-    # captured at the top of this route — see activity_log.py.
-    changes = diff_asado(
-        old_asado,
-        {
-            "date": date, "nombre": nombre, "description": description,
-            "coccion": coccion, "superficie": superficie, "local": local,
-            "location": location, "people": people, "total_weight": total_weight,
-        },
-        old_tipo_carne, tipo_carne_list,
-        old_participants, new_participants,
-        old_cortes, cortes_list,
-    )
-    log_edit(db, g.user_id, g.name, asado_id, nombre, date, changes)
-
-    # If "Guardar esta ubicación" was checked, add it to the reusable
-    # pool now — see maybe_save_location() above.
-    if save_location:
-        maybe_save_location(db, g.user_id, location_name, location, latitude, longitude)
-
-    db.commit()
+    except asado_record.AsadoInvalid as e:
+        return redirect(url_for("view_asado", asado_id=asado_id, error=str(e)))
     return redirect(url_for("view_asado", asado_id=asado_id, success="Asado actualizado."))
 
 
@@ -2214,32 +1790,14 @@ def delete_asado(asado_id):
     confirm() instead, the same pattern delete_user_route already uses.
     """
     db = get_db()
-
-    asado = db.execute("SELECT id, nombre, date FROM asados WHERE id = ?", (asado_id,)).fetchone()
-    if asado is None:
+    # asado_record.delete() logs the deletion, removes every child row
+    # (asado_record.CHILD_TABLES — the ONE list of them) and then the
+    # asado, and commits. Who may delete is decided here, by
+    # @admin_required above.
+    try:
+        asado_record.delete(db, asado_id, current_actor())
+    except asado_record.AsadoNotFound:
         return "Asado no encontrado.", 404
-
-    # Log the deletion FIRST, while asado_id still references a real,
-    # not-yet-deleted row — activity_log.asado_id is a real FOREIGN KEY,
-    # and its ON DELETE SET NULL only nulls it out once the asado row
-    # below is actually removed, not before. See activity_log.py's
-    # log_delete() docstring for the full reasoning.
-    log_delete(db, g.user_id, g.name, asado_id, asado["nombre"], asado["date"])
-
-    # Every CHILD table first — schema.sql declares each of these
-    # asado_id columns as a FOREIGN KEY, and get_db() enforces that
-    # (PRAGMA foreign_keys = ON), so deleting the asado row first would
-    # fail with an IntegrityError while any of them still references it.
-    # ADD ANY NEW CHILD TABLE OF `asados` HERE. It's easy to miss,
-    # because a new feature usually has no other reason to touch this
-    # route — but forget it and the first admin to delete an asado that
-    # uses the new table gets a 500, not a friendly error.
-    db.execute("DELETE FROM participations WHERE asado_id = ?", (asado_id,))
-    db.execute("DELETE FROM asado_tipo_carne WHERE asado_id = ?", (asado_id,))
-    db.execute("DELETE FROM asado_cortes WHERE asado_id = ?", (asado_id,))
-    db.execute("DELETE FROM asados WHERE id = ?", (asado_id,))
-    db.commit()
-
     return redirect(url_for("index", success="Asado eliminado."))
 
 

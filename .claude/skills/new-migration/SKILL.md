@@ -66,10 +66,12 @@ In `schema.sql` (or `accounts_schema.sql`):
 
 ## Step 4: Update every place that depends on the table list
 Go through the list and tell the user which ones applied:
-- **New child table of `asados`** → `delete_asado()` in `app.py` must delete its rows BEFORE
-  the asado row. (Forget this and the first admin to delete such an asado gets a 500.) Also
-  add the table to the `for table in (...)` "empty after the delete" loop in
-  `.claude/skills/smoke-test/smoke_test.py`, section 9.
+- **New child table of `asados`** → add it to `CHILD_TABLES` in `asado_record.py`, the one
+  list that delete() and the edit's wholesale replace both use. (Forget it and the first admin
+  to delete such an asado gets a 500 - the smoke test's section 10 now fails first, because it
+  compares `CHILD_TABLES` with schema.sql's foreign keys.) Then write and read the new rows in
+  `asado_record.py` (`_write_children()`, `update()`'s before-state for the activity-log diff,
+  and `AsadoInput`/`read_form()` if the form submits them).
 - **New table with an `id` column** → add it to `GROUP_TABLES` in `migrate_to_groups.py`.
 - If `edit_asado()` replaces children wholesale, the new child table probably needs the same
   delete-and-reinsert treatment.

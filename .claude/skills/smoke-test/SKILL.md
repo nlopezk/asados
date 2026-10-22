@@ -63,10 +63,18 @@ loudly if one changed**. If that last check ever fails, stop everything and look
    the export, and a logged-in user of A using B's token gets B's data (`use_group()`).
 9. **Permissions.** Edit is open to everyone, delete is admin-only, and after a delete no child
    rows are left behind.
+10. **`asado_record` directly (no HTTP).** `CHILD_TABLES` matches schema.sql's foreign keys;
+    create/update/delete, every validation rule (each refusal must write nothing), and the
+    seed script saving through the module.
+
+The browser layer (`--browser`) also plants a display name containing markup and checks no
+page runs it (the stored XSS fixed in 2.0.2).
 
 ## Extending it (do this as part of the change, not later)
 - **New feature or route:** add a check for its core behaviour to the matching section, in the
   same style: `check("what should be true", condition, "what you got instead")`.
+- **New rule about what makes an asado valid:** test it in section 10 against `asado_record`
+  directly, not through a form POST. That's the module's interface and its test surface.
 - **New URL argument** (like `<int:foo_id>`): add a sample value for it in `run_functional()`.
 - **New child table of `asados`:** add it to the "empty after the delete" loop in section 9.
 - **New nav link:** re-measure the breakpoint (see the comment above the navbar `@media`

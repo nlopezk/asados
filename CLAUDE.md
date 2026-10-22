@@ -763,7 +763,10 @@ and a registered group whose file is missing is an error, not a skip.
 - A new route → it gets its data through `get_db()`, never by opening
   a file itself. A route without login (like the export) must call
   `use_group()` with a group it resolved itself.
-- A new script → never `import app`; use accounts.py's helpers.
+- A new script → never `import app`; use accounts.py's helpers (and
+  asado_record.py to write asados).
+- A new child table of `asados` → add it to `asado_record.CHILD_TABLES`
+  (the smoke test checks that tuple against schema.sql's foreign keys).
 
 **Not built yet, on purpose:** web-based group creation, invitations,
 one login in several groups, per-group scoring weights (every group
@@ -880,8 +883,8 @@ media query.
 cuts live in hidden inputs inside it; removing the element would
 silently discard them when someone switches category to check something
 and switches back. The SERVER is what actually decides — 
-`read_submitted_cortes()` drops cuts entirely if the submission isn't
-beef after all. Same "friendly client, authoritative server" layering
+`asado_record._clean_cortes()` drops cuts entirely if the submission
+isn't beef after all. Same "friendly client, authoritative server" layering
 as the duplicate-participant check.
 
 **Each chip contains its own hidden input**, so what's on screen and
@@ -890,11 +893,13 @@ the input goes with it. Server-rendered chips (edit mode) and
 JS-created ones use identical markup, so one remove function handles
 both.
 
-**`delete_asado()` had to learn about the new table.** It deletes
-children before the parent because `PRAGMA foreign_keys = ON` — miss
+**The delete had to learn about the new table.** Children are
+deleted before the parent because `PRAGMA foreign_keys = ON` — miss
 that and the first admin to delete an asado with cuts gets a 500, in a
-route the feature otherwise never touches. That line now carries a
-comment saying any new child table of `asados` belongs there too.
+route the feature otherwise never touches. Since 2.0.2 the list of
+child tables lives in ONE place, `asado_record.CHILD_TABLES`, used by
+both delete and the edit's wholesale replace, and the smoke test
+compares it against schema.sql's foreign keys.
 
 **Rollout order on PythonAnywhere is load-bearing**: backup →
 `git pull` → `python3 migrate_add_cortes.py` → **then** Reload. Reload
@@ -1146,6 +1151,54 @@ itself is the relevant piece of information. Keep this split when
 adding new views: `name` for anything a group member reads, `username`
 only where you're specifically talking about the login credential.
 
+### asado_record.py — the ONE place an asado is written (v2.0.2)
+Before 2.0.2, saving an asado was written out three times: in
+`new_asado()`, in `edit_asado()` (line for line, with the comments
+thinned out), and in `seed_random_asados.py`, which had already drifted
+(no cortes, no activity log). Adding one child table meant touching
+about seven places. Found by `/mattpocock-skills:improve-codebase-architecture`;
+the refactor was proven behaviour-preserving with a differential run
+(the same 18 creates/edits/deletes through HTTP against the old and new
+code produced identical tables, activity log and redirects).
+
+**The interface:** `read_form(form) -> AsadoInput`, then
+`create(db, data, actor) -> id`, `update(db, asado_id, data, actor)`,
+`delete(db, asado_id, actor)`. Each validates, writes the asado and all
+its child rows with frozen weights, writes the activity log in the same
+transaction, handles "Guardar esta ubicación", and COMMITS — or raises
+`AsadoInvalid` (a Spanish message for `?error=`) / `AsadoNotFound`
+having written nothing. `Actor(user_id, name)` is who did it
+(`current_actor()` in app.py builds it from `g`; the seed script passes
+`user_id=None`).
+
+**What stays in the routes, on purpose:** the one-shot form token
+(about HTTP double-submits, not about what makes an asado valid), CSRF,
+`@admin_required` on delete, redirects/rendering, and the backup after
+commit (it must never make a save look failed).
+
+**`CHILD_TABLES` is the one list of an asado's child tables** — used by
+`delete()` and by `update()`'s wholesale replace. The smoke test
+compares it to schema.sql's foreign keys, so a forgotten new child
+table fails a check instead of 500-ing the first admin who deletes.
+
+**Server-side validation was added here (2.0.2), and it's new
+behaviour:** before, only "no duplicate participant" was enforced; now
+also nombre, a real ISO date, at least one Tipo de Carne, every
+category/rol/corte known to config.py, numeric participant ids. Each
+of those had been accepted before and silently scored (an empty Tipo de
+Carne list or an unknown category got weight 1 via `.get(..., 1)` /
+`max(..., default=1)`), or given a 400/500. Checked against the real
+data first: every stored value was already a known config.py value.
+Kept on purpose: a participant id that isn't a member is SKIPPED, not
+an error (only possible with a tampered form). If config.py ever
+RENAMES a category, editing an old asado that still has the old name
+will now be refused — re-import or migrate the stored values in the
+same change.
+
+**Tests:** the module is tested directly in `smoke_test.py` section 10
+(no HTTP, no HTML scraping) — the first test surface in this app that
+isn't the web. Put new asado rules there.
+
 ### Edit/delete permissions, and the shared create/edit form
 Any logged-in user can edit any asado (not just their own) — this was
 an explicit product decision for a small trusted friend group, not an
@@ -1239,7 +1292,8 @@ eaten before the page even sees it; a shared `normalizeDecimalInput()`
 function then converts it to '.' live, so what's ON SCREEN always
 matches what gets submitted (duplicated once per template rather than
 shared — this app has no shared/common JS file, by design, matching
-its no-build-step approach). `app.py`'s `parse_decimal()` is the
+its no-build-step approach). `parse_decimal()` (in `asado_record.py`
+since 2.0.2, imported by app.py) is the
 SERVER-side backstop — a straight `.replace(",", ".")` before
 `float()`, same technique the 1.0.0 historical CSV import already used
 for the same reason — so a value reaches the database correctly parsed
@@ -1299,8 +1353,9 @@ a manual step for now, not automated.
 ### Activity log — who created/edited/deleted which asado, and when
 `activity_log.py` holds three write functions (`log_create`,
 `log_edit`, `log_delete`) and one diff builder (`diff_asado`), called
-from `new_asado()`/`edit_asado()`/`delete_asado()` in `app.py` **before**
-each route's own `db.commit()`, never after — a log entry and the
+from `asado_record.create()`/`update()`/`delete()` (reached from
+`new_asado()`/`edit_asado()`/`delete_asado()`) **before** the
+`db.commit()`, never after — a log entry and the
 asado change it describes are written in the same transaction on
 purpose, so one can never be saved without the other (unlike the
 backup call in `new_asado()`, which deliberately runs AFTER commit —
@@ -1881,8 +1936,8 @@ extra clicks.** The "💾 Guardar esta ubicación para reutilizarla más
 adelante" checkbox next to the location fields defaults UNCHECKED —
 only ticking it (and giving it a short name in the field that then
 reveals itself) adds the just-used address/pin to the pool via
-`maybe_save_location()` in `app.py`, called from `new_asado()`/
-`edit_asado()` right before their own `db.commit()`. Leaving it
+`maybe_save_location()` (asado_record.py), called by
+`asado_record.create()`/`update()` right before their `db.commit()`. Leaving it
 unchecked is a complete no-op as far as `locations` is concerned.
 
 **Duplicate names are silently skipped, not an error.** If the
@@ -2314,8 +2369,14 @@ ones most likely to come back:
 Verified clean, and worth NOT re-litigating: no SQL injection (the
 three f-string queries interpolate only hard-coded fragments and a
 whitelisted sort column — all user values go through `?` placeholders);
-no XSS surface (Jinja autoescaping is on everywhere, no `|safe`
-anywhere); CSRF covers every POST; admin-only routes reject normal
+no XSS through templates (Jinja autoescaping is on everywhere, no
+`|safe` anywhere) — **but autoescaping only covers what the SERVER
+renders**: 2.0.2 found a stored XSS in JavaScript, where
+`_asado_form.html`'s points preview glued a participant's display name
+(free text, editable by every member) into `innerHTML`. Any user text
+handled in JS must go through `textContent`/DOM nodes, never
+`innerHTML`; `smoke_test.py --browser` now plants a markup-laden
+display name and checks no page runs it; CSRF covers every POST; admin-only routes reject normal
 users; the CSV formula-injection sanitizer works; and points written by
 the app match `config.py`'s formula exactly.
 

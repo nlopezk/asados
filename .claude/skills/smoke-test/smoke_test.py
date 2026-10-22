@@ -426,10 +426,133 @@ def run_functional(app_module, tmp, ids):
 
     resp = admin.post(f"/asado/{asado_id}/delete", data={"csrf_token": csrf(admin)})
     check("admin can delete it (and its child rows don't cause a 500)", resp.status_code == 302, f"got {resp.status_code}")
-    for table in ("asados", "participations", "asado_tipo_carne", "asado_cortes"):
+    import asado_record
+    for table in ("asados",) + asado_record.CHILD_TABLES:
         n = db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         check(f"{table} is empty after the delete", n == 0, f"{n} row(s) left")
     db.close()
+
+
+# ---------------------------------------------------------------------
+# asado_record.py, tested DIRECTLY - no HTTP, no login, no HTML scraping
+# ---------------------------------------------------------------------
+def run_record_module(app_module, tmp, ids):
+    """The asado record module (2.0.2) is the one place an asado is
+    saved, so its rules are tested here at its own interface - the
+    same calls the routes and the seed script make."""
+    import sqlite3
+    import config
+    import asado_record as ar
+    from accounts import connect_existing
+
+    section("10. asado_record module (no HTTP)")
+
+    # --- CHILD_TABLES must match schema.sql. A new child table of
+    # asados that isn't listed would make delete() hit a foreign-key
+    # error (a 500 for the admin) - this catches it at test time.
+    ref = sqlite3.connect(":memory:")
+    ref.executescript((REPO_ROOT / "schema.sql").read_text(encoding="utf-8"))
+    children = set()
+    for (t,) in ref.execute("SELECT name FROM sqlite_master WHERE type='table'"):
+        for fk in ref.execute(f"PRAGMA foreign_key_list({t})"):
+            # fk: (id, seq, table, from, to, on_update, on_delete, match)
+            if fk[2] == "asados" and fk[6] not in ("SET NULL", "CASCADE"):
+                children.add(t)
+    ref.close()
+    check("CHILD_TABLES lists exactly schema.sql's child tables of asados",
+          children == set(ar.CHILD_TABLES), f"schema says {sorted(children)}, CHILD_TABLES says {sorted(ar.CHILD_TABLES)}")
+
+    db = connect_existing(os.path.join(tmp, "groups", "grupo-a.db"))
+    actor = ar.Actor(user_id=ids["admin_a"], name="Admin A")
+    beef = config.CATEGORIAS_CON_DESPIECE[0]
+    roles = list(config.ROL_WEIGHTS)
+
+    def good(**kw):
+        d = dict(date="2026-05-01", nombre="Directo", tipos_carne=[beef],
+                 coccion=list(config.COCCION_WEIGHTS)[0], superficie=list(config.SUPERFICIE_WEIGHTS)[0],
+                 local=list(config.LOCAL_WEIGHTS)[0], cortes=[sorted(config.CORTES_VACUNO)[0]],
+                 participants=[(ids["admin_a"], roles[0]), ("", roles[1]), (str(ids["normal_a"]), roles[-1])])
+        d.update(kw)
+        return ar.AsadoInput(**d)
+
+    def counts():
+        return {t: db.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                for t in ("asados", "activity_log", "locations") + ar.CHILD_TABLES}
+
+    asado_id = ar.create(db, good(), actor)
+    p = {r["user_id"]: r["points"] for r in db.execute("SELECT * FROM participations WHERE asado_id = ?", (asado_id,))}
+    check("create(): blank row skipped, both members saved", set(p) == {ids["admin_a"], ids["normal_a"]}, str(p))
+    check("create(): points == config.calculate_points()",
+          p.get(ids["admin_a"]) == config.calculate_points([beef], good().coccion, good().superficie, good().local, roles[0]))
+
+    # Every rule refuses the asado AND writes nothing.
+    refused = [
+        ("no nombre", good(nombre="  ")),
+        ("bad date", good(date="22/10/2026")),
+        ("no Tipo de Carne", good(tipos_carne=[])),
+        ("unknown Tipo de Carne", good(tipos_carne=["Dinosaurio"])),
+        ("unknown Cocción", good(coccion="Microondas")),
+        ("unknown corte (with beef)", good(cortes=["Corte Inventado"])),
+        ("non-numeric participant", good(participants=[("abc", roles[0])])),
+        ("unknown Rol", good(participants=[(ids["admin_a"], "Mirón")])),
+        ("same member twice", good(participants=[(ids["admin_a"], roles[0]), (ids["admin_a"], roles[1])])),
+    ]
+    for label, data in refused:
+        before = counts()
+        try:
+            ar.create(db, data, actor)
+            ok, why = False, "was accepted"
+        except ar.AsadoInvalid as e:
+            ok, why = counts() == before, f"refused ({e}) but rows changed"
+        check(f"create() refuses: {label} (nothing written)", ok, why)
+    check("a cut on a non-beef asado is DROPPED, not refused",
+          not db.execute("SELECT 1 FROM asado_cortes WHERE asado_id = ?",
+                         (ar.create(db, good(tipos_carne=[next(t for t in config.TIPO_CARNE_WEIGHTS if t != beef)],
+                                             cortes=["Corte Inventado"]), actor),)).fetchone())
+
+    # update(): replaces wholesale, refuses cleanly, 404s.
+    ar.update(db, asado_id, good(nombre="Directo editado", participants=[(ids["normal_a"], roles[0])]), actor)
+    rows = db.execute("SELECT user_id, rol FROM participations WHERE asado_id = ?", (asado_id,)).fetchall()
+    check("update(): participants replaced wholesale", [tuple(r) for r in rows] == [(ids["normal_a"], roles[0])], str([tuple(r) for r in rows]))
+    before = counts()
+    try:
+        ar.update(db, asado_id, good(nombre=""), actor)
+        check("update() refuses invalid data", False, "was accepted")
+    except ar.AsadoInvalid:
+        still = db.execute("SELECT nombre FROM asados WHERE id = ?", (asado_id,)).fetchone()["nombre"]
+        check("update() refuses invalid data, asado left as it was", counts() == before and still == "Directo editado", still)
+    for fn, label in ((lambda: ar.update(db, 99999, good(), actor), "update"), (lambda: ar.delete(db, 99999, actor), "delete")):
+        try:
+            fn()
+            check(f"{label}() of a missing asado raises AsadoNotFound", False, "no error")
+        except ar.AsadoNotFound:
+            check(f"{label}() of a missing asado raises AsadoNotFound", True)
+
+    ar.delete(db, asado_id, actor)
+    left = {t: db.execute(f"SELECT COUNT(*) FROM {t} WHERE asado_id = ?", (asado_id,)).fetchone()[0] for t in ar.CHILD_TABLES}
+    check("delete(): no child rows left behind", not any(left.values()), str(left))
+    db.close()
+
+    # The new rules reach the web form too: a friendly error, not a 400.
+    flask_app = app_module.app
+    c = flask_app.test_client()
+    login(c, "admin_a", "pw-a")
+    resp = c.post("/asado/new", data={"csrf_token": csrf(c), "form_token": form_token(c),
+                                      "date": "2026-05-02", "tipo_carne": beef})
+    check("form with no nombre -> friendly error redirect (was a bare 400)",
+          resp.status_code == 302 and "error=" in resp.headers.get("Location", ""), f"got {resp.status_code}")
+
+    # The seed script saves through the module: real child rows + log.
+    import seed_random_asados
+    quiet = io.StringIO()
+    with contextlib.redirect_stdout(quiet):
+        seed_random_asados.seed_random_asados("grupo-b", 5)
+    gb = connect_existing(os.path.join(tmp, "groups", "grupo-b.db"))
+    n_asados = gb.execute("SELECT COUNT(*) FROM asados").fetchone()[0]
+    n_logs = gb.execute("SELECT COUNT(*) FROM activity_log WHERE action = 'create'").fetchone()[0]
+    gb.close()
+    check("seed_random_asados.py saves through asado_record (5 asados, 5 log entries)",
+          n_asados == 5 and n_logs == 5, f"{n_asados} asados, {n_logs} log entries; output: {quiet.getvalue()[:200]}")
 
 
 # ---------------------------------------------------------------------
@@ -605,6 +728,34 @@ def run_browser(app_module, tmp):
                     else:
                         check(f"{width}px (the breakpoint): hamburger menu takes over", toggle,
                               f"the {bp}px media query isn't applying")
+
+            # --- Stored XSS through a display name (fixed in 2.0.2) ---
+            # Every member can set their own display name, so it's the
+            # one piece of user text that reaches EVERY page. The asado
+            # form's live points preview once glued it into innerHTML.
+            # A real browser is the only way to test this: Jinja's
+            # escaping is server-side, but the bug was in JavaScript.
+            payload = '<img src=x onerror="window.__xss=1">'
+            name_db = group_db(tmp, "grupo-a")
+            name_db.execute("UPDATE users SET name = ? WHERE username = 'normal_a'", (payload,))
+            normal_id = name_db.execute("SELECT id FROM users WHERE username = 'normal_a'").fetchone()[0]
+            name_db.commit()
+            name_db.close()
+            page.set_viewport_size({"width": 1280, "height": 900})
+            page.goto(base + "/asado/new", wait_until="networkidle")
+            page.select_option("select[name='participant_user_id']", str(normal_id))
+            page.wait_for_timeout(300)  # let the points preview rebuild
+            preview = page.evaluate("document.getElementById('points-summary').textContent")
+            check("display name with markup shows as TEXT in the points preview",
+                  payload in preview, f"preview text was: {preview[:120]!r}")
+            for path in ("/asado/new", "/", "/resumen", f"/usuario/{normal_id}", "/base-asados", "/config"):
+                page.goto(base + path, wait_until="networkidle")
+                if path == "/asado/new":
+                    page.select_option("select[name='participant_user_id']", str(normal_id))
+                    page.wait_for_timeout(300)
+                fired = page.evaluate("window.__xss === 1")
+                check(f"no script runs from a display name on {path}", not fired,
+                      "a display name was inserted as HTML - stored XSS")
             browser.close()
     finally:
         server.shutdown()
@@ -634,6 +785,7 @@ def main():
         ids = build_throwaway_site()
         app_module = import_app(tmp)
         run_functional(app_module, tmp, ids)
+        run_record_module(app_module, tmp, ids)
         if args.browser:
             run_browser(app_module, tmp)
         if args.real_copy:
