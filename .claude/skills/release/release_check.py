@@ -121,6 +121,21 @@ def main():
     for s in scripts:
         if s not in listed:
             problems.append(f"{s} is NOT in README's deploy step 3 - the live server would never run it")
+    # WORKFLOW.md (the user's own checklist) repeats the deploy list in
+    # section 7.2 - and README's local-setup step 5 repeats it too. Both
+    # are copies a person actually follows, so a missing script there is
+    # as bad as one missing from the deploy list itself.
+    workflow = REPO_ROOT / "WORKFLOW.md"
+    if workflow.exists():
+        text = workflow.read_text(encoding="utf-8")
+        section = text.split("### 7.2", 1)[-1].split("### 7.3", 1)[0]
+        in_workflow = re.findall(r"python3? (migrate_\w+\.py)", section)
+        if in_workflow != listed:
+            problems.append(f"WORKFLOW.md section 7.2 lists {in_workflow}, README deploy lists {listed} - make them match")
+    setup = readme.split("Run every migration", 1)[-1].split("```", 2)[1] if "Run every migration" in readme else ""
+    in_setup = re.findall(r"python3? (migrate_\w+\.py)", setup)
+    if in_setup and in_setup != listed:
+        problems.append(f"README local-setup step 5 lists {in_setup}, README deploy lists {listed} - make them match")
     since = found["newest git tag"]
     if since:
         new = [l for l in git("diff", "--name-status", f"v{since}", "--").splitlines() if re.search(r"migrate_\w+\.py$", l)]

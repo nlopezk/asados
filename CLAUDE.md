@@ -97,6 +97,15 @@ between a database and `schema.sql`), and `release` (`/release` only:
 version bump in all four places, CHANGELOG, tag, and the PythonAnywhere
 checklist). The procedures live there; the rules stay in this file.
 
+**`WORKFLOW.md` is the HUMAN-facing guide** — the user's own "what do I
+do when..." checklist, organised by task, with copy-paste commands
+labelled by where to type them (Claude / PowerShell / PythonAnywhere).
+The user has said they often forget procedures, so it is load-bearing:
+when a procedure changes (a new migration, command, skill, or deploy
+step), update WORKFLOW.md in the same change. It deliberately repeats
+the deploy migration list (section 7.2) and a cheat sheet (section 11),
+so those are the two places most likely to drift.
+
 ## Agent skills
 
 ### Issue tracker

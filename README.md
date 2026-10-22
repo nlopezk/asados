@@ -7,6 +7,11 @@ own members, asados and standings, completely separate from the others.
 
 **Live deployment**: https://asados.pythonanywhere.com
 
+> **Working on the app day to day?** [`WORKFLOW.md`](./WORKFLOW.md) is
+> the step-by-step guide, organised by "I want to...": the to-do list,
+> making a change, testing, releasing and deploying, data chores, and
+> what to do when something goes wrong, with every command ready to copy.
+
 > **Using an AI assistant (Claude Code, etc.) on this project?** See
 > [`CLAUDE.md`](./CLAUDE.md) first — it explains the *reasoning* behind
 > the design decisions (the points formula, the map choice, the login
@@ -50,10 +55,13 @@ add their own members from the app's **Configuración** page.
      ```
 5. **Run every migration** (safe to run any time — each one says
    "already present" if there's nothing to do, and runs on every
-   group):
+   group). This is the same list, in the same order, as the deploy's
+   step 3 below; keep the two in step:
    ```
    python migrate_add_cortes.py
    python migrate_fix_schema_drift.py
+   python migrate_to_groups.py
+   python migrate_locations_unique_name.py
    ```
 6. *(Optional)* **Fill a test group with random data**, so you have
    something to click around and filter. ⚠️ It writes into the group
@@ -113,6 +121,7 @@ python build_cow_partial.py
 
 ```
 As_app/
+├── WORKFLOW.md             <- Step-by-step guide: what to do, and the commands for it
 ├── app.py                  <- Flask routes, login/session logic (the "brain")
 ├── accounts.py             <- Logins, groups and memberships: the ONE place "which group?" is decided
 ├── accounts_schema.sql     <- Tables of accounts.db (never drops anything)
@@ -384,14 +393,22 @@ old password hashes, so don't move it anywhere shared).
 
 ## Git release workflow
 
-```bash
-git add .
-git commit -m "what changed"
-git tag -a v1.0.0 -m "what changed"
-git push
-git push origin v1.0.0
-```
+Use **`/release`** in Claude Code. It runs the safety checks and the
+smoke test, bumps the version in all four places (`VERSION` in `app.py`,
+`CHANGELOG.md`, the "Currently at" line in `CLAUDE.md`, and the git
+tag), and asks before committing, tagging and pushing. The full
+walkthrough, including the PythonAnywhere half, is
+[`WORKFLOW.md` section 7](./WORKFLOW.md#7-release-and-deploy).
 
-Bump the version in **three** places when cutting a release — nothing keeps
-them in sync automatically: `VERSION` in `app.py` (shown in the page
-footer), `CHANGELOG.md`, and the git tag.
+By hand, the shape is below. **Stage files by name, never `git add .`**:
+this repo is public, and `git add .` is how the group's real data
+nearly got published twice.
+
+```bash
+python .claude/skills/release/release_check.py 2.0.2   # all four places agree, no data files staged
+git add -- app.py CHANGELOG.md CLAUDE.md <the files you changed>
+git commit -m "v2.0.2: what changed"
+git tag -a v2.0.2 -m "v2.0.2: what changed"
+git push
+git push origin v2.0.2
+```

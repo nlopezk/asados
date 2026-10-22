@@ -59,8 +59,10 @@ Then run `python .claude/skills/release/release_check.py x.y.z`. It must pass, w
 files agreeing and the tag not existing yet.
 
 ## Step 5: Docs drift
-Skim README's feature list and CLAUDE.md for anything this release made untrue: a new route
-in the Architecture list, a new command, a changed count. The v1.0 audit found the README
+Skim README's feature list, CLAUDE.md, and **WORKFLOW.md** (the user's own step-by-step guide:
+it repeats the deploy migration list in section 7.2 and the cheat sheet in section 11) for
+anything this release made untrue: a new route in the Architecture list, a new command, a new
+migration, a changed count. The v1.0 audit found the README
 months out of date. Fix what's wrong, and tell the user what you changed.
 
 ## Step 6: Commit, tag, push (confirm before each outward step)
