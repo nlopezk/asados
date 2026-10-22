@@ -97,6 +97,20 @@ between a database and `schema.sql`), and `release` (`/release` only:
 version bump in all four places, CHANGELOG, tag, and the PythonAnywhere
 checklist). The procedures live there; the rules stay in this file.
 
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on nlopezk/asados (public: never put real group data in an issue), via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default labels: needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root, created lazily. See `docs/agents/domain.md`.
+
 ## Roadmap / phase status
 
 (Source of truth: the `Phases` file at the repo root.)
@@ -118,7 +132,8 @@ Phase 4's leaderboard shipped as the "Resumen" page and its charting
 shipped in 1.2.0 — **Plotly, not the Chart.js the roadmap floated**
 (see "Resumen's chart" for why), now used on both `/resumen` and
 `/usuario/<id>`. The only thing ever dropped from Phase 4 is a
-dashboard/KPI tile row, which is still on the CHANGELOG's wishlist.
+dashboard/KPI tile row, which is still open as GitHub issue #1 (the
+wishlist moved from CHANGELOG.md to GitHub Issues in Oct 2026).
 Phases 5 and 6 were deliberately done out of order, ahead of Phase 4,
 at the user's request. Phase 7+ has not been started. Phase 3 deliberately deviated from its
 own description above: editing is open to **every** logged-in user (not

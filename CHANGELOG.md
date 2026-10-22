@@ -9,28 +9,12 @@ decision below, see `CLAUDE.md` — this file just says what happened
 and when.
 
 ## Next Features (ideas, not yet built)
-Roughly in the order they came up, not necessarily the order they'll
-ship.
-- A KPI/dashboard row above or beside Resumen's chart (Phase 4's
-  leaderboard shipped in 1.0.0 as the standings table; the trend chart
-  shipped in 1.2.0 — a small set of headline stat tiles is what's left).
-- Offsite backups (e.g. periodically pulling `backups/` down to a NAS)
-  — the current backups protect against bad data, not against losing
-  the hosting account.
-Potential bugs:
-- Verificar punto y coma.
-- one role per user per asado
-Social:
-- User statistics.
-- Calendar view
-Improvements:
-- Favourite cuts (less priority) — much cheaper now that asado_cortes
-  exists: a GROUP BY corte, COUNT(*) per user is most of it.
-- Asado weight calculator
-
-Groups — the foundation shipped in 2.0.0; still to come: creating
-groups from the web instead of the terminal, invitations, one login in
-several groups (with a group switcher), and per-group scoring weights.
+The wishlist that used to live here moved to **GitHub Issues**
+(https://github.com/nlopezk/asados/issues, 22 Oct 2026), so it has one
+home instead of two copies drifting apart. Add new ideas there, not
+here; this file records what SHIPPED. "One role per user per asado"
+wasn't carried over: it was already built (`new_asado()`/`edit_asado()`
+refuse a repeated participant).
 
 
 ## [2.0.1] - 2026-10-22

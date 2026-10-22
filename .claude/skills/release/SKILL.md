@@ -46,10 +46,12 @@ and let the user confirm it.
 ## Step 4: Bump every place (four of them, nothing syncs them)
 1. `VERSION = "x.y.z"` in `app.py`. It's shown in the footer and busts the CSS cache.
 2. `CHANGELOG.md`: a new `## [x.y.z] - YYYY-MM-DD` section (today's date) directly ABOVE the
-   previous release and BELOW the "Next Features" wishlist block. Use `### Added` /
-   `### Changed` / `### Fixed` the way earlier entries do, written for the group (what changed
-   for them), with the reasoning left to CLAUDE.md. Draft it from the commits and diff, then
-   **show it to the user for edits**. Move anything shipped out of "Next Features".
+   previous release and BELOW the "Next Features" note (which now just points at GitHub
+   Issues). Use `### Added` / `### Changed` / `### Fixed` the way earlier entries do, written
+   for the group (what changed for them), with the reasoning left to CLAUDE.md. Draft it from
+   the commits and diff, then **show it to the user for edits**. Mention any GitHub issue this
+   release resolves as `(#N)`. After the push in step 6, close each one with
+   `gh issue close N --comment "Shipped in vx.y.z."` (ask first, since it's public).
 3. `CLAUDE.md`: the `**Currently at vX.Y.Z: ...**` line in "Roadmap / phase status".
 4. The git tag `vx.y.z` (step 6).
 
