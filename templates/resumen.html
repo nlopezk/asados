@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Resumen{% endblock %}
 <!--
     resumen.html = "Resumen": the standings / position table.
 
@@ -14,7 +16,11 @@
     unaffected.
 -->
 
-{% block container_extra_class %}container-wide{% endblock %}
+{# container-resumen (UI refresh, 2.0.2): ONE width for the whole page.
+   Under container-wide the filter box, table, note and chart each had
+   a different width (full, 1180px, full, 1300px), so no two edges lined
+   up. See .container-resumen in style.css. #}
+{% block container_extra_class %}container-resumen{% endblock %}
 
 {% block content %}
 {# <h1>, not <h2> (UI review, 2.0.2): screen-reader users jump to a
@@ -72,7 +78,7 @@
     <input type="hidden" name="sort" value="{{ sort_key }}">
     <input type="hidden" name="dir" value="{{ direction }}">
     {% if selected_year or selected_semester %}
-        <a href="{{ url_for('resumen_page', sort=sort_key, dir=direction) }}" class="filter-clear">Limpiar filtros ✕</a>
+        <a href="{{ url_for('resumen_page', sort=sort_key, dir=direction) }}" class="filter-clear">{{ icon("x") }}Limpiar filtros</a>
     {% endif %}
 </form>
 
@@ -125,7 +131,7 @@
         <th class="{% if is_active %}sorted-column{% endif %}">
             <a class="sort-link"
                href="{{ url_for('resumen_page', sort=key, dir=next_dir, year=selected_year or none, semester=selected_semester or none) }}">
-                {{ label }}<span class="sort-arrow">{% if is_active %}{{ '▲' if direction == 'asc' else '▼' }}{% else %}↕{% endif %}</span>
+                {{ label }}<span class="sort-arrow">{% if is_active %}{{ icon('chevron-up' if direction == 'asc' else 'chevron-down') }}{% else %}{{ icon('chevrons-up-down') }}{% endif %}</span>
             </a>
         </th>
     {% endmacro %}

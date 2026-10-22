@@ -6,6 +6,8 @@
     and only fill in the content block. This avoids repeating
     the head section, navigation bar, and CSS link on every single page.
 -->
+{% from "_icons.html" import icon %}
+{% from "_brand.html" import brand_mark %}
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -15,7 +17,14 @@
          the navbar's burgundy, so the app reads as one surface instead
          of sitting under a white or grey browser strip (UI review, 2.0.2). -->
     <meta name="theme-color" content="#6e2020">
-    <title>Asados App</title>
+    <!-- One title PER PAGE (UI refresh, 2.0.2): each page fills the
+         "title" block with its own name (e.g. "Resumen"), so browser
+         tabs, history and bookmarks say which page they are instead of
+         eleven identical "Asados App" entries. -->
+    <title>{% block title %}{% endblock %}{% if self.title() %} – {% endif %}Asados</title>
+    <!-- The browser-tab icon: the brand flame (see _brand.html). An SVG
+         favicon stays sharp at any size; every current browser takes one. -->
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <!-- Google Fonts: EB Garamond (headings — a classic, restrained
          serif in the Garamond tradition, chosen after studying "The
          Designer's Dictionary of Color" for its own heading/body
@@ -75,7 +84,7 @@
          "navigation, navigation" can't tell them apart (UI review, 2.0.2). -->
     <nav class="navbar" aria-label="Principal">
         <a href="{{ url_for('index') }}"
-           class="nav-title {% if request.endpoint in home_endpoints %}nav-current{% endif %}">🔥 Asados</a>
+           class="nav-title {% if request.endpoint in home_endpoints %}nav-current{% endif %}">{{ brand_mark() }}<span class="nav-title-text">Asados</span></a>
         <!-- g.username is set on every request by load_logged_in_user()
              in app.py — None if nobody is logged in. Jinja templates can
              read Flask's "g" object directly, no need to pass it manually
@@ -98,7 +107,7 @@
                     onclick="toggleNav()"
                     aria-expanded="false"
                     aria-controls="navbar-right"
-                    aria-label="Menú">☰</button>
+                    aria-label="Menú">{{ icon("menu") }}</button>
             <!-- Order here is the order they appear on screen, in both
                  presentations (the desktop row and the ☰ dropdown share
                  this one list). "Añadir Asado" leads because it's the
@@ -113,27 +122,34 @@
                  noticing the flame icon specifically. -->
             <div class="navbar-right" id="navbar-right">
                 <a href="{{ url_for('new_asado') }}"
-                   class="nav-link nav-link-add {% if request.endpoint == 'new_asado' %}nav-current{% endif %}">Añadir Asado</a>
+                   class="nav-link nav-link-add {% if request.endpoint == 'new_asado' %}nav-current{% endif %}">{{ icon("plus") }}Añadir Asado</a>
                 <a href="{{ url_for('index') }}"
-                   class="nav-link {% if request.endpoint in home_endpoints %}nav-current{% endif %}">Inicio</a>
+                   class="nav-link {% if request.endpoint in home_endpoints %}nav-current{% endif %}">{{ icon("house") }}Inicio</a>
                 <a href="{{ url_for('resumen_page') }}"
-                   class="nav-link {% if request.endpoint == 'resumen_page' %}nav-current{% endif %}">🏆 Resumen</a>
+                   class="nav-link {% if request.endpoint == 'resumen_page' %}nav-current{% endif %}">{{ icon("trophy") }}Resumen</a>
                 <a href="{{ url_for('base_asados') }}"
-                   class="nav-link {% if request.endpoint in base_asados_endpoints %}nav-current{% endif %}">📋 Base de Asados</a>
+                   class="nav-link {% if request.endpoint in base_asados_endpoints %}nav-current{% endif %}">{{ icon("table-2") }}Base de Asados</a>
                 <a href="{{ url_for('locations_page') }}"
-                   class="nav-link {% if request.endpoint in ubicaciones_endpoints %}nav-current{% endif %}">📍 Ubicaciones</a>
+                   class="nav-link {% if request.endpoint in ubicaciones_endpoints %}nav-current{% endif %}">{{ icon("map-pin") }}Ubicaciones</a>
                 <a href="{{ url_for('config_page') }}"
-                   class="nav-link {% if request.endpoint in config_endpoints %}nav-current{% endif %}">⚙️ Config</a>
+                   class="nav-link {% if request.endpoint in config_endpoints %}nav-current{% endif %}">{{ icon("settings") }}Config</a>
                 {# title= shows the full name on hover when a long one is
                    cut short with "…" by .nav-username's width cap. #}
-                <span class="nav-username" title="{{ g.name }}">👤 {{ g.name }}</span>
                 <a href="{{ url_for('activity_log_page') }}"
-                   class="nav-link {% if request.endpoint == 'activity_log_page' %}nav-current{% endif %}">🕓 Actividad</a>
+                   class="nav-link {% if request.endpoint == 'activity_log_page' %}nav-current{% endif %}">{{ icon("history") }}Actividad</a>
                 <!-- "Salir" deliberately never gets nav-current — it isn't
                      a section you're IN, it's an action that ends the
                      session, so highlighting it as "current" would be
                      misleading regardless of which route you're on. -->
-                <a href="{{ url_for('logout') }}" class="nav-link">Salir</a>
+                {# The ACCOUNT area (UI refresh, 2.0.2): who's logged in, and
+                   Salir, grouped at the end behind a thin divider - they're
+                   about YOU, not sections of the app, so they sit apart from
+                   the section links. (Actividad moved in front of the name
+                   for the same reason: it's a section.) #}
+                <span class="nav-account">
+                    <span class="nav-username" title="{{ g.name }}">{{ icon("user") }}{{ g.name }}</span>
+                    <a href="{{ url_for('logout') }}" class="nav-link nav-link-quiet">{{ icon("log-out") }}Salir</a>
+                </span>
             </div>
         {% endif %}
     </nav>
@@ -181,9 +197,17 @@
          (see CLAUDE.md), and a group name of unknown length there
          would silently invalidate that measurement. -->
     <footer class="app-footer">
-        {% if g.group %}<span class="app-group-name">{{ g.group.name }} ·</span>{% endif %}
-        <span class="app-version">v{{ version }}</span>
-        <span class="app-footer-quote">"Soñás la hoguera donde siempre sos la leña" (Indio, 1949-2026)</span>
+        {# One line: group name and version. The separator is drawn by
+           CSS (.app-footer-meta) BETWEEN items, so a missing group name -
+           on the login page - can't leave a dangling "·" behind, as the
+           old hard-coded "Grupo A ·" did. Curly quotes on the epigraph. #}
+        <span class="app-footer-meta">
+            {% if g.group %}<span class="app-group-name">{{ g.group.name }}</span>{% endif %}
+            <span class="app-version">v{{ version }}</span>
+        </span>
+        {# Only when logged in: the login page shows this same quote as the
+           card's epigraph, and it shouldn't appear twice on one screen. #}
+        {% if g.username %}<span class="app-footer-quote">“Soñás la hoguera donde siempre sos la leña” — Indio, 1949-2026</span>{% endif %}
     </footer>
 </body>
 </html>

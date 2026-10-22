@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ asado.nombre }}{% endblock %}
 <!--
     view_asado.html = the DETAIL page for one asado.
     Shows a READ-ONLY summary by default, with an "Editar" button that
@@ -35,7 +37,7 @@
        page's <h1> to find out where they are, and no page had one. It
        LOOKS exactly like the old <h2> - see the h1/h2 rule in style.css. #}
     <h1>{{ asado.nombre }}</h1>
-    <a href="{{ url_for('index') }}" class="back-link">← Volver</a>
+    <a href="{{ url_for('index') }}" class="back-link">{{ icon("chevron-left") }}Volver</a>
 </div>
 
 {% if success %}
@@ -68,7 +70,7 @@
                     {% if asado.latitude and asado.longitude %}
                         <br>
                         <a href="https://www.openstreetmap.org/?mlat={{ asado.latitude }}&mlon={{ asado.longitude }}#map=16/{{ asado.latitude }}/{{ asado.longitude }}"
-                           target="_blank" rel="noopener">📍 Ver en el mapa</a>
+                           target="_blank" rel="noopener">{{ icon("map-pin") }}Ver en el mapa</a>
                     {% endif %}
                 </td>
             </tr>
@@ -102,12 +104,12 @@
     </table>
 
     <div class="view-actions">
-        <button type="button" class="primary-button" onclick="showEditForm()">✏️ Editar</button>
+        <button type="button" class="primary-button" onclick="showEditForm()">{{ icon("pencil") }}Editar</button>
         {% if g.role == "admin" %}
             <form method="POST" action="{{ url_for('delete_asado', asado_id=asado.id) }}"
                   onsubmit="return confirm('¿Eliminar este asado? Se borrarán también los puntos de todos sus participantes. Esta acción no se puede deshacer.');">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="secondary-button">🗑 Eliminar Asado</button>
+                <button type="submit" class="secondary-button button-danger">{{ icon("trash-2") }}Eliminar Asado</button>
             </form>
         {% endif %}
     </div>

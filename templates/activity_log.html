@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Actividad{% endblock %}
 <!--
     activity_log.html = "Registro de Actividad": a chronological feed
     of who created/edited/deleted which asado, and when. Visible to
@@ -26,23 +28,23 @@
             <div class="log-entry">
                 <p class="log-entry-header">
                     {% if entry.action == "create" %}
-                        <span class="log-entry-icon">➕</span>
+                        <span class="log-entry-icon">{{ icon("circle-plus") }}</span>
                         <strong>{{ entry.actor_name }}</strong> creó el asado
                     {% elif entry.action == "edit" %}
-                        <span class="log-entry-icon">✏️</span>
+                        <span class="log-entry-icon">{{ icon("pencil") }}</span>
                         <strong>{{ entry.actor_name }}</strong> editó el asado
                     {% else %}
-                        <span class="log-entry-icon">🗑</span>
+                        <span class="log-entry-icon">{{ icon("trash-2") }}</span>
                         <strong>{{ entry.actor_name }}</strong> eliminó el asado
                     {% endif %}
                     {% if entry.asado_id %}
-                        <a href="{{ url_for('view_asado', asado_id=entry.asado_id) }}">"{{ entry.asado_nombre }}"</a>
+                        <a href="{{ url_for('view_asado', asado_id=entry.asado_id) }}">“{{ entry.asado_nombre }}”</a>
                     {% else %}
                         <!-- The asado no longer exists (this IS its
                              deletion record, or it was deleted since)
                              — nothing to link to, just show the frozen
                              name as plain text. -->
-                        "{{ entry.asado_nombre }}"
+                        “{{ entry.asado_nombre }}”
                     {% endif %}
                     <span class="log-entry-timestamp">{{ entry.timestamp }}</span>
                 </p>
@@ -66,11 +68,11 @@
     {% if total_pages > 1 %}
         <nav class="pagination" aria-label="Páginas">  {# a name for this landmark, see base.html #}
             {% if page > 1 %}
-                <a href="{{ url_for('activity_log_page', page=page-1) }}" class="secondary-button">← Anterior</a>
+                <a href="{{ url_for('activity_log_page', page=page-1) }}" class="secondary-button">{{ icon("chevron-left") }}Anterior</a>
             {% endif %}
             <span class="pagination-status">Página {{ page }} de {{ total_pages }}</span>
             {% if page < total_pages %}
-                <a href="{{ url_for('activity_log_page', page=page+1) }}" class="secondary-button">Siguiente →</a>
+                <a href="{{ url_for('activity_log_page', page=page+1) }}" class="secondary-button">Siguiente{{ icon("chevron-right") }}</a>
             {% endif %}
         </nav>
     {% endif %}

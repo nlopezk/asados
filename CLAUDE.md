@@ -222,7 +222,7 @@ is what made the rest of the app responsive almost for free; keep
 using that pattern rather than fixed widths.
 
 **The navbar has two presentations from ONE set of links: a
-horizontal row above 1250px, a "☰" dropdown at/below it.** Previously
+horizontal row above 1240px, a "☰" dropdown at/below it.** Previously
 there was only the row, and below ~1025px it wrapped into a two- and
 three-row clump of pills — measured at **216px tall on a 375px phone
 (≈31% of the visible screen, ≈38% at 320px) before any content
@@ -232,13 +232,17 @@ harmless rendering-metrics shift, not a regression; re-measured and
 confirmed clean either way). The links exist exactly once in
 `base.html` (a phone-only duplicate menu would be a second place to
 forget when adding a section); `.nav-toggle` + the
-`@media (max-width: 1250px)` block in style.css do all the switching,
+`@media (max-width: 1240px)` block in style.css do all the switching,
 and `toggleNav()` in `base.html` only ever toggles a single `.open`
 class.
 
 **On-screen order (both presentations share it): Añadir Asado, Inicio,
-Resumen, Base de Asados, Ubicaciones, Config, username, Actividad,
-Salir.** Añadir Asado leads because it's the one ACTION among
+Resumen, Base de Asados, Ubicaciones, Config, Actividad, then the
+ACCOUNT group (username + Salir) behind a thin divider.** (2.0.2 moved
+Actividad in front of the name: it's a section, while the name and
+Salir are about the person, so they're grouped apart. The links are
+quiet text with Lucide line icons since 2.0.2, no filled pills - see
+"UI refresh (2.0.2)" below.) Añadir Asado leads because it's the one ACTION among
 otherwise purely navigational links (see `.nav-link-add` below);
 Inicio comes right after it — the 🔥 Asados logo has always linked
 home too, but a logo isn't always registered as clickable NAVIGATION
@@ -266,7 +270,9 @@ Three things here are load-bearing and easy to undo by accident:
   cap), which makes the worst case a fixed number (measured: one 67px
   row down to 1228px with any name), and the breakpoint is that worst
   case plus ~20px for font-rendering differences between browsers/OSes
-  — 1250px. Left at an old number, every width between the new
+  — 1250px. **2.0.2's quiet navbar re-measured to 1218px with the
+  longest name, so it's 1240px now** (the icons ate roughly what
+  dropping the pill padding saved). Left at an old number, every width between the new
   and old breakpoints would have silently gone back to the squeezed,
   wrapping navbar this was built to eliminate. **If you add, remove, or
   rename a nav link, re-measure and update the number** — measure with
@@ -388,8 +394,10 @@ Ubicaciones' spreadsheet, which could genuinely use more room. Fixed
 by giving `.container` a wider default (900px) and letting specific
 pages opt into an even wider cap (1500px) via a new
 `{% block container_extra_class %}` in `base.html` — only
-`base_asados.html`/`ubicaciones.html` set this block to
-`container-wide`; every other page keeps the moderate 900px default
+`base_asados.html` sets this block to `container-wide` since 2.0.2
+(Ubicaciones dropped it: its in-table fields now fill their cells, so
+the page fits one 900px column with its form; Resumen uses its own
+`container-resumen`, one 1180px width for every block on the page); every other page keeps the moderate 900px default
 (a super-wide `.asado-form` would just stretch its `width: 100%`
 inputs into awkwardly long single-line fields, so forms deliberately
 stay at the narrower tier). **Neither tier affects mobile** — below
@@ -865,8 +873,9 @@ a one-line edit with zero code or schema impact.
 
 **Non-beef categories get an emoji + caption, not sourced icon files.**
 Eight images would mean eight licence checks and a set that doesn't
-look like a set; emoji cost nothing and match the UI language the
-navbar already speaks. But emoji render differently across platforms
+look like a set; emoji cost nothing. (Since 2.0.2 the INTERFACE uses Lucide line icons
+instead of emoji - see "UI refresh (2.0.2)"; the meat emoji stay
+because they're content, not chrome.) But emoji render differently across platforms
 and several of these are ambiguous alone (🍖 vs 🥩 vs 🐖), so **the
 glyph never appears without its label** — same rule as the per-user
 colour dots never replacing a name.
@@ -981,9 +990,10 @@ different stories. Same "never rely on colour alone" rule as the
 per-user colour dots.
 
 **`--color-gold` is deliberately NOT used here** despite being the
-obvious "highlight" colour. CLAUDE.md's own design note limits it to
-exactly one place (the navbar's brass rail), following the colour
-book's warning that overusing gold cheapens it.
+obvious "highlight" colour. CLAUDE.md's own design note keeps it to
+the navbar (its brass rail and the current-page underline) and the
+short rule above the footer, following the colour book's warning that
+overusing gold cheapens it.
 
 **The regions are deliberately NOT focusable.** 31 tab stops would be
 a miserable way through this form and would buy nothing: the dropdown
@@ -1463,8 +1473,10 @@ each header link carries the current `year`/`semester` — so changing
 one control never silently resets the other. If you add a third
 control, it needs to be carried in both directions too.
 
-**`.resumen-wrapper` caps the table's width to 1180px inside the
-1500px `.container-wide` tier** (10 short-value columns don't need the
+**(Superseded in 2.0.2: Resumen now uses `.container-resumen`, ONE
+1180px width for the filters, table, note and chart, so their edges
+line up; what follows is the history.) `.resumen-wrapper` capped the
+table's width to 1180px inside the 1500px `.container-wide` tier** (10 short-value columns don't need the
 same full width Base de Asados' 21 columns genuinely do) — and pairs
 that `max-width` with `margin: 0 auto`. **The `margin: 0 auto` isn't
 optional and was missed on the first pass**: `max-width` alone only
@@ -1791,9 +1803,10 @@ could drift out of sync with it later. Two `<h2>`s on one page is
 fine — they're two peer sections, not a hierarchy violation.
 
 **v1.5.0's full home-page order, top to bottom**: success/error
-messages, "Resumen del Grupo", "Listado de Asados", a green "➕ Añadir
-Asado" shortcut button, the filter form, then the asado card list +
-pagination. The shortcut button (`.home-add-shortcut` wrapping an
+messages, "Resumen del Grupo", "Listado de Asados" with a green "Añadir
+Asado" shortcut button on the same row (`.section-header`, since 2.0.2
+- it used to take a row of its own), the filter form, then the asado
+card list + pagination. The shortcut button (an
 `<a class="primary-button primary-button-green">`) duplicates the
 navbar's own "Añadir Asado" link on purpose — the same reasoning that
 got "Inicio" added to the navbar in the first place: not everyone
@@ -2158,9 +2171,9 @@ that drove decisions, if this direction ever needs revisiting:
   it started as.
 - **Metallic chapter** (p.245): "gold... can add elegance and
   richness," but the book also warns overuse cheapens it — this is why
-  `--color-gold` appears in exactly ONE place (the navbar's
-  bottom-border "brass rail"), not scattered around as a general
-  accent.
+  `--color-gold` is kept to the navbar (its bottom-border "brass
+  rail" and the current-page underline) and one short rule above the
+  footer, never scattered around as a general accent.
 - **The book's own heading AND body text** (photographed and zoomed
   into directly) turned out to be a single classic, moderate-contrast
   serif in the Garamond/Caslon tradition — not the softer, quirkier
@@ -2168,8 +2181,11 @@ that drove decisions, if this direction ever needs revisiting:
   Garamond', the closest Google Fonts match.
 - The book's own section labels ("CULTURAL MEANINGS", "SUCCESSFUL
   APPLICATIONS") are small, uppercase, and letter-spaced rather than
-  plain bold text — copied into this app's form labels, filter labels,
-  and table headers (`text-transform: uppercase; letter-spacing: ...`).
+  plain bold text — copied into this app's table headers and tiny meta
+  labels (`text-transform: uppercase; letter-spacing: ...`). Form and
+  filter labels used it too until 2.0.2, which moved them to sentence
+  case: in caps everywhere it read as a generic template tell rather
+  than as a choice.
 
 CSS custom properties are still defined once at `:root` (`--color-bg`,
 `--color-surface`, `--color-accent`, etc.) — change the palette by
@@ -2179,6 +2195,54 @@ Headings (and prose-like text) use 'EB Garamond'; compact UI chrome
 legibility — both loaded from Google Fonts in `base.html` (same CDN
 pattern as Leaflet), with system-font fallbacks if that CDN is
 unreachable.
+
+### UI refresh (2.0.2) — one visual system
+From a full look-and-feel review, every item approved by the user (and
+previewed on a branch first). The palette and both fonts were kept on
+purpose; what changed is CONSISTENCY:
+
+- **Type scale: six sizes** (`--text-xs` … `--text-2xl`, 12/14/16/19/
+  24/28px, in rem). There were twenty, many 0.85–0.95em apart and
+  compounding when nested. **Every font-size uses a token — don't add
+  a raw size.**
+- **Three radii** (`--radius-s` 6px controls, `--radius-m` 10px
+  panels, `--radius-pill` chips/tags), and **no drop shadows** (nearly
+  invisible on a dark background; the wood border frames things).
+- **Colour roles: coral means CLICKABLE, only.** Points, weight hints
+  and the sorted Resumen header went back to cream/tan; burgundy fills
+  only primary buttons. Before using `--color-accent-text`, ask
+  "can you click this?".
+- **Link underline rule:** standalone links (names, titles, buttons)
+  never underlined at rest, underlined on hover; **links inside a
+  sentence (`p a:not([class])`) keep a soft underline** — colour alone
+  failed the 3:1 link-vs-text contrast axe-core checks.
+- **Icons: `templates/_icons.html`, Lucide line icons** (ISC, pinned
+  v0.460.0, copied as plain SVG — no library). `{% from "_icons.html"
+  import icon %}` then `{{ icon("calendar") }}`; pass `label=` only for
+  an icon standing alone. They replaced 18 different UI emoji. Each
+  icon is written as a literal branch in the macro, **not printed with
+  `|safe`** — "no `|safe` anywhere" stays true. Imports aren't passed
+  down from base.html: every template (and partial) that uses
+  `icon()` imports it itself.
+- **Brand mark: `templates/_brand.html` + `static/favicon.svg`**, the
+  same hand-drawn two-tone flame (change both together). Replaced the
+  🔥 emoji logo; also the browser-tab icon.
+- **Quiet navbar** (text links + icons, brass underline for the
+  current page, green "Añadir Asado" the only filled item, an account
+  group at the end) — breakpoint re-measured to 1240px, see above.
+- **Per-page tab titles** via `{% block title %}` (base.html renders
+  "<page> – Asados").
+- **Layout:** the login page is a centred card with the brand and the
+  Indio quote as epigraph (the footer hides its own copy there);
+  home cards show title+date, icon+text details and participants as
+  aligned name/rol/points columns; Actividad is one panel with a
+  divided timeline; form buttons size to their label on desktop and go
+  full width on phones; "+ Añadir otro…" are light dashed buttons.
+- **The CSS lives in a marked "UI REFRESH (2.0.2)" section** in
+  style.css, placed before the touch/phone section (which must keep
+  the last word). It deliberately never sets `display` on
+  `.navbar-right` — that would beat the phone menu's media query (the
+  source-order bug recorded in the navbar notes).
 
 **Two different reds, on purpose**: `--color-accent` (deep burgundy)
 is for FILLS — navbar, primary/secondary button backgrounds — where

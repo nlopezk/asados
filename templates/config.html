@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Configuración{% endblock %}
 <!--
     config.html = the "Configuración" page.
     Every logged-in user sees the "Mi Perfil" form (change their own
@@ -29,7 +31,7 @@
     <label for="name">Nombre</label>
     <input type="text" id="name" name="name" value="{{ g.name }}" required>
 
-    <label for="new_password">Nueva Contraseña</label>
+    <label for="new_password">Nueva contraseña</label>
     <!-- autocomplete="new-password": tells phones and password managers
          this is a NEW password to save, not a place to fill the current
          one in (UI review, 2.0.2). -->
@@ -73,7 +75,7 @@
                             <form method="POST" action="{{ url_for('delete_user_route', user_id=user.id) }}"
                                   onsubmit="return confirm('¿Eliminar al usuario {{ user.username }}?');">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="secondary-button">Eliminar</button>
+                                <button type="submit" class="button-danger button-text">{{ icon("trash-2") }}Eliminar</button>
                             </form>
                         {% endif %}
                     </td>

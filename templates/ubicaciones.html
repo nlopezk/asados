@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Ubicaciones{% endblock %}
 <!--
     ubicaciones.html = "Ubicaciones Guardadas": manage the reusable pool
     of saved places that the asado form's "Ubicación guardada" dropdown
@@ -50,7 +52,8 @@
     <form> inside the table itself.
 -->
 
-{% block container_extra_class %}container-wide{% endblock %}
+{# No longer container-wide (UI refresh, 2.0.2): the form and the table
+   now share one column, see .locations-table in style.css. #}
 
 {% block content %}
 {# <h1>, not <h2> (UI review, 2.0.2): screen-reader users jump to a
@@ -78,14 +81,14 @@
     {% set location_required = true %}
     {% include "_location_picker.html" %}
 
-    <button type="submit" class="primary-button">+ Guardar Ubicación</button>
+    <button type="submit" class="primary-button">Guardar ubicación</button>
 </form>
 
 <h2 class="section-title">Ubicaciones Existentes</h2>
 {% if locations|length == 0 %}
     <p class="empty-state">
         Todavía no hay ubicaciones guardadas. Agrega una arriba, o marca
-        "💾 Guardar esta ubicación" la próxima vez que crees o edites un asado.
+        "Guardar esta ubicación" la próxima vez que crees o edites un asado.
     </p>
 {% else %}
     <!-- One <form> per row — see the header comment above for why these
@@ -155,13 +158,13 @@
                         </td>
                         <td class="spreadsheet-actions">
                             <button type="submit" form="location-form-{{ loc.id }}"
-                                    class="secondary-button" title="Guardar cambios de esta fila" aria-label="Guardar cambios de esta fila">💾</button>
+                                    class="secondary-button" title="Guardar cambios de esta fila" aria-label="Guardar cambios de esta fila">{{ icon("save") }}</button>
                             {% if g.role == "admin" %}
                                 <button type="submit" form="location-form-{{ loc.id }}"
                                         formaction="{{ url_for('delete_location', location_id=loc.id) }}"
                                         class="secondary-button" title="Eliminar" aria-label="Eliminar esta ubicación"
                                         onclick="return confirm('¿Eliminar esta ubicación guardada? No afecta a los asados que ya la usaron.');">
-                                    🗑
+                                    {{ icon("trash-2") }}
                                 </button>
                             {% endif %}
                         </td>

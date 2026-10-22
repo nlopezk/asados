@@ -158,6 +158,8 @@ As_app/
 │   ├── view_asado.html         (asado detail; edit in place; admin sees delete)
 │   ├── _asado_form.html        (shared create/edit form fields + live points preview)
 │   ├── _location_picker.html   (shared address autocomplete + Leaflet map modal)
+│   ├── _icons.html             (the app's line icons: icon("name") macro, Lucide, ISC)
+│   ├── _brand.html             (the flame brand mark; same drawing as static/favicon.svg)
 │   ├── _cow_diagram.html       (interactive cow: caption + hover/click behaviour)
 │   ├── _cow_svg.html           (GENERATED from vaca_svg.svg — do not edit by hand)
 │   ├── cortes.html             (beef-cut reference page)
@@ -168,7 +170,8 @@ As_app/
 │   ├── activity_log.html       (who created/edited/deleted what, and when)
 │   └── config.html             (profile settings + admin user management)
 ├── static/
-│   └── style.css           (all the visual styling)
+│   ├── style.css           (all the visual styling)
+│   └── favicon.svg         (browser-tab icon: the brand flame)
 └── .claude/skills/         <- Claude Code skills (development only, never served)
     ├── smoke-test/             (smoke_test.py: checks the whole app on throwaway data)
     ├── new-migration/          (schema-change procedure, template, compare_schema.py)

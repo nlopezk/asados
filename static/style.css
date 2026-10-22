@@ -89,6 +89,31 @@
        (Base de Asados, Ubicaciones) genuinely benefit from a lot more
        horizontal room. Neither affects mobile: below the cap, width:
        100% already takes over regardless of what the cap is. */
+    /* ---- TYPE SCALE (UI refresh, 2.0.2) ----
+       Six sizes, and every font-size in this file uses one of them.
+       Before this there were TWENTY different sizes (0.5em to 1.7em,
+       six of them between 0.85 and 0.95em), so text hierarchy varied
+       from page to page without meaning anything. In rem, not em: an em
+       size MULTIPLIES when nested (0.85em inside 0.85em = 72%), so the
+       same class could render at different sizes in different places;
+       rem always means the same size, relative to the page's 16px.
+       Roughly a 1.2x step between sizes. */
+    --text-xs: 0.75rem;    /* 12px - tiny caps headers, footer, tags */
+    --text-s: 0.875rem;    /* 14px - secondary text, tables, meta, small buttons */
+    --text-m: 1rem;        /* 16px - body text, inputs, main buttons */
+    --text-l: 1.2rem;      /* 19px - card titles, section titles */
+    --text-xl: 1.5rem;     /* 24px - the brand, meat icons */
+    --text-2xl: 1.75rem;   /* 28px - page titles, stat values */
+    /* ---- CORNER RADII ----
+       Three instead of eight (4, 6, 8, 10, 14, 20px...): small for
+       controls, medium for panels, fully round for chips and tags.
+       Consistent corners are much of what makes a UI read as one system.
+       DROP SHADOWS were removed in the same pass: on a background this
+       dark they were nearly invisible, just muddying every panel's
+       edge - the thin wood-coloured border already does the framing. */
+    --radius-s: 6px;
+    --radius-m: 10px;
+    --radius-pill: 999px;
     --content-max-width: 900px;
     --content-max-width-wide: 1500px;
     /* Tells the BROWSER this is a dark theme (UI review, 2.0.2). The
@@ -122,7 +147,7 @@ h1, h2, h3, h4 {
    not jump to the browser's bigger default h1 size. */
 h1,
 h2 {
-    font-size: 1.7em; /* EB Garamond is more delicate than a display face at the same size — sized up for presence */
+    font-size: var(--text-2xl); /* EB Garamond is more delicate than a display face at the same size — sized up for presence */
 }
 
 /* Section headings inside a page (Participantes, Mi Perfil, Historial
@@ -132,7 +157,7 @@ h2 {
    own default h3 size, which is what they always rendered at. One
    class selector beats the bare h1/h2 rule above, whatever the order. */
 .section-title {
-    font-size: 1.17em;
+    font-size: var(--text-l);
 }
 
 /* Hidden on screen, still read aloud by screen readers. For text only
@@ -247,25 +272,57 @@ hr {
 .nav-title:visited {
     color: white;
     font-family: 'EB Garamond', Georgia, serif;
-    font-size: 1.55em;
+    font-size: var(--text-xl);
     font-weight: 700;
     letter-spacing: 0.02em;
     text-decoration: none;
+    /* The flame mark sits beside the word (UI refresh, 2.0.2). */
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
 }
 
+.nav-title:hover {
+    text-decoration: none;  /* the global a:hover underline isn't wanted on the logo */
+}
+
+/* The brand flame (templates/_brand.html), sized to the wordmark. */
+.brand-mark {
+    width: 1.15em;
+    height: 1.15em;
+    flex: none;
+}
+
+/* QUIET LINKS (UI refresh, 2.0.2). The links used to be nine filled
+   pills in a row, which read as busy. Now they're plain text with a
+   small line icon: no box at rest, a faint wash on hover, and the brass
+   underline marks the page you're on (.nav-current below). Only "Añadir
+   Asado" keeps a filled background - it's the one ACTION here. */
 .nav-link,
 .nav-link:visited {
-    color: white;
-    background-color: rgba(255, 255, 255, 0.15);
-    padding: 7px 12px;
-    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.86);
+    background-color: transparent;
+    padding: 7px 9px;
+    border-radius: var(--radius-s);
     text-decoration: none;
-    font-size: 0.92em;
+    font-size: var(--text-s);
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45em;
 }
 
 .nav-link:hover {
-    background-color: rgba(255, 255, 255, 0.25);
+    background-color: rgba(255, 255, 255, 0.1);
     color: white; /* :hover is (0,2,0) too, but be explicit rather than rely on inheriting from above */
+    text-decoration: none;
+}
+
+/* Icons in the bar: a touch smaller than the text, and quieter. */
+.nav-link .icon {
+    width: 1.05em;
+    height: 1.05em;
+    opacity: 0.8;
 }
 
 /* "Añadir Asado" — the one ACTION in a navbar that's otherwise all
@@ -281,6 +338,11 @@ hr {
 .nav-link-add:visited {
     background-color: var(--color-green);
     color: white;
+    padding: 7px 13px;
+}
+
+.nav-link-add .icon {
+    opacity: 1;
 }
 
 .nav-link-add:hover {
@@ -314,12 +376,16 @@ hr {
    muddy it), so it gets its own follow-up rule instead. */
 .nav-link.nav-current:not(.nav-link-add),
 .nav-link.nav-current:not(.nav-link-add):visited {
-    box-shadow: inset 0 -3px 0 0 var(--color-gold);
-    background-color: rgba(255, 255, 255, 0.26);
+    /* Quiet nav (2.0.2): the current page is full white plus the brass
+       underline - no filled box any more, the underline IS the marker. */
+    box-shadow: inset 0 -2px 0 0 var(--color-gold);
+    background-color: transparent;
+    color: white;
+    border-radius: 0;
 }
 
 .nav-link.nav-current:not(.nav-link-add):hover {
-    background-color: rgba(255, 255, 255, 0.34);
+    background-color: rgba(255, 255, 255, 0.1);
 }
 
 .nav-link-add.nav-current,
@@ -333,10 +399,13 @@ hr {
    with a little padding-bottom so the line sits clear of the
    Garamond's descenders (the tail on a lowercase "g", etc.) instead
    of cutting through them. */
+/* The logo no longer gets an underline when you're home: "Inicio"
+   right beside it already shows that, and two brass marks for one page
+   read as a mistake (UI refresh, 2.0.2). The rule stays, deliberately
+   empty of decoration, so the class keeps a documented meaning. */
 .nav-title.nav-current,
 .nav-title.nav-current:visited {
-    box-shadow: inset 0 -4px 0 0 var(--color-gold);
-    padding-bottom: 4px;
+    box-shadow: none;
 }
 
 /* The ☰ hamburger button. Hidden by default — i.e. the DESKTOP state
@@ -351,14 +420,15 @@ hr {
    sitting on the navbar's burgundy fill. */
 .nav-toggle {
     display: none;
-    background-color: rgba(255, 255, 255, 0.15);
+    line-height: 0;  /* the SVG menu icon is centred by padding, not by a text line box */
+    background-color: rgba(255, 255, 255, 0.12);
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-s);
     /* Sized to comfortably clear the ~44px minimum touch target the
        nav links themselves were already bumped to meet. */
     padding: 8px 14px;
-    font-size: 1.3em;
+    font-size: var(--text-l);
     line-height: 1;
 }
 
@@ -383,9 +453,28 @@ hr {
     gap: 12px;
 }
 
+/* WHO IS LOGGED IN + Salir, grouped at the end of the bar behind a thin
+   divider (UI refresh, 2.0.2): they're about you, not sections of the app. */
+.nav-account {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: 2px;
+    padding-left: 12px;
+    border-left: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.nav-username .icon {
+    width: 1em;
+    height: 1em;
+    margin-right: 0.35em;
+    vertical-align: -0.15em;
+    opacity: 0.75;
+}
+
 .nav-username {
     color: white;
-    font-size: 0.9em;
+    font-size: var(--text-s);
     opacity: 0.9;
     /* CAPPED, so the navbar's width can't depend on who's logged in.
        Without a cap, the width this row needs grew with the display
@@ -406,20 +495,21 @@ hr {
 }
 
 /* --- Navbar: collapsed "☰" presentation on narrow screens ---
-   Note the breakpoint: 1250px, NOT the 480px used by the app's other
+   Note the breakpoint: 1240px, NOT the 480px used by the app's other
    mobile rules at the bottom of this file. Those two numbers answer
    different questions on purpose. 480px is roughly "is this a
    phone?" — the right question for stacking form rows. This one is
    "do the nav links still FIT on one line?", and that has nothing to
    do with what device you're on.
 
-   1250 isn't a guess or a convention — it's measured, and it MOVES
+   1240 isn't a guess or a convention — it's measured, and it MOVES
    WHEN THE LINKS DO. In v2.0.1 the navbar was walked down width by
    width in a real browser with the media query switched off and the
    LONGEST possible display name (which .nav-username's 14ch cap now
    bounds): one clean 67px row down to 1228px, below that the labels
-   wrap their own text and it jumps to 104px. 1250 = that worst case
-   plus ~20px of margin, because the exact pixel differs a little
+   wrap their own text and it jumps to 104px. 1250 was that worst case
+   plus ~20px of margin (2.0.2's quiet navbar re-measured to 1218px,
+   hence 1240 now), because the exact pixel differs a little
    between browsers and operating systems (font rendering), and an
    exact-to-the-pixel number already failed once — see below.
 
@@ -434,8 +524,10 @@ hr {
    **This has now been re-measured TWICE, which is the whole reason
    it's documented this way**: the number was 1024px with six links,
    became 1125px the moment a seventh link ("🏆 Resumen") was added,
-   became 1168px when an eighth ("Inicio") was added, and 1250px with
-   the name-length fix above — each time
+   became 1168px when an eighth ("Inicio") was added, 1250px with
+   the name-length fix above, and 1240px with the 2.0.2 quiet navbar
+   (text links with line icons + the account group; re-measured: one
+   row down to 1218px with the longest name, +~20px margin) — each time
    walking a real browser width by width to find the new exact
    boundary, never assumed by extrapolation. Left at any of the older
    numbers, every width between the new and old breakpoints would have
@@ -449,7 +541,7 @@ hr {
    Everything here is a narrow-screen OVERRIDE — the desktop navbar
    above is untouched and stays a plain horizontal row, which is why
    this costs nothing on a PC. */
-@media (max-width: 1250px) {
+@media (max-width: 1240px) {
     /* Lets .navbar-right drop onto its own line below the title and
        the ☰ button, instead of trying to share their row. */
     .navbar {
@@ -491,7 +583,7 @@ hr {
         display: block;
         text-align: left;
         padding: 12px 14px;
-        font-size: 0.95em;
+        font-size: var(--text-m);
     }
 
     /* The username isn't a link, so it gets a quiet divider above it
@@ -505,6 +597,19 @@ hr {
            (the 14ch cap above exists only for the one-row desktop bar). */
         max-width: none;
         white-space: normal;
+    }
+
+    /* The account group in the dropdown: stacked like the other rows,
+       with the existing line above the name instead of the desktop
+       bar's vertical divider (UI refresh, 2.0.2). */
+    .navbar-right.open .nav-account {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+        margin-left: 0;
+        padding-left: 0;
+        border-left: none;
     }
 }
 
@@ -548,7 +653,7 @@ hr {
     margin: 0 auto;
     padding: 10px 20px 18px;
     text-align: center;
-    font-size: 0.72em;
+    font-size: var(--text-xs);
     color: var(--color-text-muted);
     display: flex;
     flex-direction: column;
@@ -575,7 +680,7 @@ hr {
 
 .group-summary-subtitle {
     color: var(--color-text-muted);
-    font-size: 0.9em;
+    font-size: var(--text-s);
     margin-bottom: 10px;
 }
 
@@ -599,11 +704,11 @@ hr {
     gap: 6px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 20px;
+    border-radius: var(--radius-pill);
     padding: 6px 14px 6px 10px;
     text-decoration: none;
-    font-size: 0.92em;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    font-size: var(--text-s);
+    /* (drop shadow removed, UI refresh 2.0.2 - see :root) */
 }
 
 .group-summary-card:hover {
@@ -622,17 +727,17 @@ hr {
 
 .group-summary-count {
     color: var(--color-text-muted);
-    font-size: 0.88em;
+    font-size: var(--text-xs);
 }
 
 /* --- Asado cards on the home page --- */
 .asado-card {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 10px;
+    border-radius: var(--radius-m);
     padding: 14px 16px;
     margin-bottom: 12px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    /* (drop shadow removed, UI refresh 2.0.2 - see :root) */
 }
 
 /* NOTE: this targets h3 because that's what index.html's card actually
@@ -642,7 +747,7 @@ hr {
    default heading margin around it instead of this tighter one. */
 .asado-card h3 {
     margin: 0 0 4px 0;
-    font-size: 1.15em;
+    font-size: var(--text-l);
 }
 
 .asado-card a {
@@ -656,7 +761,7 @@ hr {
 
 .asado-meta {
     color: var(--color-text-muted);
-    font-size: 0.88em;
+    font-size: var(--text-s);
     margin: 0 0 6px 0;
 }
 
@@ -671,7 +776,7 @@ hr {
 .asado-participants-label {
     font-weight: 600;
     color: var(--color-text-muted);
-    font-size: 0.78em;
+    font-size: var(--text-xs);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     margin: 0 0 4px 0;
@@ -722,10 +827,10 @@ hr {
 .log-entry {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 10px;
+    border-radius: var(--radius-m);
     padding: 10px 16px;
     margin-bottom: 10px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    /* (drop shadow removed, UI refresh 2.0.2 - see :root) */
 }
 
 .log-entry-header {
@@ -752,14 +857,14 @@ hr {
 .log-entry-timestamp {
     margin-left: auto;
     color: var(--color-text-muted);
-    font-size: 0.82em;
+    font-size: var(--text-xs);
     white-space: nowrap;
 }
 
 .log-entry-changes {
     margin: 6px 0 0 0;
     padding-left: 18px;
-    font-size: 0.9em;
+    font-size: var(--text-s);
     color: var(--color-text-muted);
 }
 
@@ -786,7 +891,7 @@ hr {
 .asado-form label {
     font-weight: 600;
     margin-top: 8px;
-    font-size: 0.78em;
+    font-size: var(--text-s);
     text-transform: uppercase;
     letter-spacing: 0.07em;
     color: var(--color-text-muted);
@@ -797,8 +902,8 @@ hr {
 .asado-form textarea {
     padding: 9px 10px;
     border: 1px solid var(--color-border);
-    border-radius: 6px;
-    font-size: 1em;
+    border-radius: var(--radius-s);
+    font-size: var(--text-m);
     width: 100%;
     background-color: var(--color-surface);
     color: var(--color-text);
@@ -825,7 +930,7 @@ hr {
     gap: 6px;
     margin-top: 10px;
     font-weight: 400;
-    font-size: 0.95em;
+    font-size: var(--text-s);
     text-transform: none;
     letter-spacing: normal;
     color: var(--color-text);
@@ -856,9 +961,9 @@ hr {
     background-color: var(--color-error-bg);
     border: 1px solid var(--color-error-border);
     color: var(--color-error-text);
-    border-radius: 6px;
+    border-radius: var(--radius-s);
     padding: 0 10px;
-    font-size: 1em;
+    font-size: var(--text-m);
     line-height: 1.8;
     flex: 0 0 auto;
 }
@@ -882,9 +987,9 @@ hr {
     background-color: var(--color-error-bg);
     border: 1px solid var(--color-error-border);
     color: var(--color-error-text);
-    border-radius: 6px;
+    border-radius: var(--radius-s);
     padding: 0 10px;
-    font-size: 1em;
+    font-size: var(--text-m);
     line-height: 1.8;
     flex: 0 0 auto;
 }
@@ -905,9 +1010,9 @@ button {
     background-color: var(--color-surface-alt);
     color: var(--color-text);
     border: 1px solid var(--color-border);
-    border-radius: 6px;
+    border-radius: var(--radius-s);
     padding: 8px 12px;
-    font-size: 0.95em;
+    font-size: var(--text-s);
 }
 
 button:hover {
@@ -923,8 +1028,8 @@ button:hover {
     color: white;
     border: none;
     padding: 11px;
-    border-radius: 6px;
-    font-size: 1.02em;
+    border-radius: var(--radius-s);
+    font-size: var(--text-m);
     font-weight: 600;
     margin-top: 12px;
     text-decoration: none; /* defensive: same reasoning as .secondary-button, in case this ever lands on an <a> */
@@ -959,17 +1064,13 @@ button:hover {
    have nudged layouts nobody asked to change. .primary-button already
    supplies margin-top: 12px (the gap above, under "Listado de Asados"),
    this only adds the gap below, before the filter form. */
-.home-add-shortcut {
-    margin-bottom: 16px;
-}
-
 /* --- Detail tables --- */
 .detail-table {
     width: 100%;
     border-collapse: collapse;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 8px;
+    border-radius: var(--radius-m);
     overflow: hidden;
     margin-bottom: 10px;
 }
@@ -978,7 +1079,7 @@ button:hover {
     text-align: left;
     padding: 8px 10px;
     border-bottom: 1px solid var(--color-border);
-    font-size: 0.95em;
+    font-size: var(--text-m);
 }
 
 .detail-table tr:last-child th,
@@ -990,7 +1091,7 @@ button:hover {
     width: 40%;
     color: var(--color-text-muted);
     font-weight: 600;
-    font-size: 0.85em;
+    font-size: var(--text-xs);
     text-transform: uppercase;
     letter-spacing: 0.06em;
 }
@@ -1042,7 +1143,7 @@ button:hover {
 .view-actions .primary-button,
 .view-actions .secondary-button {
     padding: 10px 16px;
-    font-size: 0.95em;
+    font-size: var(--text-s);
     margin-top: 0;
 }
 
@@ -1051,7 +1152,7 @@ button:hover {
     border: 1px solid var(--color-error-border);
     color: var(--color-error-text);
     padding: 9px 14px;
-    border-radius: 8px;
+    border-radius: var(--radius-m);
     margin: 0 0 10px 0;
 }
 
@@ -1060,7 +1161,7 @@ button:hover {
     border: 1px solid var(--color-success-border);
     color: var(--color-success-text);
     padding: 9px 14px;
-    border-radius: 8px;
+    border-radius: var(--radius-m);
     margin: 0 0 10px 0;
 }
 
@@ -1068,7 +1169,7 @@ button:hover {
 .weight-hint {
     font-weight: normal;
     color: var(--color-accent-text);
-    font-size: 0.85em;
+    font-size: var(--text-xs);
     margin-left: 6px;
 }
 
@@ -1090,7 +1191,7 @@ button:hover {
 .meat-visual {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 8px;
+    border-radius: var(--radius-m);
     padding: 12px 14px;
     margin: 10px 0 4px 0;
 }
@@ -1143,9 +1244,9 @@ button:hover {
     gap: 6px;
     background: var(--color-surface-alt);
     border: 1px solid var(--color-border);
-    border-radius: 14px;
+    border-radius: var(--radius-pill);
     padding: 3px 6px 3px 12px;
-    font-size: 0.88em;
+    font-size: var(--text-s);
 }
 
 /* Overrides the bare-<button> baseline (which gives every unclassed
@@ -1157,7 +1258,7 @@ button:hover {
     padding: 0 4px;
     margin: 0;
     color: var(--color-text-muted);
-    font-size: 0.9em;
+    font-size: var(--text-s);
     line-height: 1;
 }
 
@@ -1168,7 +1269,7 @@ button:hover {
 
 .cortes-note {
     color: var(--color-text-muted);
-    font-size: 0.85em;
+    font-size: var(--text-s);
     margin-top: 10px;
 }
 
@@ -1199,13 +1300,13 @@ button:hover {
 }
 
 .meat-icon-glyph {
-    font-size: 1.6em;
+    font-size: var(--text-xl);
     line-height: 1;
 }
 
 .meat-icon-label {
     color: var(--color-text-muted);
-    font-size: 0.72em;
+    font-size: var(--text-xs);
     line-height: 1.2;
 }
 
@@ -1239,7 +1340,7 @@ button:hover {
 .back-link:visited {
     color: var(--color-text-muted);
     text-decoration: none;
-    font-size: 0.9em;
+    font-size: var(--text-s);
     white-space: nowrap;  /* never break "← Volver" across two lines */
 }
 
@@ -1309,7 +1410,7 @@ button:hover {
 
 .cow-caption {
     color: var(--color-text-muted);
-    font-size: 0.85em;
+    font-size: var(--text-s);
     min-height: 1.2em;  /* reserve the line so the layout doesn't jump as the text appears and clears */
     margin: 4px 0 0 0;
 }
@@ -1345,14 +1446,14 @@ button:hover {
 .points-summary {
     background: var(--color-accent-soft);
     border: 1px solid var(--color-border);
-    border-radius: 8px;
+    border-radius: var(--radius-m);
     padding: 8px 14px;
     margin-top: 8px;
 }
 
 .points-summary-line {
     padding: 3px 0;
-    font-size: 0.93em;
+    font-size: var(--text-s);
 }
 
 /* --- Location picker --- */
@@ -1368,7 +1469,7 @@ button:hover {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-top: none;
-    border-radius: 0 0 6px 6px;
+    border-radius: 0 0 var(--radius-s) var(--radius-s);
     max-height: 200px;
     overflow-y: auto;
     z-index: 50; /* sits above other form elements */
@@ -1377,7 +1478,7 @@ button:hover {
 .address-suggestion-item {
     padding: 7px 10px;
     cursor: pointer;
-    font-size: 0.9em;
+    font-size: var(--text-s);
     border-bottom: 1px solid var(--color-border);
 }
 
@@ -1399,8 +1500,8 @@ button:hover {
     color: var(--color-text);
     border: 1px solid var(--color-accent-text);
     padding: 9px;
-    border-radius: 6px;
-    font-size: 0.95em;
+    border-radius: var(--radius-s);
+    font-size: var(--text-s);
     margin-top: 6px;
     text-decoration: none; /* this class is also used on <a> tags (Exportar CSV, Cancelar, pagination) — without this they kept the browser's default underline */
     display: inline-block;
@@ -1432,7 +1533,7 @@ button:hover {
 .map-modal-content {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 10px;
+    border-radius: var(--radius-m);
     padding: 16px;
     width: 90%;
     max-width: 600px;
@@ -1441,7 +1542,7 @@ button:hover {
 .map-picker {
     width: 100%;
     height: 350px;
-    border-radius: 6px;
+    border-radius: var(--radius-s);
 }
 
 .map-modal-actions {
@@ -1452,7 +1553,7 @@ button:hover {
 }
 
 .map-picked-address {
-    font-size: 0.9em;
+    font-size: var(--text-s);
     color: var(--color-text-muted);
 }
 
@@ -1460,7 +1561,7 @@ button:hover {
    picker (see _location_picker.html) — same muted, small treatment as
    .map-picked-address above, just outside the modal. */
 .coordinates-display {
-    font-size: 0.9em;
+    font-size: var(--text-s);
     color: var(--color-text-muted);
     margin: 2px 0 0 0;
 }
@@ -1473,10 +1574,10 @@ button:hover {
     gap: 14px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 10px;
+    border-radius: var(--radius-m);
     padding: 12px 16px;
     margin-bottom: 14px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    /* (drop shadow removed, UI refresh 2.0.2 - see :root) */
 }
 
 .filter-field {
@@ -1494,7 +1595,7 @@ button:hover {
 
 .filter-field label {
     font-weight: 600;
-    font-size: 0.78em;
+    font-size: var(--text-s);
     text-transform: uppercase;
     letter-spacing: 0.07em;
     color: var(--color-text-muted);
@@ -1505,15 +1606,15 @@ button:hover {
     max-width: 100%; /* see min-width on .filter-field above */
     padding: 7px 10px;
     border: 1px solid var(--color-border);
-    border-radius: 6px;
-    font-size: 0.95em;
+    border-radius: var(--radius-s);
+    font-size: var(--text-s);
     background-color: var(--color-bg);
     color: var(--color-text);
 }
 
 .filter-clear {
     color: var(--color-accent-text);
-    font-size: 0.9em;
+    font-size: var(--text-s);
     text-decoration: none;
     align-self: center;
 }
@@ -1549,14 +1650,14 @@ button:hover {
     overflow-x: auto;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 8px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    border-radius: var(--radius-m);
+    /* (drop shadow removed, UI refresh 2.0.2 - see :root) */
 }
 
 .spreadsheet-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.85em;
+    font-size: var(--text-s);
     white-space: nowrap; /* keep each cell on one line, like a real spreadsheet */
 }
 
@@ -1590,7 +1691,7 @@ button:hover {
        added complexity that wasn't asked for here. */
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    font-size: 0.85em;
+    font-size: var(--text-xs);
 }
 
 .spreadsheet-table tbody tr:nth-child(even) {
@@ -1608,10 +1709,10 @@ button:hover {
 .spreadsheet-table input[type="number"] {
     padding: 3px 5px;
     border: 1px solid var(--color-border);
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     background-color: var(--color-bg);
     color: var(--color-text);
-    font-size: 0.95em;
+    font-size: var(--text-s);
     font-family: inherit;
 }
 
@@ -1803,7 +1904,7 @@ button:hover {
 
 .resumen-note {
     margin-top: 10px;
-    font-size: 0.82em;
+    font-size: var(--text-s);
     color: var(--color-text-muted);
     line-height: 1.45;
 }
@@ -1815,7 +1916,7 @@ button:hover {
 
 .resumen-chart-hint {
     margin: 0 0 10px 0;
-    font-size: 0.82em;
+    font-size: var(--text-s);
     color: var(--color-text-muted);
 }
 
@@ -1833,8 +1934,8 @@ button:hover {
     padding: 16px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 10px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    border-radius: var(--radius-m);
+    /* (drop shadow removed, UI refresh 2.0.2 - see :root) */
 }
 
 /* Plotly's `responsive: true` config (see resumen.html) makes it
@@ -1916,14 +2017,14 @@ button:hover {
     flex: 1 1 160px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 10px;
+    border-radius: var(--radius-m);
     padding: 14px 16px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    /* (drop shadow removed, UI refresh 2.0.2 - see :root) */
 }
 
 .stat-tile-label {
     display: block;
-    font-size: 0.75em;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.07em;
@@ -1934,14 +2035,14 @@ button:hover {
 .stat-tile-value {
     display: block;
     font-family: 'EB Garamond', Georgia, serif;
-    font-size: 1.7em;
+    font-size: var(--text-2xl);
     font-weight: 600;
     color: var(--color-text);
 }
 
 .stat-tile-of {
     font-family: 'Inter', -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-    font-size: 0.5em;
+    font-size: var(--text-s);
     font-weight: 400;
     color: var(--color-text-muted);
 }
@@ -1962,8 +2063,8 @@ button:hover {
     padding: 16px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 10px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    border-radius: var(--radius-m);
+    /* (drop shadow removed, UI refresh 2.0.2 - see :root) */
     margin-bottom: 22px;
 }
 
@@ -1983,7 +2084,7 @@ button:hover {
 
 .pagination-status {
     color: var(--color-text-muted);
-    font-size: 0.9em;
+    font-size: var(--text-s);
 }
 
 /* --- Mobile responsiveness ---
@@ -2019,6 +2120,521 @@ button:hover {
     .map-picker {
         height: 60vh;
     }
+}
+
+/* =====================================================================
+   UI REFRESH (2.0.2) - one visual system for the whole app
+   Approved changes from the look-and-feel review. Kept together here so
+   they read as one design decision. Placed AFTER the component rules
+   they refine (later wins at equal specificity) but BEFORE the
+   touch/phone section below, which must keep the last word.
+   Deliberately does NOT set `display` on .navbar-right - see the note
+   above the navbar's @media block for the bug that would bring back.
+   ===================================================================== */
+
+/* --- Icons (templates/_icons.html) ---
+   Line icons drawn in currentColor, so each takes the colour of the text
+   beside it. Sized in em: an icon in small text is small, one in a
+   heading is bigger. Spacing to the text comes from the `gap` of the
+   inline-flex element holding them, never from margins on the icon. */
+.icon {
+    width: 1.1em;
+    height: 1.1em;
+    flex: none;
+    vertical-align: -0.18em;
+}
+
+/* Everything that pairs an icon with text lines them up the same way. */
+.primary-button,
+.secondary-button,
+.back-link,
+.filter-clear,
+.meta-item,
+.asado-date,
+.coordinates-display,
+.detail-table td a,
+.cortes-note a,
+.button-danger,
+.add-row-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45em;
+}
+
+.primary-button,
+.secondary-button {
+    justify-content: center;
+}
+
+/* --- Aligned digits (#2) ---
+   Every figure the same width, so columns of points and dates line up
+   like a ledger instead of wobbling (a "1" is normally narrower than
+   an "8"). */
+.spreadsheet-table,
+.detail-table,
+.group-summary-points,
+.participant-points,
+.stat-tile-value,
+.resumen-total,
+.log-entry-timestamp,
+.asado-date,
+.pagination-status {
+    font-variant-numeric: tabular-nums;
+}
+
+/* --- Links: one underline rule (#7) ---
+   Never underlined at rest (the coral colour already says "link"),
+   underlined on hover. Before, tables underlined every name and cards
+   didn't. Button-like links opt out below. */
+a {
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+}
+
+.primary-button:hover,
+.secondary-button:hover,
+.group-summary-card:hover,
+.back-link:hover,
+.resumen-table thead th .sort-link:hover {
+    text-decoration: none;
+}
+
+/* EXCEPT a link inside running text (a sentence in a paragraph): there,
+   colour alone isn't enough to show it's a link - coral next to the tan
+   text is under the 3:1 difference accessibility rules require, so a
+   colour-blind reader couldn't find it (axe-core flagged "Ver todos los
+   cortes"). Those keep a soft underline at rest. Standalone links -
+   names, titles, buttons - stay clean. */
+p a:not([class]) {
+    text-decoration: underline;
+    text-decoration-color: rgba(234, 151, 123, 0.45);  /* --color-accent-text, softened */
+    text-underline-offset: 3px;
+    text-decoration-thickness: 1px;
+}
+
+p a:not([class]):hover {
+    text-decoration-color: currentColor;
+}
+
+/* --- Labels in sentence case (#3) ---
+   Form labels were ALL CAPS and letter-spaced (copied from the colour
+   book's section labels). Calmer in sentence case, the way Spanish
+   writes labels anyway. Small caps stay where they work as tiny meta
+   labels: table headers, stat-tile labels, "PARTICIPANTES". */
+.asado-form label,
+.filter-field label {
+    text-transform: none;
+    letter-spacing: normal;
+    font-weight: 500;
+    font-size: var(--text-s);
+}
+
+/* --- Colour roles (#6) ---
+   Coral means CLICKABLE, and only that. Numbers and hints that aren't
+   links go back to cream/tan, so coral never makes you try to click
+   something that isn't a link. */
+.group-summary-points {
+    color: var(--color-text);
+}
+
+.resumen-total {
+    color: var(--color-text);
+}
+
+/* Weight hints (#14): small tan text, "peso 1", instead of "(peso: 1)"
+   in coral. The Tipo de Carne that wins gets a "mayor" tag (the .is-max
+   class, set by updateTipoCarneHints()). */
+.weight-hint {
+    display: inline-block;
+    color: var(--color-text-muted);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    text-transform: none;
+    white-space: nowrap;
+}
+
+.weight-hint:empty {
+    display: none;
+}
+
+.weight-hint.is-max::after {
+    content: "mayor";
+    display: inline-block;
+    margin-left: 0.5em;
+    padding: 0 0.55em;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-pill);
+    color: var(--color-text);
+}
+
+/* The sorted column in Resumen: no solid burgundy block any more - the
+   header turns cream and its chevron coral. Burgundy fill is kept for
+   primary buttons only. */
+.resumen-table thead th.sorted-column {
+    background-color: var(--color-surface-alt);
+    color: var(--color-text);
+}
+
+.resumen-table thead th.sorted-column .sort-link:hover {
+    background-color: var(--color-border);
+    color: var(--color-text);
+}
+
+.resumen-table thead th .sort-arrow {
+    display: inline-flex;
+    margin-left: 0.3em;
+    vertical-align: -0.15em;
+    color: var(--color-text-muted);
+}
+
+.resumen-table thead th.sorted-column .sort-arrow {
+    color: var(--color-accent-text);
+}
+
+/* --- Buttons (#12, #13, #16) --- */
+.primary-button,
+.primary-button:visited {
+    padding: 10px 22px;
+}
+
+/* Secondary buttons: a quiet wood border at rest instead of a coral
+   outline on every one - coral appears on hover, when it means "this
+   will do something". */
+.secondary-button,
+.secondary-button:visited {
+    border-color: var(--color-border);
+    padding: 8px 14px;
+}
+
+/* Desktop: a form's main button is as wide as its label, aligned with
+   the fields' left edge, not a 575px burgundy bar (phones keep the
+   full width, see the phone section below). */
+.asado-form > .primary-button {
+    align-self: flex-start;
+}
+
+/* "+ Añadir otro tipo de carne / participante": a light dashed text
+   button instead of a heavy full-width brown bar. Adding a row is a
+   small, optional step; it shouldn't look like the form's main action. */
+.add-row-button {
+    align-self: flex-start;
+    background: none;
+    border: 1px dashed var(--color-border);
+    color: var(--color-text-muted);
+    padding: 6px 12px;
+    font-size: var(--text-s);
+}
+
+.add-row-button:hover {
+    background: none;
+    border-color: var(--color-accent-text);
+    color: var(--color-text);
+}
+
+/* A destructive action: quiet red text, red only on hover. */
+.button-danger,
+.secondary-button.button-danger {
+    color: var(--color-error-text);
+    border-color: var(--color-error-border);
+}
+
+.button-danger:hover,
+.secondary-button.button-danger:hover {
+    background-color: var(--color-error-bg);
+    color: var(--color-error-text);
+}
+
+/* Text-only button (Config's "Eliminar" in each row): no box at all. */
+.button-text {
+    background: none;
+    border: none;
+    padding: 4px 6px;
+    font-size: var(--text-s);
+}
+
+/* The ✕ in the asado form's rows: the icon centred in its square. */
+.remove-participant-btn,
+.remove-tipo-carne-btn,
+.corte-chip-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Config's user table (#16): every row the same height whether or not
+   it has an "Eliminar" (the admin's own row has none). */
+.detail-table-list td {
+    height: 2.75rem;
+    vertical-align: middle;
+}
+
+/* The map pop-up's buttons side by side (#17): Cancelar | Confirmar,
+   the main action on the right, with the picked address above them. */
+.map-modal-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.map-modal-actions .map-picked-address {
+    flex-basis: 100%;
+}
+
+#map-cancel-btn {
+    order: 1;
+}
+
+/* Both modal buttons the same height and on the same line: the two
+   button styles carry different padding and top margins of their own. */
+.map-modal-actions .primary-button,
+.map-modal-actions .secondary-button {
+    margin-top: 0;
+    min-height: 42px;
+}
+
+#map-confirm-btn {
+    order: 2;
+}
+
+/* --- Login card (#18) ---
+   The first screen anyone sees: a narrow centred card with the brand,
+   instead of a form stretched across an empty page. */
+.login-card {
+    max-width: 380px;
+    margin: 6vh auto 0;
+    padding: 28px 28px 22px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-m);
+}
+
+.login-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 18px;
+    font-family: 'EB Garamond', Georgia, serif;
+    font-size: var(--text-2xl);
+    font-weight: 700;
+    color: var(--color-text);
+}
+
+.login-brand .brand-mark {
+    width: 1.3em;
+    height: 1.3em;
+}
+
+.login-card h1 {
+    font-size: var(--text-l);
+    text-align: center;
+    color: var(--color-text-muted);
+    font-weight: 500;
+    margin-bottom: 14px;
+}
+
+.login-card .asado-form > .primary-button {
+    align-self: stretch;  /* inside a narrow card, full width IS the natural size */
+}
+
+.login-epigraph {
+    margin: 22px 0 0;
+    padding-top: 14px;
+    border-top: 1px solid var(--color-border);
+    text-align: center;
+    font-family: 'EB Garamond', Georgia, serif;
+    font-style: italic;
+    font-size: var(--text-m);
+    color: var(--color-text-muted);
+}
+
+.login-epigraph span {
+    font-family: 'Inter', -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    font-style: normal;
+    font-size: var(--text-xs);
+}
+
+/* A section heading right after a form (Ubicaciones' "Ubicaciones
+   Existentes" under the "Guardar ubicación" button) needs air above it. */
+form + .section-title {
+    margin-top: 1.6em;
+}
+
+/* --- Section header: a heading with its action on the same row (#20) */
+.section-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 16px;
+    margin-bottom: 14px;
+}
+
+.section-header h2 {
+    margin: 0;
+}
+
+.section-header .primary-button {
+    margin-top: 0;
+}
+
+/* --- Home cards (#19) --- */
+.asado-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 2px 14px;
+}
+
+.asado-date {
+    color: var(--color-text-muted);
+    font-size: var(--text-s);
+    white-space: nowrap;
+}
+
+/* The details: separate icon + text items with air between them,
+   instead of one line glued together with "|" pipes. */
+.asado-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 18px;
+    margin: 2px 0 10px 0;
+}
+
+.meta-item .icon {
+    opacity: 0.75;
+}
+
+/* Participants as three aligned columns: name, rol, points. A fixed
+   width for the last two is what lines the points up from row to row. */
+.participant-list li {
+    display: grid;
+    /* Name up to 13rem, then the rol starting RIGHT after it (not pushed
+       to the far side of a wide card), then the points right-aligned in
+       a fixed-width column so they line up from row to row. */
+    grid-template-columns: minmax(0, 13rem) minmax(0, 1fr) 4.5rem;
+    gap: 10px;
+    align-items: baseline;
+    padding: 3px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.participant-list li:first-child {
+    border-top: none;
+}
+
+.participant-list li > a {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.participant-rol {
+    color: var(--color-text-muted);
+    font-size: var(--text-s);
+}
+
+.participant-points {
+    text-align: right;
+    font-weight: 600;
+}
+
+/* --- One width per page (#21, #23) ---
+   Resumen: every block (filters, table, note, chart) shares one width
+   so their edges line up; it used to be four different widths. */
+.container.container-resumen {
+    max-width: 1220px;  /* 1180px of content + the container's 20px padding each side */
+}
+
+.container-resumen .resumen-wrapper,
+.container-resumen .resumen-chart-card {
+    max-width: none;
+}
+
+/* Ubicaciones: the in-table fields fill their cells, so the table fits
+   the normal page width and lines up with the form above it. */
+.loc-name-input,
+.loc-address-input {
+    width: 100%;
+    min-width: 9rem;
+}
+
+.loc-coord-input {
+    width: 6rem;
+}
+
+/* --- Actividad: one panel, a divided timeline (#22) ---
+   Was thirty separately boxed cards. Now one panel, entries separated
+   by hairlines - the same information, a lot less frame. */
+.log-list {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-m);
+    padding: 0 16px;
+}
+
+.log-entry {
+    background: none;
+    border: none;
+    border-radius: 0;
+    margin: 0;
+    padding: 11px 0;
+    border-top: 1px solid var(--color-border);
+}
+
+.log-entry:first-child {
+    border-top: none;
+}
+
+.log-entry-icon {
+    display: inline-flex;
+    align-self: center;  /* centred on the line of text, not riding above it */
+    color: var(--color-text-muted);
+}
+
+/* --- Footer (#24) ---
+   Group name and version on one line, the separator drawn between them
+   (so a missing group name can't leave a dangling "·"), a short brass
+   rule above, and the footer resting at the bottom of short pages. */
+body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+body > main {
+    flex: 1 0 auto;
+}
+
+.app-footer::before {
+    content: "";
+    display: block;
+    width: 48px;
+    height: 1px;
+    margin: 0 auto 10px;
+    background: var(--color-gold);
+    opacity: 0.6;
+}
+
+.app-footer-meta {
+    display: inline-flex;
+    justify-content: center;
+    gap: 0.5em;
+}
+
+.app-footer-meta > * + *::before {
+    content: "·";
+    margin-right: 0.5em;
+    color: var(--color-border);
 }
 
 /* =====================================================================
@@ -2069,7 +2685,7 @@ button:hover {
 
     /* The ☰ button: the most-used control on a phone, was 37px tall.
        Only shown in the collapsed-menu presentation, so this can't
-       move the desktop navbar's measured 1250px breakpoint. */
+       move the desktop navbar's measured breakpoint (1240px). */
     .nav-toggle {
         min-width: 44px;
         min-height: 44px;
@@ -2224,6 +2840,19 @@ button:hover {
     .tipo-carne-row .remove-tipo-carne-btn {
         grid-column: 2;
         grid-row: 2;
+    }
+
+    /* A form's main button goes full width again on a phone (UI refresh,
+       2.0.2): on a narrow screen that IS the natural size, and the
+       easiest target for a thumb. Desktop sizes it to its label. */
+    .asado-form > .primary-button {
+        align-self: stretch;
+    }
+
+    /* The map pop-up's buttons stack again on a phone. */
+    .map-modal-actions {
+        flex-direction: column;
+        align-items: stretch;
     }
 
     /* The ✕ itself: a compact square, still a full 44px fingertip

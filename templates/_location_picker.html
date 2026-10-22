@@ -1,3 +1,4 @@
+{% from "_icons.html" import icon %}
 <!--
     _location_picker.html = the reusable "type an address (with live
     autocomplete) OR click a point on a map" component — an address
@@ -60,7 +61,7 @@
     <!-- This div holds the live search-suggestion list, positioned
          right under the text input via CSS. -->
     <div id="address-suggestions" class="address-suggestions"></div>
-    <button type="button" id="open-map-btn" class="secondary-button">📍 Elegir en el mapa</button>
+    <button type="button" id="open-map-btn" class="secondary-button">{{ icon("map-pin") }}Elegir en el mapa</button>
 </div>
 <!-- Hidden inputs: not visible to the user, but submitted with the
      form so app.py can save the coordinates. Deliberately NOT marked
@@ -81,13 +82,12 @@
      AND from the "Ubicación guardada" dropdown handler in
      _asado_form.html (that dropdown sets latInput/lonInput directly,
      bypassing selectAddress()). -->
+{# The icon and the "Coordenadas:" label are fixed markup; only the
+   VALUE span is rewritten by updateCoordinatesDisplay(), so the icon
+   survives every update. #}
 <p class="coordinates-display" id="coordinates-display">
-    📍 Coordenadas:
-    {% if latitude_value and longitude_value %}
-        {{ latitude_value }}, {{ longitude_value }}
-    {% else %}
-        —
-    {% endif %}
+    {{ icon("map-pin") }}Coordenadas:
+    <span id="coordinates-value">{% if latitude_value and longitude_value %}{{ latitude_value }}, {{ longitude_value }}{% else %}—{% endif %}</span>
 </p>
 
 <!-- The map modal: hidden by default (class "hidden" sets display:none
@@ -195,11 +195,12 @@
     // cross-<script>-tag visibility as locationInput/latInput/lonInput
     // themselves (see the header comment above).
     function updateCoordinatesDisplay() {
-        const display = document.getElementById("coordinates-display");
+        // Only the value span: the icon and label around it stay put.
+        const display = document.getElementById("coordinates-value");
         if (latInput.value && lonInput.value) {
-            display.textContent = "📍 Coordenadas: " + latInput.value + ", " + lonInput.value;
+            display.textContent = latInput.value + ", " + lonInput.value;
         } else {
-            display.textContent = "📍 Coordenadas: —";
+            display.textContent = "—";
         }
     }
 

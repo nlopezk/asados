@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 <!--
     index.html = the HOME PAGE.
     It receives a variable called "asados" from app.py's index() function.
@@ -57,6 +58,12 @@
     </div>
 {% endif %}
 
+{# The heading and its "Añadir Asado" shortcut share one row (UI
+   refresh, 2.0.2): the button used to take a row of its own between the
+   heading and the filters. Still the big, obvious shortcut CLAUDE.md
+   wants on the home page - just aligned with the section it belongs to.
+   On a phone it wraps under the heading (flex-wrap). #}
+<div class="section-header">
 <h2>Listado de Asados</h2>
 
 <!-- Shortcut straight to the "Añadir Asado" form — the SAME action the
@@ -69,8 +76,7 @@
      (--color-green/--color-green-hover), so "this button does the
      same thing as that navbar link" reads instantly instead of having
      to be inferred from the label text alone. -->
-<div class="home-add-shortcut">
-    <a href="{{ url_for('new_asado') }}" class="primary-button primary-button-green">➕ Añadir Asado</a>
+    <a href="{{ url_for('new_asado') }}" class="primary-button primary-button-green">{{ icon("plus") }}Añadir Asado</a>
 </div>
 
 <!-- Flatpickr: a small, dependency-free date picker — used here for its
@@ -249,7 +255,7 @@
         </select>
     </div>
     {% if selected_date_from or selected_date_to or selected_year or selected_month or selected_user_id %}
-        <a href="{{ url_for('index') }}" class="filter-clear">Limpiar filtros ✕</a>
+        <a href="{{ url_for('index') }}" class="filter-clear">{{ icon("x") }}Limpiar filtros</a>
     {% endif %}
 </form>
 
@@ -267,26 +273,37 @@
     <!-- Loop over every asado entry -->
     {% for item in asados %}
         <div class="asado-card">
-            <h3><a href="{{ url_for('view_asado', asado_id=item.asado.id) }}">{{ item.asado.nombre }}</a></h3>
+            {# Card layout (UI refresh, 2.0.2): the name and its date on
+               one line, then the details as separate icon + text items
+               instead of one line glued together with "|" pipes and emoji.
+               Each item wraps as a whole on a narrow screen. #}
+            <div class="asado-card-head">
+                <h3><a href="{{ url_for('view_asado', asado_id=item.asado.id) }}">{{ item.asado.nombre }}</a></h3>
+                <span class="asado-date">{{ icon("calendar") }}{{ item.asado.date }}</span>
+            </div>
             <p class="asado-meta">
-                📅 {{ item.asado.date }} &nbsp;|&nbsp;
-                🥩 {{ item.tipos_carne }} &nbsp;|&nbsp;
-                🔥 {{ item.asado.coccion }} en {{ item.asado.superficie }} &nbsp;|&nbsp;
-                📍 {{ item.asado.local }}
+                <span class="meta-item">{{ icon("beef") }}{{ item.tipos_carne }}</span>
+                <span class="meta-item">{{ icon("flame") }}{{ item.asado.coccion }} en {{ item.asado.superficie }}</span>
+                <span class="meta-item">{{ icon("map-pin") }}{{ item.asado.local }}</span>
             </p>
 
             {% if item.asado.description %}
                 <p class="asado-description">{{ item.asado.description }}</p>
             {% endif %}
 
-            <p class="asado-participants-label">Participantes:</p>
+            <p class="asado-participants-label">Participantes</p>
             <ul class="participant-list">
                 {% for p in item.participants %}
                     <li>
+                        {# Three aligned columns (name, rol, points) instead of
+                           "Name — Rol — 0.35 pts" run together: the points line
+                           up down the card like a ledger. See .participant-list
+                           in style.css. #}
                         <a href="{{ url_for('user_profile', user_id=p.user_id) }}">
                             <span class="user-color-dot" style="background-color: {{ user_color(p.user_id) }}"></span>{{ p.name }}
                         </a>
-                         — {{ p.rol }} — <strong>{{ p.points }} pts</strong>
+                        <span class="participant-rol">{{ p.rol }}</span>
+                        <span class="participant-points">{{ p.points }} pts</span>
                     </li>
                 {% endfor %}
             </ul>
@@ -302,12 +319,12 @@
     <nav class="pagination" aria-label="Páginas">  {# a name for this landmark, see base.html #}
         {% if page > 1 %}
             <a href="{{ url_for('index', page=page-1, date_from=selected_date_from or none, date_to=selected_date_to or none, year=selected_year or none, month=selected_month or none, user_id=selected_user_id or none) }}"
-               class="secondary-button">← Anterior</a>
+               class="secondary-button">{{ icon("chevron-left") }}Anterior</a>
         {% endif %}
         <span class="pagination-status">Página {{ page }} de {{ total_pages }}</span>
         {% if page < total_pages %}
             <a href="{{ url_for('index', page=page+1, date_from=selected_date_from or none, date_to=selected_date_to or none, year=selected_year or none, month=selected_month or none, user_id=selected_user_id or none) }}"
-               class="secondary-button">Siguiente →</a>
+               class="secondary-button">Siguiente{{ icon("chevron-right") }}</a>
         {% endif %}
     </nav>
 {% endif %}

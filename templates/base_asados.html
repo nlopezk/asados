@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Base de Asados{% endblock %}
 <!--
     base_asados.html = "Base de Asados": a flat, spreadsheet-style
     table — one row per PARTICIPATION (not per asado, like index.html
@@ -24,7 +26,7 @@
    LOOKS exactly like the old <h2> - see the h1/h2 rule in style.css. #}
 <h1>Base de Asados</h1>
 
-<p><a href="{{ url_for('base_asados_csv') }}" class="secondary-button">⬇ Exportar CSV</a></p>
+<p><a href="{{ url_for('base_asados_csv') }}" class="secondary-button">{{ icon("download") }}Exportar CSV</a></p>
 
 {% if rows|length == 0 %}
     <p class="empty-state">Todavía no hay participaciones registradas.</p>
@@ -132,11 +134,11 @@
              purely a display convenience for this on-screen table. -->
         <nav class="pagination" aria-label="Páginas">  {# a name for this landmark, see base.html #}
             {% if page > 1 %}
-                <a href="{{ url_for('base_asados', page=page-1) }}" class="secondary-button">← Anterior</a>
+                <a href="{{ url_for('base_asados', page=page-1) }}" class="secondary-button">{{ icon("chevron-left") }}Anterior</a>
             {% endif %}
             <span class="pagination-status">Página {{ page }} de {{ total_pages }}</span>
             {% if page < total_pages %}
-                <a href="{{ url_for('base_asados', page=page+1) }}" class="secondary-button">Siguiente →</a>
+                <a href="{{ url_for('base_asados', page=page+1) }}" class="secondary-button">Siguiente{{ icon("chevron-right") }}</a>
             {% endif %}
         </nav>
     {% endif %}

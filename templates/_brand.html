@@ -1,0 +1,26 @@
+{#
+_brand.html - the app's brand mark: a two-tone flame (UI refresh, 2.0.2).
+
+USAGE:  {% from "_brand.html" import brand_mark %}
+        {{ brand_mark() }}            sized by CSS (.brand-mark)
+
+Replaces the 🔥 emoji that used to stand in for a logo: an emoji is a
+full-colour cartoon drawn differently by every phone and computer, so
+the one element meant to say "this is OUR app" looked different on
+every device. This is hand-drawn for this app, in the palette's own
+colours: a warm outer flame (the brick of --color-accent-text) around
+a cream heart (--color-text). static/favicon.svg is the SAME drawing,
+used as the browser-tab icon - change both together.
+
+Always decorative (aria-hidden): it sits next to the word "Asados",
+which is what a screen reader reads.
+#}
+{% macro brand_mark(cls="") -%}
+<svg class="brand-mark {{ cls }}" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+    {# Outer flame: rises to a point, swells to a round base, with a
+       small side tongue on the left - the classic campfire silhouette. #}
+    <path fill="#ea977b" d="M16 2.5c1.6 5 7.5 8.2 7.5 16.2 0 5.3-3.4 9.3-7.5 9.3s-7.5-4-7.5-8.9c0-3.8 2.2-6.2 3.8-8.4.3 2.6 1.4 4.1 2.8 4.8-.8-4.3.1-9 .9-13z"/>
+    {# Cream heart of the fire, low and centred. #}
+    <path fill="#f0e6d0" d="M16 28c-2.3 0-3.9-1.8-3.9-4.1 0-2.3 1.4-3.6 2.4-5.2.4 1.3 1.1 2 2 2.3-.2-1.7.2-3.3 1-4.5 1.6 2.1 2.3 4.4 2.3 7.2 0 2.6-1.6 4.3-3.8 4.3z"/>
+</svg>
+{%- endmacro %}

@@ -1,3 +1,4 @@
+{% from "_icons.html" import icon %}
 <!--
     _asado_form.html = the shared "create OR edit an asado" form.
     Included by new_asado.html (create) and view_asado.html (edit) via
@@ -38,7 +39,7 @@
         {% endfor %}
     </select>
     <span class="weight-hint tipo-carne-weight-hint"></span>
-    <button type="button" class="remove-tipo-carne-btn" onclick="removeTipoCarneRow(this)" title="Quitar tipo de carne" aria-label="Quitar tipo de carne">✕</button>
+    <button type="button" class="remove-tipo-carne-btn" onclick="removeTipoCarneRow(this)" title="Quitar tipo de carne" aria-label="Quitar tipo de carne">{{ icon("x") }}</button>
 </div>
 {% endmacro %}
 
@@ -61,7 +62,7 @@
     <span class="weight-hint participant-weight-hint"></span>
     <!-- aria-label: an icon-only button needs a spoken name; title alone
          is only a hover tooltip, which phones never show. -->
-    <button type="button" class="remove-participant-btn" onclick="removeParticipantRow(this)" title="Quitar participante" aria-label="Quitar participante">✕</button>
+    <button type="button" class="remove-participant-btn" onclick="removeParticipantRow(this)" title="Quitar participante" aria-label="Quitar participante">{{ icon("x") }}</button>
 </div>
 {% endmacro %}
 
@@ -76,7 +77,7 @@
          issue_form_token() in app.py. -->
     <input type="hidden" name="form_token" value="{{ form_token() }}">
 
-    <label for="nombre">Nombre Asado</label>
+    <label for="nombre">Nombre del asado</label>
     <input type="text" id="nombre" name="nombre" value="{{ asado.nombre if asado else '' }}" required>
 
     <label for="date">Fecha</label>
@@ -90,7 +91,7 @@
          option is currently selected, so the user sees the impact of
          their choice immediately. -->
 
-    <label>Tipo de Carne</label>
+    <label>Tipo de carne</label>
     <div id="tipo-carne-container">
         {% if existing_tipos_carne %}
             {% for tc in existing_tipos_carne %}
@@ -108,7 +109,7 @@
         {{ tipo_carne_row() }}
     </template>
 
-    <button type="button" onclick="addTipoCarneRow()">+ Añadir otro tipo de carne</button>
+    <button type="button" class="add-row-button" onclick="addTipoCarneRow()">{{ icon("plus") }}Añadir otro tipo de carne</button>
 
     <!-- MEAT VISUALS: the cut picker for beef, plus a small icon for
          every other selected meat type.
@@ -165,7 +166,7 @@
                     <span class="corte-chip" data-corte-nombre="{{ corte }}">
                         {{ corte }}
                         <button type="button" class="corte-chip-remove"
-                                onclick="removeCorteChip(this)" title="Quitar corte">✕</button>
+                                onclick="removeCorteChip(this)" title="Quitar corte" aria-label="Quitar corte">{{ icon("x") }}</button>
                         <input type="hidden" name="corte" value="{{ corte }}">
                     </span>
                 {% endfor %}
@@ -173,12 +174,12 @@
 
             <p class="cortes-note">
                 Los cortes son sólo descriptivos — no afectan los puntos.
-                <a href="{{ url_for('cortes_page') }}" target="_blank" rel="noopener">Ver todos los cortes ↗</a>
+                <a href="{{ url_for('cortes_page') }}" target="_blank" rel="noopener">Ver todos los cortes{{ icon("arrow-up-right") }}</a>
             </p>
         </div>
     </div>
 
-    <label for="coccion">Tipo de Cocción
+    <label for="coccion">Tipo de cocción
         <span class="weight-hint" id="hint-coccion"></span>
     </label>
     <select id="coccion" name="coccion" required>
@@ -226,11 +227,15 @@
          is a safe source to .cloneNode() from in addParticipantRow(),
          regardless of how many (possibly prefilled) rows are already
          on the page above. -->
+    {# An "x" icon for JavaScript to copy into chips it creates
+       (see addCorte()). A <template> is never displayed by itself. #}
+    <template id="icon-x-template">{{ icon("x") }}</template>
+
     <template id="participant-row-template">
         {{ participant_row() }}
     </template>
 
-    <button type="button" onclick="addParticipantRow()">+ Añadir otro participante</button>
+    <button type="button" class="add-row-button" onclick="addParticipantRow()">{{ icon("plus") }}Añadir otro participante</button>
 
     <!-- This box is filled in live by JS: for every participant, it
          shows the actual formula with real numbers plugged in, plus
@@ -275,10 +280,10 @@
 
     <label class="checkbox-label">
         <input type="checkbox" id="save_location_checkbox" name="save_location">
-        💾 Guardar esta ubicación para reutilizarla más adelante
+        Guardar esta ubicación para reutilizarla más adelante
     </label>
     <div id="save-location-name-field" class="hidden">
-        <label for="location_name">Nombre de Ubicación para guardar</label>
+        <label for="location_name">Nombre para guardarla</label>
         <input type="text" id="location_name" name="location_name" placeholder="Ej: Casa de Nico">
     </div>
 
@@ -299,7 +304,7 @@
          matches what actually gets submitted; parse_decimal() in
          app.py accepts either separator too, as a server-side backstop
          regardless of what reaches it. -->
-    <label for="total_weight">Peso Total en kg</label>
+    <label for="total_weight">Peso total (kg)</label>
     <input type="text" inputmode="decimal" id="total_weight" name="total_weight" value="{{ asado.total_weight if asado and asado.total_weight is not none else '' }}">
 
     <hr>
@@ -392,7 +397,11 @@
         rows.forEach(function (row, index) {
             const hint = row.querySelector(".tipo-carne-weight-hint");
             const isMax = rowWeights[index] === maxWeight;
-            hint.textContent = "(peso: " + rowWeights[index] + ")" + (isMax ? " ★ mayor" : "");
+            // "peso 1" as a small tag; the winning type also gets the
+            // is-max class, which style.css turns into a second "mayor"
+            // tag (UI refresh, 2.0.2 - was "(peso: 1) ★ mayor" in coral).
+            hint.textContent = "peso " + rowWeights[index];
+            hint.classList.toggle("is-max", isMax && rows.length > 1);
         });
     }
 
@@ -496,7 +505,10 @@
         removeButton.type = "button";
         removeButton.className = "corte-chip-remove";
         removeButton.title = "Quitar corte";
-        removeButton.textContent = "✕";
+        removeButton.setAttribute("aria-label", "Quitar corte");
+        // The same SVG "x" icon the server-rendered chips use, copied
+        // from the hidden <template id="icon-x-template"> below.
+        removeButton.appendChild(document.getElementById("icon-x-template").content.firstElementChild.cloneNode(true));
         removeButton.onclick = function () { removeCorteChip(removeButton); };
 
         // Same markup the server renders for prefilled chips on edit —
@@ -664,7 +676,7 @@
             const select = document.getElementById(field);
             const hint = document.getElementById("hint-" + field);
             const weight = WEIGHTS[field][select.value];
-            hint.textContent = "(peso: " + weight + ")";
+            hint.textContent = "peso " + weight;  // shown as a small tag, see .weight-hint
         });
     }
 
@@ -720,7 +732,7 @@
             const rolWeight = WEIGHTS.rol[rolSelect.value];
             const hintSpan = row.querySelector(".participant-weight-hint");
 
-            hintSpan.textContent = "(peso: " + rolWeight + ")";
+            hintSpan.textContent = "peso " + rolWeight;
 
             // The chosen name is the TEXT of the selected <option> in
             // the user dropdown (e.g. "Don Nicola"), rather than
