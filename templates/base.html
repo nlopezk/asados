@@ -117,7 +117,9 @@
                    class="nav-link {% if request.endpoint in ubicaciones_endpoints %}nav-current{% endif %}">📍 Ubicaciones</a>
                 <a href="{{ url_for('config_page') }}"
                    class="nav-link {% if request.endpoint in config_endpoints %}nav-current{% endif %}">⚙️ Config</a>
-                <span class="nav-username">👤 {{ g.name }}</span>
+                {# title= shows the full name on hover when a long one is
+                   cut short with "…" by .nav-username's width cap. #}
+                <span class="nav-username" title="{{ g.name }}">👤 {{ g.name }}</span>
                 <a href="{{ url_for('activity_log_page') }}"
                    class="nav-link {% if request.endpoint == 'activity_log_page' %}nav-current{% endif %}">🕓 Actividad</a>
                 <!-- "Salir" deliberately never gets nav-current — it isn't

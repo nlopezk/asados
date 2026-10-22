@@ -259,7 +259,16 @@ CREATE TABLE activity_log_changes (
 -- ---------------------------------------------------------------------
 CREATE TABLE locations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,                -- short label shown in the dropdown, e.g. "Casa de Nico"
+    -- UNIQUE is the DB-level backstop behind the case-insensitive
+    -- duplicate-name checks in create_location()/edit_location()/
+    -- maybe_save_location() (two saved places with the same label would
+    -- be indistinguishable in the dropdown). migrate_fix_schema_drift.py
+    -- already gave existing databases this constraint when it rebuilt
+    -- the table, but this line was never updated, so groups created by
+    -- manage_groups.py from v2.0 on were missing it until
+    -- migrate_locations_unique_name.py (which adds it to them as a
+    -- unique index - the same thing to SQLite, see that file).
+    name TEXT NOT NULL UNIQUE,         -- short label shown in the dropdown, e.g. "Casa de Nico"
     -- address/latitude/longitude are NOT NULL here — unlike
     -- asados.location (which stays free/optional, see schema.sql's own
     -- comment on that column), a SAVED location genuinely needs a real

@@ -49,6 +49,7 @@ python migrate_to_groups.py [--verify]
 python migrate_add_cortes.py [path/to/group.db]
 python migrate_fix_schema_drift.py [path/to/group.db]
 python migrate_to_groups.py
+python migrate_locations_unique_name.py [path/to/group.db]   # v2.0.1: schema.sql had lost locations.name UNIQUE
 # Run every migration on every deploy, oldest first. Each is additive
 # and idempotent, so an already-applied one is a no-op that says so.
 
@@ -73,13 +74,28 @@ python app.py
 # -> http://127.0.0.1:5000
 ```
 
-There is no formal test suite file. Changes have historically been
-verified with ad-hoc scripts using Flask's `test_client()` (login flow,
-form submission, API responses, DB state after submission) rather than
-manual browser clicking. If you make a change, a similar quick
-`test_client()` check before considering the change "done" matches the
-project's existing habits, especially for anything touching
-`calculate_points()`, `/api/points`, or the auth routes.
+There is no pytest suite. Changes used to be verified with ad-hoc
+scripts using Flask's `test_client()` (login flow, form submission, API
+responses, DB state after submission); those are now ONE reusable
+script, run via the `smoke-test` skill:
+
+```bash
+python .claude/skills/smoke-test/smoke_test.py          # ~80 functional checks, throwaway data
+python .claude/skills/smoke-test/smoke_test.py --all    # + every page vs a COPY of real data + Playwright layout sweep
+```
+
+Run it before considering any change "done", and extend it as part of
+the change (see `.claude/skills/smoke-test/SKILL.md`), especially for
+anything touching `calculate_points()`, `/api/points`, or the auth
+routes. It never touches the real databases and proves it, with a
+before/after hash of every real file.
+
+**Project skills live in `.claude/skills/`** (committed, so they travel
+with the repo): `smoke-test` (above), `new-migration` (every schema
+change: template, checklist, and `compare_schema.py` to detect drift
+between a database and `schema.sql`), and `release` (`/release` only:
+version bump in all four places, CHANGELOG, tag, and the PythonAnywhere
+checklist). The procedures live there; the rules stay in this file.
 
 ## Roadmap / phase status
 
@@ -93,7 +109,7 @@ Phase 5 – Make it responsive. Improve CSS/layout so it works well on phones, s
 Phase 6 – Deploy. Put it online (e.g. Render, Railway, Fly.io — all have free tiers) so others can actually use it from their phones.
 Phase 7+ – Advanced. Photo uploads, notifications, a proper mobile app wrapper (e.g. Capacitor) or React Native, richer stats/dashboards, etc.
 
-**Currently at v2.0.0: Phases 1-6 are done, and Phase 4 is complete.**
+**Currently at v2.0.1: Phases 1-6 are done, and Phase 4 is complete.**
 2.0.0 also turned the app multi-group (one site, several separate
 competitions, one database file per group) — see "Groups" below. That
 isn't one of the original phases; it was requested once the app was
@@ -182,7 +198,7 @@ is what made the rest of the app responsive almost for free; keep
 using that pattern rather than fixed widths.
 
 **The navbar has two presentations from ONE set of links: a
-horizontal row above 1168px, a "☰" dropdown at/below it.** Previously
+horizontal row above 1250px, a "☰" dropdown at/below it.** Previously
 there was only the row, and below ~1025px it wrapped into a two- and
 three-row clump of pills — measured at **216px tall on a 375px phone
 (≈31% of the visible screen, ≈38% at 320px) before any content
@@ -192,7 +208,7 @@ harmless rendering-metrics shift, not a regression; re-measured and
 confirmed clean either way). The links exist exactly once in
 `base.html` (a phone-only duplicate menu would be a second place to
 forget when adding a section); `.nav-toggle` + the
-`@media (max-width: 1168px)` block in style.css do all the switching,
+`@media (max-width: 1250px)` block in style.css do all the switching,
 and `toggleNav()` in `base.html` only ever toggles a single `.open`
 class.
 
@@ -215,13 +231,25 @@ Three things here are load-bearing and easy to undo by accident:
   the links do.** It started at 1026px (six links), got re-measured to
   1125px the moment a seventh link ("🏆 Resumen") was added, and again
   to 1168px when an eighth ("Inicio") was added — each time walking a
-  real browser width by width to find the EXACT boundary (currently:
-  one clean 67px row at 1169px vs. 1168px, where labels wrap and it
-  jumps to 104px). Left at an old number, every width between the new
+  real browser width by width to find the EXACT boundary. **v2.0.1
+  found that "exact" had a hidden variable: the display name.** The
+  username sits in the same row, so 1168px was only right for the
+  4-letter name it was measured with ("Admin A" needed 1182px, a
+  16-letter name 1242px), and for everyone else the links wrapped
+  between those widths. The smoke-test skill's browser sweep caught it.
+  Fixed in two parts: `.nav-username` is capped at `14ch` with an
+  ellipsis (full name in a `title` tooltip; the phone dropdown lifts the
+  cap), which makes the worst case a fixed number (measured: one 67px
+  row down to 1228px with any name), and the breakpoint is that worst
+  case plus ~20px for font-rendering differences between browsers/OSes
+  — 1250px. Left at an old number, every width between the new
   and old breakpoints would have silently gone back to the squeezed,
   wrapping navbar this was built to eliminate. **If you add, remove, or
-  rename a nav link, re-measure and update the number** — don't just
-  eyeball a new value; this has already needed correcting twice. It is
+  rename a nav link, re-measure and update the number** — measure with
+  the media query neutralised and a name LONGER than the cap, then add
+  the margin; don't eyeball it. This has now needed correcting three
+  times. `smoke_test.py --browser` reads the number from style.css and
+  checks both sides of it with a worst-case name. It is
   also deliberately unrelated to the app's other 480px breakpoint,
   which answers "is this a phone?" (right question for stacking form
   rows), not "do these links still fit?".
@@ -2312,7 +2340,9 @@ the app match `config.py`'s formula exactly.
   reads `schema.sql` (that would drag the DROPs along), backs up first,
   idempotent, and prints before/after row counts for every existing
   table so you can SEE nothing was lost. `schema.sql` is now for
-  creating FRESH databases only, and says so at the top.
+  creating FRESH databases only, and says so at the top. The
+  `new-migration` skill (`.claude/skills/new-migration/`) holds the
+  step-by-step procedure and a template that already does all of this.
 - **The session cookie's `Secure` flag is set CONDITIONALLY, and
   failing to detect is the safe direction.** A `Secure` cookie is
   never sent over `http://`, so hard-coding it True would silently

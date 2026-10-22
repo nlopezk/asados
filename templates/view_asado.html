@@ -83,7 +83,8 @@
     {% endif %}
 
     <h3>Participantes</h3>
-    <table class="detail-table">
+    {# detail-table-list: header row labels COLUMNS - see style.css. #}
+    <table class="detail-table detail-table-list">
         <tr><th>Nombre</th><th>Rol</th><th>Puntos</th></tr>
         {% for p in participants %}
             <tr>

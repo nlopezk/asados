@@ -327,26 +327,55 @@ hr {
     color: white;
     font-size: 0.9em;
     opacity: 0.9;
+    /* CAPPED, so the navbar's width can't depend on who's logged in.
+       Without a cap, the width this row needs grew with the display
+       name, so the breakpoint below was only ever right for whoever it
+       was measured with: measured as "NALK" (4 letters) it was 1168px,
+       but "Admin A" needed 1182px and a 16-letter name 1242px, wrapping
+       the links onto a second row in between. With a cap the worst
+       case is a fixed number that can be measured once. A longer name
+       ends in "…"; base.html puts the full name in a title="" tooltip,
+       and the phone dropdown (media query below) lifts the cap
+       entirely, since it has a whole row to itself. */
+    display: inline-block;
+    max-width: 14ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
 }
 
 /* --- Navbar: collapsed "☰" presentation on narrow screens ---
-   Note the breakpoint: 1168px, NOT the 480px used by the app's other
+   Note the breakpoint: 1250px, NOT the 480px used by the app's other
    mobile rules at the bottom of this file. Those two numbers answer
    different questions on purpose. 480px is roughly "is this a
    phone?" — the right question for stacking form rows. This one is
    "do the nav links still FIT on one line?", and that has nothing to
    do with what device you're on.
 
-   1168 isn't a guess or a convention — it's measured, and it MOVES
-   WHEN THE LINKS DO. The navbar was walked down width by width in a
-   real browser: one clean 67px-tall row at 1169px, and at 1168px the
-   longer labels start wrapping their own text and it jumps to 104px
-   tall. So the dropdown takes over at exactly that point.
+   1250 isn't a guess or a convention — it's measured, and it MOVES
+   WHEN THE LINKS DO. In v2.0.1 the navbar was walked down width by
+   width in a real browser with the media query switched off and the
+   LONGEST possible display name (which .nav-username's 14ch cap now
+   bounds): one clean 67px row down to 1228px, below that the labels
+   wrap their own text and it jumps to 104px. 1250 = that worst case
+   plus ~20px of margin, because the exact pixel differs a little
+   between browsers and operating systems (font rendering), and an
+   exact-to-the-pixel number already failed once — see below.
+
+   **Why v2.0.1 had to move it, and why the margin exists:** the old
+   1168px was measured, correctly, while logged in as a 4-letter name.
+   The row's width depended on the display name, so for anyone with a
+   longer one the links wrapped between 1169px and up to 1242px. The
+   smoke-test skill's browser sweep caught it. The username cap fixed
+   the dependency; the margin covers what one machine's measurement
+   can't see.
 
    **This has now been re-measured TWICE, which is the whole reason
    it's documented this way**: the number was 1024px with six links,
    became 1125px the moment a seventh link ("🏆 Resumen") was added,
-   and became 1168px when an eighth ("Inicio") was added — each time
+   became 1168px when an eighth ("Inicio") was added, and 1250px with
+   the name-length fix above — each time
    walking a real browser width by width to find the new exact
    boundary, never assumed by extrapolation. Left at any of the older
    numbers, every width between the new and old breakpoints would have
@@ -360,7 +389,7 @@ hr {
    Everything here is a narrow-screen OVERRIDE — the desktop navbar
    above is untouched and stays a plain horizontal row, which is why
    this costs nothing on a PC. */
-@media (max-width: 1168px) {
+@media (max-width: 1250px) {
     /* Lets .navbar-right drop onto its own line below the title and
        the ☰ button, instead of trying to share their row. */
     .navbar {
@@ -412,6 +441,10 @@ hr {
         padding: 8px 14px 2px;
         border-top: 1px solid rgba(255, 255, 255, 0.25);
         margin-top: 4px;
+        /* The dropdown has a full row for the name, so show all of it
+           (the 14ch cap above exists only for the one-row desktop bar). */
+        max-width: none;
+        white-space: normal;
     }
 }
 
@@ -897,6 +930,33 @@ button:hover {
     letter-spacing: 0.06em;
 }
 
+/* The 40% above is for the LABEL/VALUE shape (one <th> per row, beside
+   its value - view_asado's summary). A table whose header ROW labels
+   several COLUMNS (/config's user list, view_asado's Participantes)
+   gets this modifier instead: with 40% on each of 3-4 header cells the
+   columns asked for 120-160% of the width between them, which pushed
+   /config 37px past a 320px phone screen (found by the smoke-test
+   skill's browser sweep). Auto widths let the browser size each column
+   to its content, which is what a list wants. */
+.detail-table-list th {
+    width: auto;
+}
+
+/* Wraps a .detail-table-list that can be wider than a phone screen
+   (/config's user list: four columns of username, name, role and an
+   "Eliminar" button need more than the ~280px a 320px phone leaves).
+   Same idea as .spreadsheet-wrapper on Base de Asados: the TABLE
+   scrolls sideways inside its own box, the PAGE never does. On any
+   screen where it fits, this does nothing at all. */
+.table-scroll {
+    overflow-x: auto;
+    margin-bottom: 10px;
+}
+
+.table-scroll .detail-table {
+    margin-bottom: 0;
+}
+
 /* --- view_asado.html: read-view action row (Editar / Eliminar) --- */
 .view-actions {
     display: flex;
@@ -1356,6 +1416,13 @@ button:hover {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    /* A flex item won't shrink below its content's natural width unless
+       told it may (min-width: 0) - and a <select>'s natural width is its
+       LONGEST option. With a long display name in the "Usuario" dropdown
+       that pushed the home page 46px past a 320px phone (found by the
+       smoke-test sweep, which runs with a worst-case long name). */
+    min-width: 0;
+    max-width: 100%;
 }
 
 .filter-field label {
@@ -1368,6 +1435,7 @@ button:hover {
 
 .filter-field input,
 .filter-field select {
+    max-width: 100%; /* see min-width on .filter-field above */
     padding: 7px 10px;
     border: 1px solid var(--color-border);
     border-radius: 6px;
@@ -1864,7 +1932,7 @@ button:hover {
     /* NOTE: the navbar rules that used to live here (flex-wrap on
        .navbar/.navbar-right so the links wrapped onto extra rows, and
        a tap-target padding bump on .nav-link) were removed when the
-       ☰ dropdown was added — see the 1168px block near the top of
+       ☰ dropdown was added — see the navbar @media block near the top of
        this file, which now handles every screen narrower than that
        (so it always applies here too). Those
        rules made the links WRAP into a multi-row clump that ate a

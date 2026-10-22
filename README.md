@@ -125,6 +125,7 @@ As_app/
 ├── migrate_add_cortes.py   <- Additive schema migration (the pattern for future ones)
 ├── migrate_fix_schema_drift.py <- Adds 3 missing FK indexes + the locations NOT NULL constraints
 ├── migrate_to_groups.py    <- v2.0: converts the old single asados.db into the groups layout
+├── migrate_locations_unique_name.py <- v2.0.1: locations.name UNIQUE for groups created since 2.0
 ├── vaca_svg.svg            <- SOURCE artwork for the cow diagram (edit this in Inkscape)
 ├── build_cow_partial.py    <- Turns vaca_svg.svg into templates/_cow_svg.html
 ├── check_cow_svg.py        <- Validates the drawing against config.py's cut list
@@ -156,8 +157,12 @@ As_app/
 │   ├── ubicaciones.html        (reusable saved-locations pool)
 │   ├── activity_log.html       (who created/edited/deleted what, and when)
 │   └── config.html             (profile settings + admin user management)
-└── static/
-    └── style.css           (all the visual styling)
+├── static/
+│   └── style.css           (all the visual styling)
+└── .claude/skills/         <- Claude Code skills (development only, never served)
+    ├── smoke-test/             (smoke_test.py: checks the whole app on throwaway data)
+    ├── new-migration/          (schema-change procedure, template, compare_schema.py)
+    └── release/                (release checklist + release_check.py)
 ```
 
 ## Features
@@ -238,6 +243,7 @@ git pull
 python3 migrate_add_cortes.py
 python3 migrate_fix_schema_drift.py
 python3 migrate_to_groups.py
+python3 migrate_locations_unique_name.py
 ```
 
 **4. Click "Reload" on the Web tab.** The new code goes live here, and

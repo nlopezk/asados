@@ -33,6 +33,49 @@ groups from the web instead of the terminal, invitations, one login in
 several groups (with a group switcher), and per-group scoring weights.
 
 
+## [2.0.1] - 2026-10-22
+> **Includes a migration: `migrate_locations_unique_name.py`.** On the
+> server, run it with the others (README, "Deploying an update", step
+> 3) **before** clicking Reload. On the original group it only says
+> "already present"; it does its work on groups created since 2.0.
+
+### Fixed
+- **The navbar wrapped onto two rows on many laptop-sized screens.**
+  The one-row/☰ switch point (1168px) had been measured while logged
+  in with a 4-letter name, and the username sits in the same row, so
+  for anyone with a longer name the links wrapped between 1169px and
+  up to 1242px. The name in the navbar is now capped (a long one ends
+  in "…", the full name shows on hover and in full in the phone menu),
+  and the switch point was re-measured for the longest possible name
+  plus a small safety margin: 1250px.
+- **Configuración scrolled sideways on small phones.** The user list
+  table asked for 160% of the screen width (a style meant for
+  two-column tables was applied to its four header cells). It now
+  sizes columns to their content and, on a very narrow screen, scrolls
+  inside its own box instead of the whole page. The same style fix
+  applies to the Participantes table on an asado's page.
+- **The home page's "Usuario" filter could push a phone screen
+  sideways** when someone's name was long. The dropdown now shrinks to
+  fit.
+- **New groups were missing a safety net on saved-location names.**
+  The database is meant to refuse two saved locations with the same
+  name (the app already checks, this is the backstop behind it). The
+  original group has it, but `schema.sql` never got it, so every group
+  created since 2.0 didn't. `schema.sql` now has it, and
+  `migrate_locations_unique_name.py` adds it to existing groups without
+  moving any data (it stops and lists them if a group already has two
+  same-named locations, rather than guessing which to rename).
+
+### Added (for development, not visible on the site)
+- **Project skills for Claude Code** in `.claude/skills/`:
+  `smoke-test` (one reusable check of the whole app - about 80
+  functional checks on throwaway data, every page against a read-only
+  copy of the real data, and a phone-to-desktop layout sweep in a real
+  browser; it found all four bugs above), `new-migration` (procedure,
+  template and a `compare_schema.py` that reports any difference
+  between a database and `schema.sql`), and `release` (this checklist).
+
+
 ## [2.0.0] - 2026-10-18
 ### Added
 - **Groups: one site, several separate competitions.** Each group gets
