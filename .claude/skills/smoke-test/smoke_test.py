@@ -776,6 +776,132 @@ def run_planned(app_module, tmp, ids):
 
 
 # ---------------------------------------------------------------------
+# THE HOME PAGE'S CALENDAR (issue #5)
+# ---------------------------------------------------------------------
+def run_calendar(app_module, tmp, ids):
+    """Month grid (Monday first), ?mes= navigation that never errors,
+    each asado on its day linking to its page, the "+" that starts a new
+    asado on that day, and the month and the list's filters carrying
+    each other along."""
+    import datetime as dt
+    import config
+    import asado_record as ar
+    from accounts import connect_existing
+
+    section("13. calendar on the home page (issue #5)")
+    today = ar.today()
+
+    # --- parse_mes(): never raises, bad input -> this month ---
+    check("parse_mes('2026-01') -> (2026, 1)", app_module.parse_mes("2026-01") == (2026, 1))
+    for bad in ("", None, "2026-13", "2026-00", "2026-1", "abc", "99999-01", "0001-05", "2026-01x", "<script>"):
+        check(f"parse_mes({bad!r}) -> the current month", app_module.parse_mes(bad) == (today.year, today.month))
+
+    # --- the grid's shape ---
+    db = connect_existing(os.path.join(tmp, "groups", "grupo-a.db"))
+    actor = ar.Actor(user_id=ids["admin_a"], name="Admin A")
+    beef = config.CATEGORIAS_CON_DESPIECE[0]
+    roles = list(config.ROL_WEIGHTS)
+
+    def mk(nombre, day):
+        return ar.create(db, ar.AsadoInput(
+            date=day, nombre=nombre, tipos_carne=[beef],
+            coccion=list(config.COCCION_WEIGHTS)[0], superficie=list(config.SUPERFICIE_WEIGHTS)[0],
+            local=list(config.LOCAL_WEIGHTS)[0], participants=[(ids["admin_a"], roles[0])]), actor)
+
+    in_jan = mk("Cal Enero Quince", "2026-01-15")
+    in_dec = mk("Cal Fin De Anio", "2025-12-31")   # shown in January's first row, dimmed
+    future_day = (today + dt.timedelta(days=40))
+    planned = mk("Cal Planificado", future_day.isoformat())
+    db.row_factory = sqlite3.Row
+
+    cal = app_module.build_calendar(db, (2026, 1))
+    days = [d for week in cal["weeks"] for d in week]
+    check("every week has 7 days", all(len(w) == 7 for w in cal["weeks"]))
+    check("weeks start on MONDAY", all(dt.date.fromisoformat(w[0]["date"]).weekday() == 0 for w in cal["weeks"]))
+    check("every day of January is in the grid, in order",
+          [d["day"] for d in days if d["in_month"]] == list(range(1, 32)))
+    check("prev/next across the year boundary: 2026-01 -> 2025-12 / 2026-02",
+          (cal["prev_mes"], cal["next_mes"]) == ("2025-12", "2026-02"))
+    dec = app_module.build_calendar(db, (2026, 12))
+    check("prev/next across the year boundary: 2026-12 -> 2026-11 / 2027-01",
+          (dec["prev_mes"], dec["next_mes"]) == ("2026-11", "2027-01"))
+    check("the month's title is in Spanish", cal["title"] == "Enero 2026", cal["title"])
+    on_15 = next(d for d in days if d["date"] == "2026-01-15")
+    check("an asado appears on its own day", [a["id"] for a in on_15["asados"]] == [in_jan])
+    on_31 = next(d for d in days if d["date"] == "2025-12-31")
+    check("an asado on a neighbouring month's day shows there too (dimmed day)",
+          not on_31["in_month"] and [a["id"] for a in on_31["asados"]] == [in_dec])
+    check("the phone list (agenda) has only THIS month's asados",
+          [a["id"] for a in cal["agenda"]] == [in_jan], str(cal["agenda"]))
+    check("agenda labels read like 'Jue 15'", cal["agenda"] and cal["agenda"][0]["label"] == "Jue 15", str(cal["agenda"][:1]))
+    db.close()
+
+    # --- over HTTP ---
+    c = app_module.app.test_client()
+    login(c, "admin_a", "pw-a")
+    home = c.get("/?mes=2026-01").get_data(as_text=True)
+    check("GET /?mes=2026-01 -> the January calendar", 'id="calendario"' in home and "Enero 2026" in home)
+    check("calendar sits after Resumen del Grupo and before Listado de Asados",
+          home.find(">Resumen del Grupo</h2>") < home.find('id="calendario"') < home.find(">Listado de Asados</h2>"))
+    cell = re.search(r'data-date="2026-01-15".*?</td>', home, re.S)
+    check("the 15th's cell links its asado to the asado's page",
+          cell is not None and f'href="/asado/{in_jan}"' in cell.group(0) and "Cal Enero Quince" in cell.group(0))
+    check("the 15th's cell has a '+' to /asado/new?date=2026-01-15",
+          cell is not None and 'href="/asado/new?date=2026-01-15"' in cell.group(0))
+    check("the first column header is 'Lun'", re.search(r"<thead>\s*<tr>\s*<th[^>]*>Lun<", home) is not None)
+    # "xss-probe" can only reach the page by being echoed from the URL
+    # (the page has <script> tags of its own, so "<script>" can't be the test).
+    for bad in ("2026-13", "%3Cb%3Exss-probe%3C/b%3E", "abc"):
+        resp = c.get(f"/?mes={bad}")
+        body = resp.get_data(as_text=True)
+        check(f"GET /?mes={bad} -> 200, this month, nothing echoed",
+              resp.status_code == 200 and f"{app_module.MESES_NOMBRES[today.month - 1]} {today.year}" in body
+              and "xss-probe" not in body)
+    now = c.get("/").get_data(as_text=True)
+    check("no ?mes -> the current month, with today marked aria-current",
+          f'data-date="{today.isoformat()}" aria-current="date"' in now)
+    check("no ?mes -> no 'Hoy' button (already on this month)", "calendar-today-link" not in now)
+    check("another month -> a 'Hoy' button", "calendar-today-link" in home)
+
+    # --- the month and the list's filters carry each other ---
+    uid = ids["admin_a"]
+    page = c.get(f"/?mes=2026-01&user_id={uid}&year=2026").get_data(as_text=True)
+    prev_link = re.search(r'href="([^"]*mes=2025-12[^"]*)"', page)
+    check("the month arrows keep the list's filters",
+          prev_link is not None and f"user_id={uid}" in prev_link.group(1) and "year=2026" in prev_link.group(1),
+          prev_link.group(1) if prev_link else "no prev link")
+    check("the arrows land on the calendar (#calendario)", prev_link is not None and prev_link.group(1).endswith("#calendario"))
+    check("the filter form keeps the month (hidden mes=2026-01)",
+          '<input type="hidden" name="mes" value="2026-01">' in page)
+    check("without ?mes the filter form adds nothing (URLs as before)",
+          'name="mes"' not in c.get(f"/?user_id={uid}").get_data(as_text=True))
+
+    # --- planned asados in the calendar (issue #17) ---
+    pm = f"{future_day.year:04d}-{future_day.month:02d}"
+    page = c.get(f"/?mes={pm}").get_data(as_text=True)
+    cell = re.search(rf'data-date="{future_day.isoformat()}".*?</td>', page, re.S)
+    check("a planned asado is dashed AND labelled 'Planificado' in its day",
+          cell is not None and "calendar-asado-planned" in cell.group(0) and "Planificado" in cell.group(0))
+
+    # --- the "+" prefill ---
+    form = c.get("/asado/new?date=2026-01-15").get_data(as_text=True)
+    check("/asado/new?date=2026-01-15 starts the form on that date",
+          re.search(r'id="date" name="date" value="2026-01-15"', form) is not None)
+    for bad in ("2026-02-30", "%3Cscript%3Ealert(1)%3C/script%3E", "manana"):
+        form = c.get(f"/asado/new?date={bad}").get_data(as_text=True)
+        check(f"/asado/new?date={bad} is ignored (empty date, nothing echoed)",
+              re.search(r'id="date" name="date" value=""', form) is not None and "alert(1)" not in form)
+    form = c.get(f"/asado/new?date={future_day.isoformat()}").get_data(as_text=True)
+    check("a future date from the '+' starts with the 'Planificar Asado' button",
+          re.search(r'id="asado-submit"[^>]*>\s*Planificar Asado', form) is not None)
+
+    db = connect_existing(os.path.join(tmp, "groups", "grupo-a.db"))
+    for a in (in_jan, in_dec, planned):
+        ar.delete(db, a, actor)
+    db.close()
+
+
+# ---------------------------------------------------------------------
 # --real-copy: every page against a SNAPSHOT of the real data
 # ---------------------------------------------------------------------
 def run_real_copy(app_module, tmp):
@@ -862,6 +988,10 @@ def run_real_copy(app_module, tmp):
             urls.append(url_for_rule(flask_app, rule, {}))
         urls += [f"/?page={p}" for p in (2, 999)]
         urls += [f"/base-asados?page={p}" for p in (2, 999)]
+        # The calendar (#5) on the first month with data, a month with
+        # none, and a malformed ?mes= (which must fall back, not error).
+        first = gdb.execute("SELECT MIN(date) FROM asados").fetchone()[0]
+        urls += [f"/?mes={m}" for m in ((first or "2020-01")[:7], "1999-01", "garbage")]
         urls += [f"/resumen?sort={s}&dir={d}" for s, d in (("points", "asc"), ("1; DROP TABLE users--", "desc"))]
         for a in (newest, oldest):
             if a:
@@ -1029,6 +1159,7 @@ def main():
         run_functional(app_module, tmp, ids)
         run_record_module(app_module, tmp, ids)
         run_planned(app_module, tmp, ids)
+        run_calendar(app_module, tmp, ids)
         if args.browser:
             run_browser(app_module, tmp)
         if args.real_copy:

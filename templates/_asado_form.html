@@ -87,7 +87,10 @@
     <input type="text" id="nombre" name="nombre" value="{{ asado.nombre if asado else '' }}" required>
 
     <label for="date">Fecha</label>
-    <input type="date" id="date" name="date" value="{{ asado.date if asado else '' }}" required>
+    {# prefill_date: set only by new_asado() when arriving from a day's
+       "+" in the home page's calendar (#5), already checked to be a real
+       date. Absent (undefined, so the default) everywhere else. #}
+    <input type="date" id="date" name="date" value="{{ asado.date if asado else prefill_date|default('') }}" required>
 
     <label for="description">Descripción (opcional)</label>
     <textarea id="description" name="description">{{ asado.description if asado else '' }}</textarea>
@@ -325,9 +328,12 @@
     <hr>
 
     {# The label the page starts with is worked out here too (not only
-       in JS), so the button is right even before the script runs: a new
-       asado has no date yet, so it starts as "past" (Añadir Asado). #}
-    {% set date_has_come = (not asado) or asado.date <= today_iso %}
+       in JS), so the button is right even before the script runs. The
+       date it goes by: the asado's (edit), the calendar's prefilled day
+       (create from a "+"), or none yet (a blank create -> "past", i.e.
+       "Añadir Asado"). #}
+    {% set form_date = asado.date if asado else prefill_date|default('') %}
+    {% set date_has_come = (not form_date) or form_date <= today_iso %}
     <button type="submit" class="primary-button" id="asado-submit"
             data-label-past="{{ submit_labels.past }}" data-label-future="{{ submit_labels.future }}">
         {{- submit_labels.past if date_has_come else submit_labels.future -}}
