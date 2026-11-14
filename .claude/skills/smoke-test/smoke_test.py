@@ -858,6 +858,8 @@ def run_calendar(app_module, tmp, ids):
     color = app_module.get_user_color(ids["admin_a"])
     check("the asado shows a dot in its participant's colour",
           cell is not None and f'class="calendar-dot" style="background-color: {color}"' in cell.group(0))
+    check("the dots come BEFORE the name, inside its two-line box",
+          cell is not None and re.search(r'class="calendar-asado-name"><span class="calendar-dots">.*?</span>\s*</span>Cal Enero Quince', cell.group(0), re.S) is not None)
     check("...and the participant's NAME as text (a dot never stands alone)",
           cell is not None and "Participantes: Admin A" in cell.group(0))
     check("the first column header is 'Lun'", re.search(r"<thead>\s*<tr>\s*<th[^>]*>Lun<", home) is not None)

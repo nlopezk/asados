@@ -114,11 +114,20 @@ in text a screen reader reads (same rule as every colour dot here).
                             data-date="{{ day.date }}"{% if day.is_today %} aria-current="date"{% endif %}>
                             <div class="calendar-day-head">
                                 <span class="calendar-day-number">{{ day.day }}</span>
+                                {# With more than one asado the list may scroll, and
+                                   a scrollbar is often invisible until you hover it -
+                                   so the count says there's more than what shows. #}
+                                {% if day.asados|length > 1 %}
+                                    <span class="calendar-day-count">{{ day.asados|length }} asados</span>
+                                {% endif %}
                                 {# Its own small target, apart from the asado names, so
                                    you never create an asado when you meant to open one. #}
                                 <a href="{{ url_for('new_asado', date=day.date) }}" class="calendar-add"
                                    title="Añadir asado el {{ day.date }}">{{ icon("plus", label="Añadir asado el " ~ day.date) }}</a>
                             </div>
+                            {# The list has a FIXED height and scrolls inside the
+                               day when there are more asados than fit, so every
+                               week row stays the same height (the user's call). #}
                             {% if day.asados %}
                                 <ul class="calendar-asados">
                                     {% for a in day.asados %}
@@ -129,11 +138,12 @@ in text a screen reader reads (same rule as every colour dot here).
                                             <a href="{{ url_for('view_asado', asado_id=a.id) }}"
                                                class="calendar-asado{% if a.estado != 'confirmado' %} calendar-asado-planned{% endif %}"
                                                title="{{ a.nombre }}{% if a.estado != 'confirmado' %} ({{ estado_labels[a.estado] }}){% endif %}{% if a.participants %} — {{ a.participants|map(attribute='name')|join(', ') }}{% endif %}">
-                                                <span class="calendar-asado-name">{{ a.nombre }}</span>
+                                                {# Dots FIRST, inline, inside the name: dots + name
+                                                   together get at most two lines, then "..." #}
+                                                <span class="calendar-asado-name">{{ participant_dots(a.participants) }}{{ a.nombre }}</span>
                                                 {% if a.estado != 'confirmado' %}
                                                     <span class="calendar-asado-estado">{{ estado_labels[a.estado] }}</span>
                                                 {% endif %}
-                                                {{ participant_dots(a.participants) }}
                                             </a>
                                         </li>
                                     {% endfor %}
@@ -153,9 +163,9 @@ in text a screen reader reads (same rule as every colour dot here).
                 {% for a in calendar.agenda %}
                     <li{% if a.estado != 'confirmado' %} class="calendar-agenda-planned"{% endif %}>
                         <span class="calendar-agenda-date">{{ a.label }}</span>
+                        {{ participant_dots(a.participants) }}
                         <a href="{{ url_for('view_asado', asado_id=a.id) }}">{{ a.nombre }}</a>
                         {{ estado_badge(a.estado) }}
-                        {{ participant_dots(a.participants) }}
                     </li>
                 {% endfor %}
             </ul>

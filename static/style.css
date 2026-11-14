@@ -2840,6 +2840,16 @@ body > main {
     box-shadow: 0 0 0 1px var(--color-surface);
 }
 
+/* In the grid the dots sit INLINE at the start of the name, inside the
+   two-line cap, so a long list of people takes part of those two lines
+   rather than adding a third. */
+.calendar-asado-name .calendar-dots {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    margin: 0 4px 0 0;
+    vertical-align: middle;
+}
+
 .calendar-agenda .calendar-dots {
     margin-top: 0;
     align-self: center;
@@ -2872,7 +2882,11 @@ body > main {
 
 .calendar-day {
     vertical-align: top;
-    height: 76px;                 /* a minimum: a busy day simply grows */
+    /* Every day the same height - a busy day SCROLLS (see
+       .calendar-asados) instead of stretching its whole week row.
+       height on a table cell is only a minimum, which is why the cap
+       lives on the list inside it. */
+    height: 100px;
     padding: 4px 5px 6px;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -2908,6 +2922,14 @@ body > main {
     color: var(--color-text-muted);
 }
 
+.calendar-day-count {
+    margin-right: auto;           /* sits beside the number; the "+" stays at the right */
+    margin-left: 6px;
+    color: var(--color-text-muted);
+    font-size: 0.6875rem;         /* 11px, like the Planificado tag in a day */
+    white-space: nowrap;
+}
+
 /* The "+" to start a new asado on that day: quiet until pointed at,
    so a month of 30 pluses doesn't shout louder than the asados. */
 .calendar-add,
@@ -2932,7 +2954,13 @@ body > main {
 .calendar-asados {
     list-style: none;
     margin: 0;
-    padding: 0;
+    padding: 0 2px 0 0;           /* room so the scrollbar doesn't cover the chips */
+    /* Fits one asado with a two-line name and its "Planificado" tag;
+       more than that scrolls inside the day. */
+    max-height: 62px;             /* header 22 + 3 gap + 62 + padding 10 + border 2 = under the 100px cell */
+    overflow-y: auto;
+    scrollbar-width: thin;        /* a slim bar, in the wood colours */
+    scrollbar-color: var(--color-border) transparent;
 }
 
 .calendar-asados li + li {
