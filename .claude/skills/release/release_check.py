@@ -85,6 +85,14 @@ def main():
     branch = git("rev-parse", "--abbrev-ref", "HEAD").strip()
     if branch != "main":
         warnings.append(f"on branch '{branch}', not main - PythonAnywhere pulls main")
+    # Pull requests are merged ON GITHUB now (a partner contributes), so the
+    # local main can be behind without anyone noticing. Releasing from a
+    # stale main would leave merged work out of the release - or the push
+    # would be refused. Fetch first, then compare.
+    subprocess.run(["git", "fetch", "--quiet", "origin"], cwd=REPO_ROOT, capture_output=True)
+    behind = git("rev-list", "--count", "HEAD..origin/main").strip()
+    if branch == "main" and behind not in ("", "0"):
+        problems.append(f"local main is {behind} commit(s) behind GitHub (merged pull requests?) - run `git pull` first")
     changed = [l for l in status if not forbidden(l[3:].strip('"'))]
     print(f"   branch {branch}; {len(changed)} changed/untracked file(s) that would go into the release:")
     for l in changed:

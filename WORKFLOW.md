@@ -44,6 +44,7 @@ Watch out for **two different "code-review"s**: the built-in one and
 | Fix something that went wrong | [9](#9-when-something-goes-wrong) |
 | Remember what I must never do | [10](#10-never-do-these) |
 | See every command at once | [11](#11-cheat-sheet) |
+| Review and merge a partner's pull request, or work alongside them | [12](#12-working-with-a-partner-branches-and-pull-requests) |
 
 ---
 
@@ -52,7 +53,8 @@ Watch out for **two different "code-review"s**: the built-in one and
 **PowerShell:**
 ```powershell
 git status          # anything left over from last time? (should say "nothing to commit")
-git pull            # only matters if you edited something on github.com
+git switch main     # start from main...
+git pull            # ...with everything merged on GitHub since last time (a partner's PRs!)
 python app.py       # run the app locally -> open http://127.0.0.1:5000
 ```
 
@@ -126,7 +128,12 @@ so don't triage those.
 ### 3.1 The usual way (one issue, ready to build)
 
 Once `/mattpocock-skills:triage` has marked an issue `ready-for-agent`,
-start a **fresh** session (type `/clear` first) and run, in **Claude:**
+start a **branch** for it, in **PowerShell** (section 12 explains why
+you don't work on `main` any more):
+```powershell
+git switch main; git pull; git switch -c nico/5-short-description
+```
+Then start a **fresh** session (type `/clear` first) and run, in **Claude:**
 ```
 /mattpocock-skills:implement #5 (use the smoke test as the test suite)
 ```
@@ -288,28 +295,42 @@ python .claude/skills/new-migration/compare_schema.py
 
 ## 6. Save your work (commit) without a release
 
-**When:** the change doesn't affect the live site: docs, notes, Claude
-skills, this file. Anything that changes what the group SEES is a release
-([7](#7-release-and-deploy)) instead.
+Since a partner joined, **`main` only changes through pull requests**
+(it's protected on GitHub). Your work goes on a branch, like theirs -
+so they see what you change, and conflicts show up in the pull request
+instead of surprising anyone. Full picture in
+[12](#12-working-with-a-partner-branches-and-pull-requests).
 
 **Claude:**
 ```
-Commit this (and push)
+Commit this on a branch and open a pull request
 ```
 
 By hand. **PowerShell:**
 ```powershell
+git switch -c nico/what-it-is            # if you're not on a branch already
 git status                               # see what changed
 git add -- WORKFLOW.md README.md         # name each file - NEVER "git add ." (see 10)
 git commit -m "Docs: what changed"
-git push
+git push -u origin nico/what-it-is
+gh pr create --fill                      # opens the pull request
 ```
+Then merge it yourself when you're happy: as the owner you can skip the
+approval rule (`gh pr merge --squash --admin`, or the "merge without
+waiting" box on GitHub). Docs and skills don't need a release; anything
+the group SEES does ([7](#7-release-and-deploy)).
 
 ---
 
 ## 7. Release and deploy
 
 ### 7.1 Your part on your PC
+
+**First, on `main` with everything merged:** merge the pull requests
+that should go into this release (yours and your partner's, section 12),
+then in **PowerShell**: `git switch main; git pull`. A release is cut
+from `main` only; the release check refuses to run from a branch or from
+a `main` that's behind GitHub.
 
 **Claude:**
 ```
@@ -498,6 +519,7 @@ version, so this is rare, but a browser can still hold an old copy.
 
 | Never | Because |
 |---|---|
+| Work directly on `main` | It's protected for a reason: changes go through a branch and a pull request (section 12), so your partner sees them and conflicts surface early. Only `/release` pushes to `main` directly. |
 | `git add .` or `git add -A` | It can publish the group's real data (`*.db`, the CSV, secrets) to the public repo. It nearly happened twice. Name the files, or let Claude/`/release` stage them. |
 | Run `schema.sql` on an existing database | It starts with `DROP TABLE`, which deletes the group's whole history. Schema changes go through `/new-migration`. |
 | Upload a database from your PC to PythonAnywhere | The live files are ahead of yours; you'd erase what the group added. |
@@ -546,6 +568,9 @@ first letters and the menu fills in the rest).
 | `python .claude/skills/release/release_check.py` | Pre-release safety scan (read-only) |
 | `python backup_db.py` | Back up everything now |
 | `gh issue list` · `gh issue view N` | Read the to-do list |
+| `git switch -c nico/what` | Start a branch for a task (6, 12) |
+| `gh pr list` · `gh pr checkout N` | See pull requests / try one locally (12) |
+| `gh pr merge N --squash` | Merge an approved pull request (12) |
 | `git status` | What changed? |
 
 ### On PythonAnywhere (Bash console, after `cd ~/asados`)
@@ -557,6 +582,78 @@ first letters and the menu fills in the rest).
 | `python3 manage_groups.py list` | Groups, member counts, export tokens |
 | `python3 manage_groups.py create ...` | New group (8.4) |
 | `python3 create_user.py <group> <user> <pass> "<Name>" [admin]` | New person (8.3) |
+
+---
+
+## 12. Working with a partner (branches and pull requests)
+
+Augusto (`augustohechem`) contributes in parallel. His side of the
+process is in **`CONTRIBUTING.md`** - send him there. This section is
+yours.
+
+### 12.1 How it works
+
+- **`main` = what's live, or ready to go live.** Nobody works on it
+  directly; GitHub protects it: changes only through a pull request with
+  one approval, no force-push, no deleting it. You're the admin, so you
+  can bypass the rule (that's how `/release` still pushes its version
+  commit) - use that for your own merges and releases, not as a habit.
+- **Every task = one branch = one pull request.** Branch names say who
+  and what: `augusto/12-calendario`, `nico/fix-filtro`.
+- **Only you release and deploy.** His work reaches the live site when
+  you merge it and run `/release` + section 7.2.
+- **Split the work by GitHub issue** and assign it, so you don't both
+  build the same thing: `gh issue edit 12 --add-assignee augustohechem`.
+
+### 12.2 Review and merge his pull request
+
+You'll get a GitHub notification ("review requested"). Then:
+
+1. **Read it.** On GitHub: the pull request's **Files changed** tab. Or in
+   **PowerShell**: `gh pr view 15` and `gh pr diff 15`. Check the
+   checklist in the description is ticked - especially "no real data".
+2. **Try it on your machine**, for anything beyond docs. **PowerShell:**
+   ```powershell
+   gh pr checkout 15                                      # your folder now has his branch
+   python .claude/skills/smoke-test/smoke_test.py --all   # must pass
+   python app.py                                          # look at it
+   git switch main                                        # back to main when done
+   ```
+   Or in **Claude**: `Review PR #15` (it can run `/code-review` on it).
+3. **Approve or ask for changes.** On GitHub: **Review changes** →
+   *Approve*, or *Request changes* with comments. He fixes things by
+   pushing more commits to the same branch; the PR updates by itself.
+4. **Merge** with **Squash and merge** (one tidy commit per pull request
+   on `main`). The branch is deleted automatically. **PowerShell:**
+   `gh pr merge 15 --squash`.
+5. **Update your copy.** **PowerShell:**
+   ```powershell
+   git switch main
+   git pull
+   git branch -D practica-augusto       # only if you used "gh pr checkout"; -D because a squash merge looks unmerged locally
+   ```
+
+The first time (PR #15, his practice file) went exactly like this.
+
+### 12.3 Your own work alongside his
+
+Same cycle: branch → commits → `gh pr create --fill` → merge (section 6).
+Merge pull requests one at a time; after each merge, the other open
+branches bring `main` in (`git pull origin main` on that branch), so
+conflicts get fixed on the branch, never on `main`.
+
+### 12.4 When two changes collide
+
+- **Conflict in a pull request** (GitHub says "This branch has
+  conflicts"): whoever owns the branch runs `git pull origin main` on it,
+  fixes the marked lines, commits, and pushes. `CONTRIBUTING.md` has the
+  step by step; Claude can help ("help me resolve this merge conflict").
+- **Two database migrations in flight:** agree the order before merging.
+  The later one goes last in README's deploy list (section 7.2 here too).
+  Each migration must still pass on its own.
+- **Version / CHANGELOG:** never on a branch - `/release` writes them on
+  `main`, so they can't conflict.
+
 
 ---
 

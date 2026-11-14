@@ -106,6 +106,42 @@ step), update WORKFLOW.md in the same change. It deliberately repeats
 the deploy migration list (section 7.2) and a cheat sheet (section 11),
 so those are the two places most likely to drift.
 
+## Collaboration: branches, pull requests, one releaser
+
+Since Nov 2026 a second person contributes (`augustohechem`, write
+access) alongside the owner (`nlopezk`, admin). The human guides:
+`CONTRIBUTING.md` (the contributor's side) and `WORKFLOW.md` section 12
+(the owner's side). The rules any Claude session here must follow:
+
+- **Never commit to `main`.** Every task is a branch
+  (`<who>/<issue>-<short-description>`) and a pull request into `main`.
+  `main` is protected by a GitHub ruleset ("Protect main"): PR with one
+  approval, no force-push, no deletion. The owner (admin role) is the
+  only bypass - that's what lets `/release` push its version commit and
+  tag directly. Don't use or suggest the bypass for ordinary work.
+- **Only the owner releases and deploys.** If the person you're working
+  with isn't nlopezk, don't run `/release`, don't bump `VERSION` /
+  `CHANGELOG.md` / "Currently at", and don't give PythonAnywhere steps
+  as theirs to run. Those lines change only in a release, on `main`,
+  which is also what keeps them from conflicting between branches.
+- **Real data never enters the repo, an issue or a PR** - unchanged, but
+  now there are two people who could slip. A contributor works with a
+  test group (`manage_groups.py create prueba ...` + `seed_random_asados.py`).
+- **Squash and merge** is the merge style (one commit per PR on `main`);
+  merged branches are deleted automatically on GitHub. After a squash
+  merge, a local copy of the branch needs `git branch -D` (it looks
+  unmerged to Git).
+- **Before starting work, and before a release:** `git switch main` +
+  `git pull`. Merges happen on GitHub, so local `main` is easily behind;
+  `release_check.py` now refuses a `main` that's behind `origin/main`.
+- **Schema changes in parallel:** two migrations on two branches need
+  their order agreed; the one merged later goes last in README's deploy
+  list (and WORKFLOW.md 7.2). Each must pass on its own.
+- `.gitattributes` (`* text=auto`) keeps every text file stored with LF
+  in the repo whatever each person's Git settings are - without it, a
+  contributor's checkout could turn a one-word edit into an every-line
+  diff. Every file was already LF; don't commit CRLF.
+
 ## Agent skills
 
 ### Issue tracker

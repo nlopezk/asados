@@ -12,6 +12,11 @@ own members, asados and standings, completely separate from the others.
 > making a change, testing, releasing and deploying, data chores, and
 > what to do when something goes wrong, with every command ready to copy.
 
+> **Contributing?** Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) first:
+> how to set up a test group (never the real data), and the branch →
+> pull request → review → merge cycle. `main` is protected; only the
+> owner releases and deploys.
+
 > **Using an AI assistant (Claude Code, etc.) on this project?** See
 > [`CLAUDE.md`](./CLAUDE.md) first — it explains the *reasoning* behind
 > the design decisions (the points formula, the map choice, the login

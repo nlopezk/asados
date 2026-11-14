@@ -17,11 +17,20 @@ access to the server, so never claim the site is updated.
 The repo is **public** and the data is personal, and the live database is ahead of the local
 one. Treat every step that leaves this machine as something to confirm first.
 
+**A partner contributes through pull requests** (see `CONTRIBUTING.md`), and `main` is
+protected on GitHub: changes go through a PR with one approval. The owner (nlopezk) is an
+admin who bypasses that rule, which is what lets this skill push the version commit and tag
+straight to `main` - so **only the owner runs `/release`**. If whoever is running Claude is
+not the owner, stop and say so.
+
 ## Step 1: Preflight (stop at the first real problem)
+0. Ask whether every pull request meant for this release is merged (`gh pr list` shows the
+   open ones), then `git switch main` and `git pull`. Merges happen on GitHub, so a local
+   `main` is easily behind.
 1. `python .claude/skills/release/release_check.py` checks for data files or secrets that
-   are tracked or committable, confirms you're on `main`, prints every version number, and
-   confirms every `migrate_*.py` is in README's deploy list. **Any PROBLEM line blocks the
-   release.** Fix it, or explain it to the user, before going on.
+   are tracked or committable, confirms you're on `main` and **not behind GitHub**, prints
+   every version number, and confirms every `migrate_*.py` is in README's deploy list. **Any
+   PROBLEM line blocks the release.** Fix it, or explain it to the user, before going on.
 2. Look at what's going out: `git log v<last>..HEAD --oneline`, plus the working-tree changes
    the check listed. If there are uncommitted changes, ask whether they belong in this release.
 3. Run the `smoke-test` skill:
