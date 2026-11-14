@@ -2719,6 +2719,224 @@ body > main {
 }
 
 /* =====================================================================
+   CALENDAR (issue #5) - templates/_calendar.html
+   A month grid above the asado list on desktop/tablet; on a phone
+   (<= 480px, the app's "is this a phone?" breakpoint) the same month as
+   a plain list instead, since seven ~40px columns can't hold a name.
+   Colours follow the rest of the app: asado names are links, so they
+   wear the coral link colour; everything else stays wood and cream.
+   --color-gold is deliberately NOT used for "today" (it's reserved for
+   the navbar rail and the footer rule).
+   ===================================================================== */
+.calendar {
+    margin-bottom: 28px;
+}
+
+.calendar-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* The month name keeps a steady width, so the arrows don't jump
+   sideways when going from "Mayo" to "Septiembre". */
+.calendar-month {
+    min-width: 9.5em;
+    text-align: center;
+    font-weight: 600;
+}
+
+.calendar-nav .secondary-button {
+    margin: 0;
+}
+
+.calendar-arrow {
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+.calendar-grid {
+    width: 100%;
+    table-layout: fixed;          /* seven equal columns, whatever is in them */
+    border-collapse: separate;
+    border-spacing: 3px;
+}
+
+.calendar-grid th {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+    font-weight: 600;
+    padding: 2px 0 4px;
+}
+
+.calendar-day {
+    vertical-align: top;
+    height: 76px;                 /* a minimum: a busy day simply grows */
+    padding: 4px 5px 6px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-s);
+}
+
+/* Days of the neighbouring months: there for orientation, quieter. */
+.calendar-day-outside {
+    background: transparent;
+    opacity: 0.55;
+}
+
+/* Today: outlined in the cream text colour (inset, so the cell keeps
+   its size). Its number is also bold, so it isn't only the outline. */
+.calendar-day-today {
+    box-shadow: inset 0 0 0 2px var(--color-text);
+}
+
+.calendar-day-today .calendar-day-number {
+    font-weight: 700;
+    color: var(--color-text);
+}
+
+.calendar-day-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 3px;
+}
+
+.calendar-day-number {
+    font-size: var(--text-s);
+    color: var(--color-text-muted);
+}
+
+/* The "+" to start a new asado on that day: quiet until pointed at,
+   so a month of 30 pluses doesn't shout louder than the asados. */
+.calendar-add,
+.calendar-add:visited {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: var(--radius-s);
+    color: var(--color-text-muted);
+    opacity: 0.6;
+}
+
+.calendar-add:hover,
+.calendar-add:focus-visible {
+    opacity: 1;
+    color: var(--color-accent-text);
+    background: var(--color-surface-alt);
+}
+
+.calendar-asados {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.calendar-asados li + li {
+    margin-top: 3px;
+}
+
+/* One asado in a day: a small block, its name on up to TWO lines and
+   cut with "..." after that (the full name is in its title tooltip).
+   One line said too little: "Asado del sáb..." in a screenshot. */
+.calendar-asado,
+.calendar-asado:visited {
+    display: block;
+    padding: 2px 6px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-s);
+    background: var(--color-surface-alt);
+    color: var(--color-accent-text);
+    font-size: var(--text-xs);
+    line-height: 1.35;
+    text-decoration: none;
+}
+
+.calendar-asado:hover {
+    color: var(--color-accent-text-hover);
+    text-decoration: underline;
+}
+
+.calendar-asado-name {
+    /* The standard way to cap text at N lines with an ellipsis; every
+       current browser supports it, -webkit- prefix included. */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;  /* a single very long word still breaks */
+}
+
+/* Planned / Por confirmar (issue #17): dashed and see-through, plus the
+   word underneath - never the border alone. */
+.calendar-asado.calendar-asado-planned {
+    background: transparent;
+    border: 1px dashed var(--color-text-muted);
+}
+
+.calendar-asado-estado {
+    display: block;
+    color: var(--color-text-muted);
+    font-size: 0.6875rem;  /* 11px: one step under --text-xs, only for this tag inside a tiny block */
+}
+
+/* ---- Phones: the agenda list instead of the grid ---- */
+.calendar-agenda {
+    display: none;
+}
+
+.calendar-agenda ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-m);
+}
+
+.calendar-agenda li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 10px;
+    padding: 10px 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.calendar-agenda li:first-child {
+    border-top: none;
+}
+
+.calendar-agenda-date {
+    min-width: 3.6em;
+    color: var(--color-text-muted);
+    font-size: var(--text-s);
+}
+
+.calendar-agenda .estado-badge {
+    margin-right: 0;
+}
+
+@media (max-width: 480px) {
+    .calendar-grid {
+        display: none;
+    }
+
+    .calendar-agenda {
+        display: block;
+    }
+
+    .calendar-month {
+        min-width: 0;
+    }
+}
+
+/* =====================================================================
    TOUCH SCREENS AND PHONES (UI review, 2.1.0)
    Kept together at the END of this file on purpose: these override
    rules defined earlier, and when two rules have the same specificity
@@ -2956,5 +3174,32 @@ body > main {
         width: 44px;
         height: 44px;
         padding: 0;
+    }
+}
+
+/* --- Calendar on touch screens (issue #5) ---
+   A tablet shows the month GRID with a finger, not a mouse: the 22px
+   "+" was too small to hit and, with no hover to reveal it, too faint
+   to notice. On a phone the AGENDA list's links get the same 44px rows
+   as the home cards' participant names (padding + an equal negative
+   margin: a bigger tap area, nothing moves on screen). */
+@media (pointer: coarse) {
+    .calendar-add,
+    .calendar-add:visited {
+        width: 34px;
+        height: 34px;
+        opacity: 0.85;
+    }
+
+    .calendar-asado,
+    .calendar-asado:visited {
+        padding-top: 6px;
+        padding-bottom: 6px;
+    }
+
+    .calendar-agenda li > a {
+        display: inline-block;
+        padding: 10px 0;
+        margin: -10px 0;
     }
 }

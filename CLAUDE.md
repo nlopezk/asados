@@ -582,9 +582,13 @@ yet, just one Flask app with a handful of routes:
   auto-submits on change — no JS fetch needed for the dropdowns; the
   date range uses Flatpickr, see below), and `?page=` to paginate
   (`INDEX_PAGE_SIZE` = 30/page, filters and page compose together —
-  page count is computed AFTER filtering)
+  page count is computed AFTER filtering). Also `?mes=YYYY-MM`, the
+  month the calendar shows (independent of the filters; see "The home
+  page's calendar")
 - `/asado/new` (`new_asado`) — GET shows the form, POST inserts an
-  `asados` row plus one `participations` row per selected participant
+  `asados` row plus one `participations` row per selected participant.
+  GET accepts `?date=YYYY-MM-DD` to start the form on that day (the
+  calendar's "+")
 - `/asado/<id>` (`view_asado`) — read-only detail page by default, with
   a hidden copy of the edit form revealed in place by an "Editar"
   button (pure client-side toggle, no reload/route) — see "Edit/delete
@@ -1245,6 +1249,66 @@ same change.
 **Tests:** the module is tested directly in `smoke_test.py` section 10
 (no HTTP, no HTML scraping) — the first test surface in this app that
 isn't the web. Put new asado rules there.
+
+### The home page's calendar — a month grid between the summary and the list (#5)
+`build_calendar()` + `parse_mes()` in app.py, `templates/_calendar.html`
+(included once, by index.html). Home page order is now: messages, "N
+asados esperan confirmación", Resumen del Grupo, **Calendario**, Listado
+de Asados (+ filters, cards, pagination). Decided with the user in a
+design session; each choice below was theirs or explicitly agreed.
+
+**Server-rendered, no JavaScript, no library.** The month arrows are
+plain links with `?mes=YYYY-MM` (default: the current month by
+`asado_record.today()`, Chile's date). Same reasoning as Resumen's
+server-side sorting: no second implementation in JS, a month is a URL
+you can bookmark, and the back button works. `parse_mes()` never
+raises; anything malformed shows the current month, and only its
+normalised "YYYY-MM" is ever printed back (tested with markup in
+`?mes=`). The arrow links end in `#calendario` so the reload lands on
+the calendar, not the page top.
+
+**Monday-first weeks, Spanish names** (`DIAS_SEMANA`, `MESES_NOMBRES`),
+via the standard library's `calendar.Calendar(firstweekday=0)`
+(imported as `pycalendar`). The grid runs from the Monday on or before
+the 1st to the Sunday on or after the last day; neighbouring-month days
+are shown dimmed, WITH their asados. One query covers the whole visible
+range (never one per day).
+
+**Independent of the list's filters, but each carries the other.** The
+calendar shows whatever `?mes=` says, whatever the filters are. Its links
+(`cal_url()` macro) keep every list filter and the page; the filter form
+(hidden `mes`), "Limpiar filtros" and pagination keep `?mes=`, but only
+when a month was explicitly chosen (`selected_mes`), so URLs without a
+month are exactly what they were before the calendar. **If you add a
+list filter, add it to `cal_url()` too**, or changing month will drop it.
+
+**Two layouts from one piece of data, switched by CSS at 480px**: a
+7-column `<table>` on desktop/tablet (a real table, so screen readers
+announce each day's weekday column); on a phone an agenda list of the
+month's asados ("Sáb 14 · Nombre"), since seven ~40px columns can't hold
+a name. Each day has a quiet "+" linking to `/asado/new?date=YYYY-MM-DD`,
+its own target apart from the asado names so you never create when you
+meant to open. `new_asado()` accepts `?date=` only if
+`date.fromisoformat()` accepts it, otherwise ignores it (nothing from
+the URL is echoed). The form's save button reads "Planificar Asado"
+straight away for a future prefilled date, because the server works out
+the initial label from it too, not only the JS.
+
+**Planned / Por confirmar asados** (#17) are dashed in their day AND
+carry their word underneath, never the border alone. Names get two lines
+(line-clamp) then "...", with the full name in a `title` tooltip. Today
+is outlined in cream (not gold, which is reserved), with its number bold.
+On touch screens (`pointer: coarse`) the "+" grows to 34px and stays
+visible (there's no hover to reveal it), and the agenda links get 44px rows.
+
+Tested in smoke-test section 13: `parse_mes()` against malformed input,
+grid shape (7 days, Monday first, all days present, year-boundary
+prev/next), asados on the right day including neighbouring-month days,
+the agenda holding only this month, the links in both directions, the
+"+" prefill and its rejection of bad dates. Proven to fail when weeks
+start on Sunday or the arrows drop the filters. `--real-copy` also opens
+the calendar on the real data's first month, an empty month and a
+garbage `?mes=`.
 
 ### Planned vs confirmed asados — future asados count only once confirmed (#17)
 Terms in `GLOSSARY.md`; the decision and its rejected alternatives in

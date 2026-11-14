@@ -17,6 +17,11 @@ import functools
 import collections
 import unicodedata
 import secrets                     # unguessable CSRF tokens + the export-token comparison
+import re
+# Python's built-in month-grid maths, for the home page's calendar (#5).
+# Imported under another name because "calendar" reads like one of this
+# file's own variables.
+import calendar as pycalendar
 from datetime import date          # "today" for the profile page's monthly bar chart — see build_user_monthly_chart_data()
 from urllib.parse import urlparse  # checking login's ?next= stays on this site — see is_safe_next_url()
 from flask import Flask, render_template, request, redirect, url_for, g, jsonify, session, Response
@@ -1349,6 +1354,111 @@ def build_group_summary(db):
 
 
 # ---------------------------------------------------------------------
+# THE HOME PAGE'S CALENDAR (issue #5)
+# ---------------------------------------------------------------------
+MESES_NOMBRES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio",
+                 "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+# Monday first: the week starts on Monday in Chile (and in Spanish-
+# speaking calendars generally), not on Sunday like a US calendar.
+DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+MES_PATTERN = re.compile(r"^(\d{4})-(\d{2})$")
+
+
+def parse_mes(value):
+    """
+    The calendar's ?mes=YYYY-MM -> (year, month), or the CURRENT month
+    (the group's date, asado_record.today()) for anything missing or
+    malformed. Never raises: a hand-edited or stale link should just
+    show this month, not an error page. Years are kept to 1900-9998 so
+    "next month" can always be built (date() tops out at year 9999).
+    """
+    match = MES_PATTERN.match(value or "")
+    if match:
+        year, month = int(match.group(1)), int(match.group(2))
+        if 1900 <= year <= 9998 and 1 <= month <= 12:
+            return year, month
+    today = asado_record.today()
+    return today.year, today.month
+
+
+def build_calendar(db, mes):
+    """
+    The month grid for the home page's calendar: a list of WEEKS, each
+    a list of 7 DAYS (Monday first), plus the month's own asados again
+    as a flat list for the phone layout.
+
+    Each day: {"date": "2026-11-14", "day": 14, "in_month": True/False,
+    "is_today": bool, "asados": [{"id", "nombre", "estado"}]}.
+
+    The grid starts on the Monday on or before the 1st and ends on the
+    Sunday on or after the last day, so it has 4-6 rows and the days
+    around the month are shown too (dimmed in the template). Asados ON
+    those neighbouring days are shown as well - an asado on Sunday the
+    1st of next month still belongs in this week's row.
+
+    ONE query for the whole visible range, not one per day (the 1.7.4
+    audit's lesson from index(): queries in a loop add up fast on the
+    page you land on after every save). `estado` comes from
+    asado_record.estado(), the same Planificado / Por confirmar /
+    Confirmado label every other page uses (issue #17).
+
+    INDEPENDENT of the list's filters below it, by design: the month
+    shown is chosen only by ?mes= (decided with the user, #5).
+    """
+    year, month = mes
+    weeks_of_dates = pycalendar.Calendar(firstweekday=0).monthdatescalendar(year, month)
+    first_shown, last_shown = weeks_of_dates[0][0], weeks_of_dates[-1][-1]
+
+    by_date = collections.defaultdict(list)
+    for row in db.execute(
+        "SELECT id, nombre, date, status FROM asados WHERE date BETWEEN ? AND ? ORDER BY date, id",
+        (first_shown.isoformat(), last_shown.isoformat()),
+    ):
+        by_date[row["date"]].append({
+            "id": row["id"],
+            "nombre": row["nombre"],
+            "estado": asado_record.estado(row["status"], row["date"]),
+        })
+
+    today = asado_record.today()
+    weeks = [
+        [
+            {
+                "date": d.isoformat(),
+                "day": d.day,
+                "in_month": d.month == month,
+                "is_today": d == today,
+                "asados": by_date.get(d.isoformat(), []),
+            }
+            for d in week
+        ]
+        for week in weeks_of_dates
+    ]
+
+    # The phone layout: only THIS month's asados, in date order, each
+    # with a short "Sáb 14" label.
+    agenda = []
+    for week in weeks:
+        for i, day in enumerate(week):
+            if day["in_month"]:
+                for a in day["asados"]:
+                    agenda.append({**a, "date": day["date"], "label": f"{DIAS_SEMANA[i]} {day['day']}"})
+
+    prev_year, prev_month = (year - 1, 12) if month == 1 else (year, month - 1)
+    next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return {
+        "mes": f"{year:04d}-{month:02d}",
+        "title": f"{MESES_NOMBRES[month - 1]} {year}",
+        "is_current_month": (year, month) == (today.year, today.month),
+        "prev_mes": f"{prev_year:04d}-{prev_month:02d}",
+        "next_mes": f"{next_year:04d}-{next_month:02d}",
+        "dias_semana": DIAS_SEMANA,
+        "weeks": weeks,
+        "agenda": agenda,
+    }
+
+
+# ---------------------------------------------------------------------
 # ROUTES
 # ---------------------------------------------------------------------
 
@@ -1388,6 +1498,13 @@ def index():
     month_filter = request.args.get("month", "").strip()
     user_filter = request.args.get("user_id", "").strip()
     page = parse_page_number(request.args.get("page"))
+    # The calendar's month (#5). Only ever passed back out through
+    # parse_mes()'s normalised "YYYY-MM", never echoed raw.
+    calendar_data = build_calendar(db, parse_mes(request.args.get("mes")))
+    # Was a month asked for explicitly? Only then do the list's links
+    # (filters, pagination) carry ?mes= along - otherwise their URLs
+    # stay exactly as they were before the calendar existed.
+    selected_mes = calendar_data["mes"] if request.args.get("mes") else ""
 
     # Built up conditionally: a plain "FROM asados" when no filters are
     # set, or narrowed down as needed. Filtering by participant requires
@@ -1526,6 +1643,8 @@ def index():
         # filter below it, deliberately.
         group_summary=build_group_summary(db),
         por_confirmar=por_confirmar,
+        calendar=calendar_data,
+        selected_mes=selected_mes,
         meses=MESES,
         selected_date_from=date_from_filter,
         selected_date_to=date_to_filter,
@@ -1734,8 +1853,19 @@ def new_asado():
     # (_asado_form.html) that view_asado()'s edit form uses below,
     # here in "create mode": asado=None and no existing_participants
     # means it renders one blank participant row instead of prefilling.
+    # The calendar's "+" on a day links here with ?date=YYYY-MM-DD (#5),
+    # to start the form on that day. Only a REAL date gets through
+    # (date.fromisoformat); anything else is ignored, so nothing typed
+    # into the URL is ever echoed back into the page.
+    prefill_date = ""
+    try:
+        prefill_date = date.fromisoformat(request.args.get("date", "")).isoformat()
+    except ValueError:
+        pass
+
     return render_template(
         "new_asado.html",
+        prefill_date=prefill_date,
         asado=None,
         existing_participants=[],
         existing_tipos_carne=[],

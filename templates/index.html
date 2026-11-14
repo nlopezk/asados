@@ -76,6 +76,10 @@
     </div>
 {% endif %}
 
+{# CALENDAR (#5): between the group summary and the list, where the
+   user asked for it. Everything about it lives in _calendar.html. #}
+{% include "_calendar.html" %}
+
 {# The heading and its "Añadir Asado" shortcut share one row (UI
    refresh, 2.1.0): the button used to take a row of its own between the
    heading and the filters. Still the big, obvious shortcut CLAUDE.md
@@ -233,6 +237,9 @@
      Año/Mes match on just that PART of the date, independent of each
      other — e.g. Mes alone shows that calendar month across every year. -->
 <form method="GET" action="{{ url_for('index') }}" class="filter-form">
+    {# Keeps the calendar on the month being looked at when a filter
+       changes (only when a month was chosen - see index()). #}
+    {% if selected_mes %}<input type="hidden" name="mes" value="{{ selected_mes }}">{% endif %}
     <div class="filter-field">
         <label for="filter_date_range">Fecha</label>
         <!-- The visible input is just the calendar trigger/display —
@@ -273,7 +280,7 @@
         </select>
     </div>
     {% if selected_date_from or selected_date_to or selected_year or selected_month or selected_user_id %}
-        <a href="{{ url_for('index') }}" class="filter-clear">{{ icon("x") }}Limpiar filtros</a>
+        <a href="{{ url_for('index', mes=selected_mes or none) }}" class="filter-clear">{{ icon("x") }}Limpiar filtros</a>
     {% endif %}
 </form>
 
@@ -349,12 +356,12 @@
          resulting URL, so an unset filter just doesn't appear in it. -->
     <nav class="pagination" aria-label="Páginas">  {# a name for this landmark, see base.html #}
         {% if page > 1 %}
-            <a href="{{ url_for('index', page=page-1, date_from=selected_date_from or none, date_to=selected_date_to or none, year=selected_year or none, month=selected_month or none, user_id=selected_user_id or none) }}"
+            <a href="{{ url_for('index', page=page-1, mes=selected_mes or none, date_from=selected_date_from or none, date_to=selected_date_to or none, year=selected_year or none, month=selected_month or none, user_id=selected_user_id or none) }}"
                class="secondary-button">{{ icon("chevron-left") }}Anterior</a>
         {% endif %}
         <span class="pagination-status">Página {{ page }} de {{ total_pages }}</span>
         {% if page < total_pages %}
-            <a href="{{ url_for('index', page=page+1, date_from=selected_date_from or none, date_to=selected_date_to or none, year=selected_year or none, month=selected_month or none, user_id=selected_user_id or none) }}"
+            <a href="{{ url_for('index', page=page+1, mes=selected_mes or none, date_from=selected_date_from or none, date_to=selected_date_to or none, year=selected_year or none, month=selected_month or none, user_id=selected_user_id or none) }}"
                class="secondary-button">Siguiente{{ icon("chevron-right") }}</a>
         {% endif %}
     </nav>

@@ -202,6 +202,10 @@ As_app/
 - **Points** — calculated per participant from the formula in `config.py`
   (the same rules for every group, for now), then **frozen**: changing a
   weight later never rewrites history.
+- **Calendar** — on the home page, between the group summary and the
+  list: a month grid (Monday first) with each asado's name on its day,
+  arrows to change month, and a "+" on every day to add an asado on that
+  date. On a phone it becomes a list of the month's asados.
 - **Planned asados** — an asado can be added ahead of time. Dated in the
   future it's *Planificado* and earns no points; once its date has come,
   the next save by any member (the "Confirmar asado" button) confirms it
