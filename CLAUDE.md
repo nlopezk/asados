@@ -1296,6 +1296,30 @@ the URL is echoed). The form's save button reads "Planificar Asado"
 straight away for a future prefilled date, because the server works out
 the initial label from it too, not only the JS.
 
+**Follow-ups the user asked for after using it:**
+- **Collapsible, open on every load**: a native `<details open>` (no JS,
+  keyboard-accessible). The summary row is the heading plus an
+  "Ocultar / Mostrar" pill (a chevron alone wasn't noticeable). Nothing
+  remembers a folded state, on purpose ("start open"). Links can't go in
+  the `<summary>` (clicking them would also toggle it), so the controls
+  sit below it.
+- **Month and year browse separately**: "‹ Noviembre ›  ‹ 2026 ›". The
+  year arrows go to the same month a year away (`prev_year_mes` /
+  `next_year_mes`); the month arrows still roll over the year.
+- **A dot per participant** before each asado's name, in their
+  `user_color()`, so the month shows at a glance who has been to what.
+  The dots sit INLINE inside the name's box, so dots + name together
+  stop at two lines (the user's rule), then "...".
+- **Every day the same height (100px)**: a busy day's list scrolls
+  inside it (`max-height` on `.calendar-asados`, since `height` on a
+  table cell is only a minimum), and a "3 asados" count beside the
+  number says there's more, because a scrollbar is often invisible until
+  hovered. Change the cell height and the list's `max-height` together
+  (the comment there has the sum), or rows stop being equal. One extra batched
+  query in `build_calendar()`. Names go in the tooltip and in
+  visually-hidden text (a dot never stands alone); the "Resumen del
+  Grupo" cards just above act as the colour key.
+
 **Planned / Por confirmar asados** (#17) are dashed in their day AND
 carry their word underneath, never the border alone. Names get two lines
 (line-clamp) then "...", with the full name in a `title` tooltip. Today

@@ -828,6 +828,10 @@ def run_calendar(app_module, tmp, ids):
     check("the month's title is in Spanish", cal["title"] == "Enero 2026", cal["title"])
     on_15 = next(d for d in days if d["date"] == "2026-01-15")
     check("an asado appears on its own day", [a["id"] for a in on_15["asados"]] == [in_jan])
+    check("each asado carries its participants (for the dots)",
+          [p["user_id"] for p in on_15["asados"][0]["participants"]] == [ids["admin_a"]])
+    check("year stepper links: same month, a year away",
+          (cal["prev_year_mes"], cal["next_year_mes"]) == ("2025-01", "2027-01"))
     on_31 = next(d for d in days if d["date"] == "2025-12-31")
     check("an asado on a neighbouring month's day shows there too (dimmed day)",
           not on_31["in_month"] and [a["id"] for a in on_31["asados"]] == [in_dec])
@@ -840,7 +844,10 @@ def run_calendar(app_module, tmp, ids):
     c = app_module.app.test_client()
     login(c, "admin_a", "pw-a")
     home = c.get("/?mes=2026-01").get_data(as_text=True)
-    check("GET /?mes=2026-01 -> the January calendar", 'id="calendario"' in home and "Enero 2026" in home)
+    check("GET /?mes=2026-01 -> the January calendar", 'data-mes="2026-01"' in home
+          and ">Enero</span>" in home and ">2026</span>" in home)
+    check("the calendar starts OPEN and can be folded (<details open>)",
+          re.search(r'<details class="calendar" id="calendario"[^>]*\bopen>', home) is not None)
     check("calendar sits after Resumen del Grupo and before Listado de Asados",
           home.find(">Resumen del Grupo</h2>") < home.find('id="calendario"') < home.find(">Listado de Asados</h2>"))
     cell = re.search(r'data-date="2026-01-15".*?</td>', home, re.S)
@@ -848,6 +855,13 @@ def run_calendar(app_module, tmp, ids):
           cell is not None and f'href="/asado/{in_jan}"' in cell.group(0) and "Cal Enero Quince" in cell.group(0))
     check("the 15th's cell has a '+' to /asado/new?date=2026-01-15",
           cell is not None and 'href="/asado/new?date=2026-01-15"' in cell.group(0))
+    color = app_module.get_user_color(ids["admin_a"])
+    check("the asado shows a dot in its participant's colour",
+          cell is not None and f'class="calendar-dot" style="background-color: {color}"' in cell.group(0))
+    check("the dots come BEFORE the name, inside its two-line box",
+          cell is not None and re.search(r'class="calendar-asado-name"><span class="calendar-dots">.*?</span>\s*</span>Cal Enero Quince', cell.group(0), re.S) is not None)
+    check("...and the participant's NAME as text (a dot never stands alone)",
+          cell is not None and "Participantes: Admin A" in cell.group(0))
     check("the first column header is 'Lun'", re.search(r"<thead>\s*<tr>\s*<th[^>]*>Lun<", home) is not None)
     # "xss-probe" can only reach the page by being echoed from the URL
     # (the page has <script> tags of its own, so "<script>" can't be the test).
@@ -855,7 +869,7 @@ def run_calendar(app_module, tmp, ids):
         resp = c.get(f"/?mes={bad}")
         body = resp.get_data(as_text=True)
         check(f"GET /?mes={bad} -> 200, this month, nothing echoed",
-              resp.status_code == 200 and f"{app_module.MESES_NOMBRES[today.month - 1]} {today.year}" in body
+              resp.status_code == 200 and f'data-mes="{today.year:04d}-{today.month:02d}"' in body
               and "xss-probe" not in body)
     now = c.get("/").get_data(as_text=True)
     check("no ?mes -> the current month, with today marked aria-current",
@@ -871,6 +885,10 @@ def run_calendar(app_module, tmp, ids):
           prev_link is not None and f"user_id={uid}" in prev_link.group(1) and "year=2026" in prev_link.group(1),
           prev_link.group(1) if prev_link else "no prev link")
     check("the arrows land on the calendar (#calendario)", prev_link is not None and prev_link.group(1).endswith("#calendario"))
+    # The separate YEAR stepper: the same month, a year away.
+    check("the year arrows go to the same month a year back / ahead",
+          re.search(r'href="[^"]*mes=2025-01[^"]*"', page) is not None
+          and re.search(r'href="[^"]*mes=2027-01[^"]*"', page) is not None)
     check("the filter form keeps the month (hidden mes=2026-01)",
           '<input type="hidden" name="mes" value="2026-01">' in page)
     check("without ?mes the filter form adds nothing (URLs as before)",
