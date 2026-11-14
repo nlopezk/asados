@@ -17,6 +17,26 @@ wasn't carried over: it was already built (`new_asado()`/`edit_asado()`
 refuse a repeated participant).
 
 
+## [2.2.1] - 2026-11-14
+No database changes in this release: the migrations all report "already
+present".
+
+### Changed
+- **The calendar folds away.** It still opens on every visit, but an
+  "Ocultar" button next to its title (or the title itself) folds it, so
+  the asado list comes up sooner; "Mostrar" opens it again.
+- **Month and year have their own arrows:** "‹ Noviembre ›  ‹ 2026 ›".
+  The year arrows jump to the same month a year back or ahead.
+- **Who was there, at a glance:** each asado in the calendar shows a
+  small dot per participant, in their usual colour (the same as in
+  "Resumen del Grupo" just above), before its name. Dots and name
+  together take at most two lines.
+- **Every day in the calendar is the same size.** A day with more
+  asados than fit scrolls inside its square instead of stretching the
+  whole week, and a "3 asados" note beside the day number says there's
+  more.
+
+
 ## [2.2.0] - 2026-11-14
 > **Includes a migration: `migrate_add_asado_status.py`.** On the
 > server, run it with the others (README, "Deploying an update", step
