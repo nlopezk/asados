@@ -169,7 +169,9 @@ Phase 5 – Make it responsive. Improve CSS/layout so it works well on phones, s
 Phase 6 – Deploy. Put it online (e.g. Render, Railway, Fly.io — all have free tiers) so others can actually use it from their phones.
 Phase 7+ – Advanced. Photo uploads, notifications, a proper mobile app wrapper (e.g. Capacitor) or React Native, richer stats/dashboards, etc.
 
-**Currently at v2.1.0: Phases 1-6 are done, and Phase 4 is complete.**
+**Currently at v2.2.0: Phases 1-6 are done, and Phase 4 is complete.**
+2.2.0 added the home page's calendar (#5) and planned asados, which only
+count once a member confirms them (#17).
 2.0.0 also turned the app multi-group (one site, several separate
 competitions, one database file per group) — see "Groups" below. That
 isn't one of the original phases; it was requested once the app was

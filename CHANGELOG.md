@@ -17,6 +17,53 @@ wasn't carried over: it was already built (`new_asado()`/`edit_asado()`
 refuse a repeated participant).
 
 
+## [2.2.0] - 2026-11-14
+> **Includes a migration: `migrate_add_asado_status.py`.** On the
+> server, run it with the others (README, "Deploying an update", step
+> 3) **before** clicking Reload: the new code needs the column it adds,
+> and every page with asados would show an error until it's there. It
+> marks every asado dated today or earlier as confirmed, so **nobody's
+> points change**, and prints how many future-dated ones it marked as
+> planned (expected: 0).
+
+### Added
+- **A calendar on the home page** (#5), between "Resumen del Grupo" and
+  the list: the month's asados on their days (weeks start on Monday),
+  arrows to change month and a "Hoy" button to come back. Click an
+  asado to open it; the "+" on any day opens a new asado with that date
+  already filled in. On a phone it's a list of the month's asados.
+  Changing month keeps the list's filters, and filtering keeps the month.
+- **Planned asados** (#17). An asado can now be added ahead of time:
+  dated in the future it's *Planificado*, shown with a dashed border and
+  its label, and it earns no points and appears in no standings, totals
+  or charts (nor in the CSV export). Once its date has come it shows
+  *Por confirmar*: the home page lists it at the top, and its page has a
+  **Confirmar asado** button. Confirming opens the usual form, so you can
+  fix who actually came and what was cooked; saving it works out the
+  points, and they count from then on. Any save on or after the date
+  confirms it, and moving a confirmed asado to a future date makes it
+  planned again. The asado form's button says what saving will do
+  (Añadir / Planificar / Confirmar), and its points preview is marked
+  as an estimate for a future date. Actividad shows "X confirmó el
+  asado", and Base de Asados has a new Estado column.
+
+### Fixed
+- **On phones, each participant's Rol was printed on top of their
+  points** on the home page's asado cards ("Asador" over "1.0 pts"),
+  since 2.1.0. The Rol now has its own column on a phone.
+
+### Added (for development, not visible on the site)
+- `GLOSSARY.md` (what *Planificado*, *Por confirmar*, *Confirmado* and
+  *Confirmar* mean) and `docs/adr/0001-...`, the first recorded design
+  decision: why planned asados only count once a member confirms them.
+- Smoke-test checks for both features (now 325), including every points
+  total before and after adding a planned asado. `--real-copy` now runs
+  the deploy migrations on its copies first.
+- `CONTRIBUTING.md`, a pull-request template and `.gitattributes`, for
+  working on the app with a second person through branches and pull
+  requests (WORKFLOW.md section 12 is the owner's side).
+
+
 ## [2.1.0] - 2026-10-22
 No database changes in this release: the migrations all report "already
 present".
