@@ -1,0 +1,19 @@
+# Line endings (added when a second person started contributing).
+#
+# Windows and Mac/Linux end lines differently (CRLF vs LF). Without this
+# file, each person's own Git settings decide what gets committed, and a
+# contributor whose settings differ can commit a file with every line
+# ending changed - a one-word edit then shows up as "every line of the
+# file changed", which makes reviews unreadable and merges painful.
+#
+# "text=auto": Git stores every text file with LF in the repository (all
+# 56 files already were), and each person's checkout uses whatever their
+# own system prefers. Nobody has to configure anything.
+* text=auto
+
+# Never touch these: they're binary, and "fixing" their line endings
+# would corrupt them.
+*.png  binary
+*.jpg  binary
+*.pdf  binary
+*.db   binary
