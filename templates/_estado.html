@@ -1,0 +1,36 @@
+{#
+_estado.html - the small "Planificado" / "Por confirmar" label (issue #17).
+
+USAGE, in any template:
+    {% from "_estado.html" import estado_badge with context %}
+    {{ estado_badge(asado_estado(row.status, row.date)) }}
+
+"with context" is REQUIRED: an imported macro normally can't see
+values app.py injects into every template (context processors), and
+this one reads estado_labels from there. Without it the label renders
+empty, with no error.
+
+asado_estado() (a context processor in app.py, built on
+asado_record.estado()) turns an asado's stored status + date into one of
+"planificado", "por_confirmar" or "confirmado"; this macro draws it.
+One macro so the home list, the asado page, Base de Asados and the
+profile history can't each invent their own version of the label.
+
+A CONFIRMED asado gets no badge at all: it's the normal case (nearly
+every asado), and labelling every row "Confirmado" would just be noise
+around the few that need attention.
+
+The WORD is always there, never just a colour or a dashed border (same
+rule as the per-user colour dots, which never replace a name). The two
+labels are also told apart by their icon and border: planned = dashed
+(not happened yet), por confirmar = solid (happened, waiting on someone).
+Imports aren't inherited, so this file imports icon() itself.
+#}
+{% from "_icons.html" import icon %}
+{% macro estado_badge(estado) -%}
+{%- if estado == "planificado" -%}
+<span class="estado-badge estado-planificado">{{ icon("clock") }}{{ estado_labels[estado] }}</span>
+{%- elif estado == "por_confirmar" -%}
+<span class="estado-badge estado-por-confirmar">{{ icon("circle-check") }}{{ estado_labels[estado] }}</span>
+{%- endif -%}
+{%- endmacro %}

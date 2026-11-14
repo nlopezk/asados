@@ -61,6 +61,7 @@
                     <th>Rol</th>
                     <th>ID Asado</th>
                     <th>Fecha</th>
+                    <th>Estado</th>
                     <th>Nombre Asado</th>
                     <th>Tipo Carne</th>
                     <th>Cocción</th>
@@ -88,6 +89,12 @@
                         <td>{{ row.rol }}</td>
                         <td>{{ row.asado_id }}</td>
                         <td>{{ row.date }}</td>
+                        {# Estado (issue #17): sits right after Fecha because the
+                           two go together. Plain text, every row (confirmed too),
+                           since this is the full, auditable list. The CSV does NOT
+                           get this column - it leaves planned asados out instead,
+                           see BASE_ASADOS_CSV_QUERY in app.py. #}
+                        <td>{{ estado_labels[asado_estado(row.status, row.date)] }}</td>
                         <td>{{ row.nombre }}</td>
                         <td><span class="truncate-cell" title="{{ row.tipo_carne }}">{{ row.tipo_carne }}</span></td>
                         <td>{{ row.coccion }}</td>

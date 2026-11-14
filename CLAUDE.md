@@ -50,6 +50,7 @@ python migrate_add_cortes.py [path/to/group.db]
 python migrate_fix_schema_drift.py [path/to/group.db]
 python migrate_to_groups.py
 python migrate_locations_unique_name.py [path/to/group.db]   # v2.0.1: schema.sql had lost locations.name UNIQUE
+python migrate_add_asado_status.py [path/to/group.db]        # #17: asados.status, planned asados count only once confirmed
 # Run every migration on every deploy, oldest first. Each is additive
 # and idempotent, so an already-applied one is a no-op that says so.
 
@@ -1245,6 +1246,82 @@ same change.
 (no HTTP, no HTML scraping) — the first test surface in this app that
 isn't the web. Put new asado rules there.
 
+### Planned vs confirmed asados — future asados count only once confirmed (#17)
+Terms in `GLOSSARY.md`; the decision and its rejected alternatives in
+`docs/adr/0001-planned-asados-score-on-confirmation.md`. Built ahead of
+the calendar (#5), which lets people add asados in advance.
+
+**One rule, decided on every save** (`asado_record.status_for()`): an
+asado last saved on or after its date is `confirmado`, otherwise
+`planificado`. That covers every case without a special branch: a new
+asado dated today or earlier is confirmed at once; a future one is
+planned; saving a planned one once its date has come CONFIRMS it (there
+is no separate "confirm" action in the code, just a save); moving a
+confirmed one to the future makes it planned again. Status is never read
+from the form, so a tampered request can't confirm early (tested).
+**"Por confirmar" is not stored**: it's a planned asado whose date has
+arrived (`asado_record.estado()`), because it changes at midnight with
+nobody saving anything.
+
+**"Today" is Chile's date** (`asado_record.today()`, America/Santiago),
+never the server's UTC clock or `date.today()`, which on PythonAnywhere
+would let an asado be confirmed hours early. Windows without the
+`tzdata` package falls back to a fixed UTC-4, which can only make
+"today" start late, never early. Use `asado_record.today()` for any new
+"has this date arrived?" question.
+
+**Every query that ADDS UP points or counts asados must include
+`ONLY_CONFIRMED`** (app.py): Resumen's table, chart and year filter,
+the home summary cards, a profile's tiles, ranking and monthly chart,
+and the CSV export (`BASE_ASADOS_CSV_QUERY`). Pages that LIST asados
+show planned ones too, labelled with `_estado.html`'s `estado_badge`:
+the home cards (dashed border, muted points under "Participantes ·
+puntos estimados"), the asado page, Base de Asados (a new Estado column
+right after Fecha, so 22 columns now) and the profile history. **A new
+aggregate that forgets the condition silently counts plans as points**;
+smoke-test section 11 compares every total before and after adding a
+planned asado, and was proven to fail when the condition is removed.
+
+**The CSV export leaves planned asados out instead of adding an Estado
+column**, because Google Sheets / Looker Studio read the CSV by column
+position; a new column would shift everything after it.
+
+**Planned asados still store points**, as estimates: confirming is a
+save, and every save re-freezes weights and points from the current
+`config.py` (an edit is a freezing moment). So the stored points are
+final exactly when the asado becomes confirmed, which is what "points
+are calculated when it's confirmed" means here. The form's preview says
+"Puntos estimados (se calculan al confirmar)" for a future date, and the
+save button relabels itself as the date is typed (`submit_labels()` in
+app.py: Añadir / Planificar / Confirmar / Guardar Cambios).
+
+**Confirmations in the activity log are edits with an "Estado:
+Planificado → Confirmado" change**, shown on /actividad as "X confirmó
+el asado". `activity_log.action` has a CHECK allowing only
+create/edit/delete, and a fourth value would need a table rebuild.
+`update()` returns `(old_status, new_status)`; `edit_asado()` uses it
+for the message and to back up on confirmation (`backup_current_group()`,
+the same non-fatal backup as `new_asado()`).
+
+**Overdue plans are surfaced, never auto-resolved**: the home page lists
+"N asados esperan confirmación" at the top, independent of the filters.
+Nothing confirms or deletes an asado automatically.
+
+**Rollout**: `migrate_add_asado_status.py` adds `asados.status` (DEFAULT
+`'confirmado'`) and marks anything dated after today `'planificado'`,
+printing how many. Once the column exists it never re-marks anything
+(the app owns it from then on). Run it before Reload like every
+migration. `smoke_test.py --real-copy` now runs every README deploy
+migration on its copies first, so a branch that adds a column tests
+against databases shaped the way the deploy will leave them.
+
+**Found along the way, fixed in the same change:** on a phone the home
+cards' participant rows had a 1px Rol column (measured `208px 1px 72px`
+at 375px), so "Asador" printed on top of the points on every card since
+2.1.0. A grid grows a capped track (`minmax(0, 13rem)`) to its cap before
+an `fr` track gets anything. The `@media (max-width: 480px)` rule now
+lets the name flex instead.
+
 ### Edit/delete permissions, and the shared create/edit form
 Any logged-in user can edit any asado (not just their own) — this was
 an explicit product decision for a small trusted friend group, not an
@@ -1355,7 +1432,7 @@ the same `normalizeDecimalInput()` wired to its `input` event, and
 `request.form.get(field, type=float)`. Skipping any one of the three
 re-opens this exact bug for that one field.
 
-### Automatic backups — currently only on new_asado(), not edit/delete
+### Automatic backups — on new_asado() and on confirming a planned asado (#17), not on other edits/deletes
 `backup_db.py`'s `backup_database()` is called from `new_asado()`
 right after `db.commit()`, so every new asado triggers a fresh, safe
 copy of that GROUP's whole database into `backups/<slug>/` (gitignored,
@@ -1380,13 +1457,13 @@ disk, permissions, ...) must never prevent the user's asado from
 saving or make the request look like it failed when it didn't. If you
 add backup calls elsewhere, keep them non-fatal the same way.
 
-**Scope gap, on purpose for now**: `edit_asado()` and `delete_asado()`
-do NOT trigger a backup, only `new_asado()` does — the user's request
-was specifically "every time a new asado is added." If this ever
-matters (e.g. someone wants a backup right before a risky edit), the
-same try/except `backup_database(...)` call new_asado() uses (current
-group's file, `backups/<slug>/`) can be dropped into those routes'
-`db.commit()` too.
+**Scope gap, on purpose for now**: ordinary edits and `delete_asado()`
+do NOT trigger a backup. `new_asado()` does (the user's original
+request was "every time a new asado is added"), and since #17 so does
+the edit that CONFIRMS a planned asado, the moment its points enter the
+standings. Both call `backup_current_group()` in app.py (current group's
+file, `backups/<slug>/`, never fatal). If a backup before other edits or
+deletes is ever wanted, call it after those routes' save too.
 
 **What this does and doesn't protect against**: rolling local backups
 guard against bad data — an accidental edit, a bug, wanting to roll

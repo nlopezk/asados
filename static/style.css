@@ -2638,6 +2638,87 @@ body > main {
 }
 
 /* =====================================================================
+   PLANIFICADO / POR CONFIRMAR (issue #17)
+   An asado dated in the future is PLANNED and earns nothing until a
+   member confirms it on or after its date (GLOSSARY.md). These rules
+   mark such asados wherever they're listed. Two rules from this file's
+   design notes apply: colour never stands alone (the badge always
+   carries its WORD, see _estado.html), and coral means "clickable",
+   so none of this uses --color-accent-text. Planned things are drawn
+   DASHED - "not real yet", like a pencilled-in plan - and the tan
+   muted text says "doesn't count yet" without shouting.
+   ===================================================================== */
+.estado-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 8px;
+    margin-right: 8px;
+    border: 1px dashed var(--color-text-muted);
+    border-radius: var(--radius-pill);
+    color: var(--color-text-muted);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* Por confirmar: the date HAS come and it's waiting on someone, so a
+   solid border and full-strength text - a notch more insistent than a
+   plan that's still in the future. */
+.estado-badge.estado-por-confirmar {
+    border-style: solid;
+    color: var(--color-text);
+}
+
+.asado-card.asado-card-planned {
+    border-style: dashed;
+}
+
+/* Points that don't count yet (an estimate until confirmation). */
+.points-estimated {
+    color: var(--color-text-muted);
+    font-weight: normal;
+    white-space: nowrap;
+}
+
+/* An explanation box: why an asado has no points, or which ones are
+   waiting to be confirmed. Neutral leather, not the green/red of the
+   success/error messages - it's information, not a result. */
+.estado-notice {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-left: 3px solid var(--color-text-muted);
+    border-radius: var(--radius-m);
+    padding: 9px 14px;
+    margin: 0 0 12px 0;
+    font-size: var(--text-s);
+}
+
+.por-confirmar-notice {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.por-confirmar-notice p {
+    margin: 0;
+}
+
+.por-confirmar-notice > .icon {
+    flex: none;
+    align-self: center;
+}
+
+/* The asado form's "these points are an estimate" line, right above
+   the live points preview it qualifies. */
+.points-estimate-note {
+    margin: 10px 0 0 0;
+    color: var(--color-text-muted);
+    font-size: var(--text-s);
+}
+
+/* =====================================================================
    TOUCH SCREENS AND PHONES (UI review, 2.1.0)
    Kept together at the END of this file on purpose: these override
    rules defined earlier, and when two rules have the same specificity
@@ -2767,6 +2848,19 @@ body > main {
 }
 
 @media (max-width: 480px) {
+    /* --- Home cards' participant rows (bug fix, found with #17) ---
+       The desktop columns are 13rem (name) + 1fr (rol) + 4.5rem
+       (points). A grid grows a capped track like 13rem to its cap BEFORE
+       an fr track gets anything, and a phone card is only ~300px wide:
+       208px + 72px + the gaps left the Rol column 1px wide, so "Asador" /
+       "Co-parrillero" printed on top of the points on every card
+       (measured with getComputedStyle: "208px 1px 72px"). On a phone the
+       NAME flexes instead and Rol gets a fixed column wide enough for
+       "Co-parrillero"; the three columns still line up row to row. */
+    .participant-list li {
+        grid-template-columns: minmax(0, 1fr) 6rem 4.5rem;
+    }
+
     /* --- Asado form rows: side by side instead of stacked ---
        Before, each participant row stacked FOUR full-width pieces on a
        phone (user dropdown, Rol dropdown, weight hint, and a

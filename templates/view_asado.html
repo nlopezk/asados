@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_estado.html" import estado_badge with context %}
 {% block title %}{{ asado.nombre }}{% endblock %}
 <!--
     view_asado.html = the DETAIL page for one asado.
@@ -22,6 +23,9 @@
 -->
 
 {% block content %}
+{# Planned / Por confirmar / Confirmado (issue #17, GLOSSARY.md), worked
+   out once here and used by the notice, the table and the buttons. #}
+{% set estado = asado_estado(asado.status, asado.date) %}
 {# A way back to the list from a page you clicked INTO. The navbar's
    "Inicio" already goes home, but it's at the top of a long page and
    reads as global navigation; landing on a detail page, the thing you
@@ -48,8 +52,26 @@
 {% endif %}
 
 <div id="asado-view">
+    {# Why this asado has no points yet, and what to do about it. #}
+    {% if estado == "planificado" %}
+        <p class="estado-notice">
+            Este asado está <strong>planificado</strong>: todavía no suma puntos.
+            Se podrá confirmar desde el {{ asado.date }}, cuando ya se haya hecho.
+        </p>
+    {% elif estado == "por_confirmar" %}
+        <p class="estado-notice">
+            La fecha de este asado ya llegó, pero nadie lo confirmó: <strong>todavía no suma puntos</strong>.
+            Confirmalo revisando quiénes fueron y qué se cocinó.
+        </p>
+    {% endif %}
+
     <table class="detail-table">
         <tr><th>Fecha</th><td>{{ asado.date }}</td></tr>
+        {# Only shown when it's NOT confirmed: on a confirmed asado (almost
+           all of them) the row would just repeat "Confirmado" on every page. #}
+        {% if estado != "confirmado" %}
+            <tr><th>Estado</th><td>{{ estado_badge(estado) }}</td></tr>
+        {% endif %}
         <tr><th>Tipo de Carne</th><td>{{ tipos_carne_display }}</td></tr>
         {# Only beef asados can have cuts, and only if someone picked
            them — so this row is absent far more often than not (every
@@ -93,7 +115,9 @@
     <h2 class="section-title">Participantes</h2>
     {# detail-table-list: header row labels COLUMNS - see style.css. #}
     <table class="detail-table detail-table-list">
-        <tr><th>Nombre</th><th>Rol</th><th>Puntos</th></tr>
+        {# A planned asado's points are an estimate until it's confirmed
+           (they're recalculated at that save), so the header says so. #}
+        <tr><th>Nombre</th><th>Rol</th><th>{{ "Puntos" if estado == "confirmado" else "Puntos estimados" }}</th></tr>
         {% for p in participants %}
             <tr>
                 <td>{{ p.name }}</td>
@@ -104,7 +128,16 @@
     </table>
 
     <div class="view-actions">
-        <button type="button" class="primary-button" onclick="showEditForm()">{{ icon("pencil") }}Editar</button>
+        {# Por confirmar: the main action is CONFIRMING, which is the same
+           edit form (any save on or after the date confirms - see
+           asado_record.status_for()), opened with its button reading
+           "Confirmar Asado". One button rather than "Editar" AND
+           "Confirmar" side by side, since both would do the same thing. #}
+        {% if estado == "por_confirmar" %}
+            <button type="button" class="primary-button" onclick="showEditForm()">{{ icon("circle-check") }}Confirmar asado</button>
+        {% else %}
+            <button type="button" class="primary-button" onclick="showEditForm()">{{ icon("pencil") }}Editar</button>
+        {% endif %}
         {% if g.role == "admin" %}
             <form method="POST" action="{{ url_for('delete_asado', asado_id=asado.id) }}"
                   onsubmit="return confirm('¿Eliminar este asado? Se borrarán también los puntos de todos sus participantes. Esta acción no se puede deshacer.');">
@@ -116,7 +149,13 @@
 </div>
 
 <div id="asado-edit" class="hidden">
-    <h2 class="section-title">Editar Asado</h2>
+    <h2 class="section-title">{{ "Confirmar Asado" if estado == "por_confirmar" else "Editar Asado" }}</h2>
+    {% if estado == "por_confirmar" %}
+        <p class="estado-notice">
+            Corregí lo que haya cambiado respecto del plan (quiénes fueron, qué se cocinó) y confirmá.
+            Al confirmar se calculan los puntos.
+        </p>
+    {% endif %}
     {% include "_asado_form.html" %}
     <!-- A plain link (not a JS "hide" toggle) so canceling always
          discards any unsaved changes and shows the form fresh next

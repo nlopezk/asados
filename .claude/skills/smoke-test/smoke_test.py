@@ -49,7 +49,7 @@ import tempfile
 import threading
 import traceback
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 # .claude/skills/smoke-test/smoke_test.py -> up three folders is the repo.
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -556,6 +556,226 @@ def run_record_module(app_module, tmp, ids):
 
 
 # ---------------------------------------------------------------------
+# PLANNED vs CONFIRMED asados (issue #17, GLOSSARY.md,
+# docs/adr/0001-planned-asados-score-on-confirmation.md)
+# ---------------------------------------------------------------------
+def run_planned(app_module, tmp, ids):
+    """The rule: an asado last saved on or after its date is Confirmado,
+    otherwise Planificado; only confirmed asados count anywhere points
+    are added up. Tested at the module (the rule itself), then over HTTP
+    (what every page shows, and confirming), then the migration."""
+    import datetime as dt
+    import config
+    import asado_record as ar
+    from accounts import connect_existing
+
+    section("11. planned vs confirmed asados (issue #17)")
+    today = ar.today()
+    past, future = today - dt.timedelta(days=3), today + dt.timedelta(days=30)
+    iso = lambda d: d.isoformat()
+
+    # --- the rule itself, with a fixed "today" ---
+    fixed = dt.date(2026, 6, 15)
+    check("status_for(): a date before today -> confirmado", ar.status_for("2026-06-14", fixed) == ar.CONFIRMADO)
+    check("status_for(): TODAY counts as arrived -> confirmado", ar.status_for("2026-06-15", fixed) == ar.CONFIRMADO)
+    check("status_for(): a date after today -> planificado", ar.status_for("2026-06-16", fixed) == ar.PLANIFICADO)
+    check("estado(): planned + date still ahead -> planificado",
+          ar.estado(ar.PLANIFICADO, "2026-06-16", fixed) == ar.PLANIFICADO)
+    check("estado(): planned + date arrived -> por_confirmar",
+          ar.estado(ar.PLANIFICADO, "2026-06-15", fixed) == ar.POR_CONFIRMAR)
+    check("estado(): confirmed stays confirmado whatever the date",
+          ar.estado(ar.CONFIRMADO, "2026-06-20", fixed) == ar.CONFIRMADO)
+    check("today() is a date in the group's time zone", isinstance(today, dt.date), str(ar.GROUP_TIMEZONE))
+
+    # --- module: create / update transitions ---
+    db = connect_existing(os.path.join(tmp, "groups", "grupo-a.db"))
+    actor = ar.Actor(user_id=ids["admin_a"], name="Admin A")
+    beef = config.CATEGORIAS_CON_DESPIECE[0]
+    roles = list(config.ROL_WEIGHTS)
+
+    def data(day, **kw):
+        d = dict(date=iso(day), nombre="Plan directo", tipos_carne=[beef],
+                 coccion=list(config.COCCION_WEIGHTS)[0], superficie=list(config.SUPERFICIE_WEIGHTS)[0],
+                 local=list(config.LOCAL_WEIGHTS)[0], participants=[(ids["admin_a"], roles[0])])
+        d.update(kw)
+        return ar.AsadoInput(**d)
+
+    def status(asado_id):
+        return db.execute("SELECT status FROM asados WHERE id = ?", (asado_id,)).fetchone()["status"]
+
+    a_past = ar.create(db, data(past), actor)
+    a_today = ar.create(db, data(today), actor)
+    a_future = ar.create(db, data(future), actor)
+    check("create() dated in the past -> confirmado", status(a_past) == ar.CONFIRMADO)
+    check("create() dated today -> confirmado", status(a_today) == ar.CONFIRMADO)
+    check("create() dated in the future -> planificado", status(a_future) == ar.PLANIFICADO)
+    check("update() of a planned asado, date still ahead -> stays planificado",
+          ar.update(db, a_future, data(future, nombre="Plan movido"), actor) == (ar.PLANIFICADO, ar.PLANIFICADO)
+          and status(a_future) == ar.PLANIFICADO)
+    check("update() of a confirmed asado to a FUTURE date -> planificado again",
+          ar.update(db, a_past, data(future), actor) == (ar.CONFIRMADO, ar.PLANIFICADO)
+          and status(a_past) == ar.PLANIFICADO)
+    # Time passes: the planned asado's date is now behind us. Simulated
+    # by moving the stored date back (as if the calendar had moved on).
+    db.execute("UPDATE asados SET date = ? WHERE id = ?", (iso(past), a_future))
+    db.commit()
+    check("update() of a planned asado whose date has come -> CONFIRMS it",
+          ar.update(db, a_future, data(past), actor) == (ar.PLANIFICADO, ar.CONFIRMADO)
+          and status(a_future) == ar.CONFIRMADO)
+    est = db.execute("""SELECT c.old_value, c.new_value FROM activity_log_changes c
+                        JOIN activity_log l ON l.id = c.log_id
+                        WHERE l.asado_id = ? AND c.field_label = 'Estado' ORDER BY c.id DESC""", (a_future,)).fetchone()
+    check("the confirmation is in the activity log as Estado: Planificado -> Confirmado",
+          est is not None and (est["old_value"], est["new_value"]) == ("Planificado", "Confirmado"), str(est and tuple(est)))
+    for a in (a_past, a_today, a_future):
+        ar.delete(db, a, actor)
+    db.close()
+
+    # --- HTTP: a planned asado counts NOWHERE that adds things up ---
+    flask_app = app_module.app
+    c = flask_app.test_client()
+    login(c, "admin_a", "pw-a")
+    gdb = group_db(tmp, "grupo-a")
+    # A confirmed asado first, so the totals being compared aren't zero.
+    form = {
+        "nombre": "Asado Real Smoke", "date": iso(past), "tipo_carne": beef,
+        "coccion": list(config.COCCION_WEIGHTS)[0], "superficie": list(config.SUPERFICIE_WEIGHTS)[0],
+        "local": list(config.LOCAL_WEIGHTS)[0],
+        "participant_user_id": [str(ids["admin_a"]), str(ids["normal_a"])], "participant_rol": [roles[0], roles[-1]],
+    }
+    c.post("/asado/new", data={**form, "csrf_token": csrf(c), "form_token": form_token(c)})
+
+    def snapshot():
+        """Everything that adds up points or counts asados."""
+        profile = c.get(f"/usuario/{ids['admin_a']}").get_data(as_text=True)
+        gdb.commit()  # end any read snapshot so we see the app's writes
+        return {
+            "summary": [tuple(r) for r in app_module.build_group_summary(gdb)["participants"]],
+            "summary_counts": (app_module.build_group_summary(gdb)["total_asados"],
+                               app_module.build_group_summary(gdb)["earliest_date"]),
+            "chart": app_module.build_resumen_chart_data(gdb),
+            "monthly": app_module.build_user_monthly_chart_data(gdb, ids["admin_a"]),
+            "profile_tiles": re.findall(r'stat-tile-value">\s*([^<]+?)\s*<', profile),
+            "resumen": c.get("/resumen").get_data(as_text=True),
+            "csv": c.get("/base-asados/csv").get_data(as_text=True),
+        }
+
+    gdb.row_factory = sqlite3.Row
+    before = snapshot()
+    resp = c.post("/asado/new", data={**form, "nombre": "Asado Futuro Smoke", "date": iso(future),
+                                      "csrf_token": csrf(c), "form_token": form_token(c)})
+    gdb.commit()
+    planned = gdb.execute("SELECT * FROM asados WHERE nombre = 'Asado Futuro Smoke'").fetchone()
+    check("POST /asado/new with a future date saves it as planificado",
+          planned is not None and planned["status"] == ar.PLANIFICADO)
+    check("...and the redirect says it was planned",
+          "planificado" in unquote(resp.headers.get("Location", "")).lower(), resp.headers.get("Location", ""))
+    after = snapshot()
+    for key in before:
+        check(f"a planned asado changes nothing in: {key}", before[key] == after[key])
+    check("the CSV export leaves the planned asado out", "Asado Futuro Smoke" not in after["csv"])
+    home = c.get("/").get_data(as_text=True)
+    check("home list shows it, labelled Planificado", "Asado Futuro Smoke" in home and "estado-planificado" in home)
+    check("home marks its points as an estimate", "puntos estimados" in home and "points-estimated" in home)
+    base = c.get("/base-asados").get_data(as_text=True)
+    check("Base de Asados lists it with Estado = Planificado", "Asado Futuro Smoke" in base and ">Planificado<" in base)
+    page = c.get(f"/asado/{planned['id']}").get_data(as_text=True)
+    check("its page explains it's planned and shows 'Puntos estimados'",
+          "planificado" in page and "Puntos estimados" in page)
+    check("its edit form's button reads 'Guardar Cambios' (date still ahead)",
+          re.search(r'id="asado-submit"[^>]*>\s*Guardar Cambios', page) is not None)
+
+    # A tampered form can't confirm early: status is never read from it.
+    c.post(f"/asado/{planned['id']}/edit", data={**form, "nombre": "Asado Futuro Smoke", "date": iso(future),
+                                                 "status": "confirmado", "csrf_token": csrf(c)})
+    gdb.commit()
+    check("a submitted status=confirmado field is ignored (still planificado)",
+          gdb.execute("SELECT status FROM asados WHERE id = ?", (planned["id"],)).fetchone()["status"] == ar.PLANIFICADO)
+
+    # --- time passes: it becomes "por confirmar" ---
+    gdb.execute("UPDATE asados SET date = ? WHERE id = ?", (iso(past), planned["id"]))
+    gdb.commit()
+    home = c.get("/").get_data(as_text=True)
+    check("home names it at the top: '1 asado espera confirmación'",
+          "1 asado espera confirmación" in home and "estado-por-confirmar" in home)
+    page = c.get(f"/asado/{planned['id']}").get_data(as_text=True)
+    view_part = page.split('id="asado-edit"')[0]  # the read-only half, above the hidden form
+    check("its page offers 'Confirmar asado' instead of 'Editar'",
+          "Confirmar asado</button>" in view_part and "Editar</button>" not in view_part)
+    check("its edit form's button reads 'Confirmar Asado'",
+          re.search(r'id="asado-submit"[^>]*>\s*Confirmar Asado', page) is not None)
+    # Every total, compared - including the profile's monthly chart, whose
+    # range only runs up to the current month: only now, dated in the
+    # past, would a leak into it actually show.
+    waiting = snapshot()
+    for key in before:
+        check(f"still counts nowhere while por confirmar: {key}", waiting[key] == before[key])
+
+    backups_before = len(list(Path(tmp, "backups", "grupo-a").glob("*.db")))
+    resp = c.post(f"/asado/{planned['id']}/edit", data={**form, "nombre": "Asado Futuro Smoke", "date": iso(past),
+                                                        "csrf_token": csrf(c)})
+    gdb.commit()
+    check("saving it now CONFIRMS it", gdb.execute("SELECT status FROM asados WHERE id = ?",
+                                                    (planned["id"],)).fetchone()["status"] == ar.CONFIRMADO)
+    check("...with the message 'Asado confirmado'", "confirmado" in unquote(resp.headers.get("Location", "")).lower())
+    check("...and an automatic backup",
+          len(list(Path(tmp, "backups", "grupo-a").glob("*.db"))) > backups_before)
+    now = snapshot()
+    check("once confirmed it COUNTS: the summary totals changed", now["summary"] != before["summary"])
+    check("...and it's in the CSV export", "Asado Futuro Smoke" in now["csv"])
+    check("/actividad shows 'confirmó el asado'", "confirmó el asado" in c.get("/actividad").get_data(as_text=True))
+    check("home no longer lists anything waiting for confirmation",
+          "espera confirmación" not in c.get("/").get_data(as_text=True))
+
+    # --- and back: a confirmed asado moved to the future is planned again ---
+    resp = c.post(f"/asado/{planned['id']}/edit", data={**form, "nombre": "Asado Futuro Smoke", "date": iso(future),
+                                                        "csrf_token": csrf(c)})
+    gdb.commit()
+    check("editing a confirmed asado to a future date -> planificado again",
+          gdb.execute("SELECT status FROM asados WHERE id = ?", (planned["id"],)).fetchone()["status"] == ar.PLANIFICADO)
+    check("...and it stops counting", snapshot()["summary"] == before["summary"])
+    gdb.close()
+
+    # --- the migration, on a database shaped like before this feature ---
+    section("12. migrate_add_asado_status.py")
+    import migrate_add_asado_status as mig
+    schema = (REPO_ROOT / "schema.sql").read_text(encoding="utf-8")
+    old_schema = re.sub(r",\s*--[^\n]*\n(\s*--[^\n]*\n)*\s*status TEXT NOT NULL[^\n]*\n", "\n", schema, count=1)
+    check("built an old-shaped schema (no status column) for the test", "status TEXT" not in old_schema)
+    path = os.path.join(tmp, "old_shape.db")
+    conn = sqlite3.connect(path)
+    conn.executescript(old_schema)
+    for i, day in enumerate((past, today, future)):
+        conn.execute("""INSERT INTO asados (date, nombre, coccion, superficie, local)
+                        VALUES (?, ?, 'x', 'x', 'x')""", (iso(day), f"Viejo {i}"))
+    conn.commit()
+    conn.close()
+    quiet = io.StringIO()
+    with contextlib.redirect_stdout(quiet):
+        rc1 = mig.main(path)
+    conn = sqlite3.connect(path)
+    got = dict(conn.execute("SELECT nombre, status FROM asados").fetchall())
+    conn.close()
+    check("migration exits OK", rc1 == 0, quiet.getvalue()[-400:])
+    check("past and today -> confirmado, future -> planificado",
+          got == {"Viejo 0": "confirmado", "Viejo 1": "confirmado", "Viejo 2": "planificado"}, str(got))
+    # A member confirmed nothing, but say the app had changed a status:
+    # a re-run must never touch what the app owns now.
+    conn = sqlite3.connect(path)
+    conn.execute("UPDATE asados SET status = 'confirmado' WHERE nombre = 'Viejo 2'")
+    conn.commit()
+    conn.close()
+    quiet = io.StringIO()
+    with contextlib.redirect_stdout(quiet):
+        rc2 = mig.main(path)
+    conn = sqlite3.connect(path)
+    v2 = conn.execute("SELECT status FROM asados WHERE nombre = 'Viejo 2'").fetchone()[0]
+    conn.close()
+    check("running it again is a no-op ('already present')", rc2 == 0 and "already present" in quiet.getvalue())
+    check("...and never re-marks statuses the app has since set", v2 == "confirmado", v2)
+
+
+# ---------------------------------------------------------------------
 # --real-copy: every page against a SNAPSHOT of the real data
 # ---------------------------------------------------------------------
 def run_real_copy(app_module, tmp):
@@ -586,6 +806,28 @@ def run_real_copy(app_module, tmp):
     groups = acc.execute("SELECT id, slug, name FROM asado_groups ORDER BY id").fetchall()
     for g_row in groups:
         snapshot(REPO_ROOT / "groups" / f"{g_row['slug']}.db", real / "groups" / f"{g_row['slug']}.db")
+
+    # Run every deploy migration on the COPIES first, as a deploy does
+    # (README, "Deploying an update", step 3 - read from there so this
+    # list can't go stale). Without this, a branch that adds a column
+    # would test new code against old-shaped copies and fail on "no such
+    # column" even though the deploy would be fine. migrate_to_groups.py
+    # is skipped: it converts a pre-v2.0 asados.db, not a group file.
+    # The local REAL files are untouched either way (the fingerprint
+    # check at the end proves it); migrate them yourself when ready.
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    deploy = readme.split("## Deploying an update", 1)[-1].split("### Why the order matters", 1)[0]
+    import importlib
+    for script in re.findall(r"python3? (migrate_\w+)\.py", deploy):
+        if script == "migrate_to_groups":
+            continue
+        module = importlib.import_module(script)
+        for g_row in groups:
+            copy = str(real / "groups" / f"{g_row['slug']}.db")
+            quiet = io.StringIO()
+            with contextlib.redirect_stdout(quiet):
+                rc = module.main(copy)
+            check(f"[{g_row['slug']}] {script}.py on the copy -> OK", rc == 0, quiet.getvalue()[-300:])
 
     app_module.ACCOUNTS_DATABASE = str(real / "accounts.db")
     app_module.GROUPS_DIR = str(real / "groups")
@@ -786,6 +1028,7 @@ def main():
         app_module = import_app(tmp)
         run_functional(app_module, tmp, ids)
         run_record_module(app_module, tmp, ids)
+        run_planned(app_module, tmp, ids)
         if args.browser:
             run_browser(app_module, tmp)
         if args.real_copy:

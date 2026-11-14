@@ -32,14 +32,18 @@
 #     survive an edit;
 #   * the activity-log entry is written in the SAME transaction as the
 #     change it describes, so one can never exist without the other;
-#   * cortes never score.
+#   * cortes never score;
+#   * every save decides the asado's STATUS (status_for()): saved on or
+#     after its date -> 'confirmado', otherwise 'planificado'. Only
+#     confirmed asados count anywhere points are added up. See
+#     GLOSSARY.md and docs/adr/0001-planned-asados-score-on-confirmation.md.
 #
 # This module does NOT import app.py (same rule as every script here),
 # so seed_random_asados.py and tests can use it without a web request.
 # =====================================================================
 
 from dataclasses import dataclass, field
-from datetime import date as _date
+from datetime import date as _date, datetime, timedelta, timezone
 
 from activity_log import log_create, log_edit, log_delete, diff_asado, now_timestamp
 from config import (
@@ -57,6 +61,79 @@ from config import (
 # (activity_log is deliberately NOT a child: its asado_id is ON DELETE
 # SET NULL, because the log must outlive the asado it describes.)
 CHILD_TABLES = ("participations", "asado_tipo_carne", "asado_cortes")
+
+
+# ---------------------------------------------------------------------
+# PLANNED vs CONFIRMED (issue #17)
+# ---------------------------------------------------------------------
+# The two values asados.status can hold, and the three things a person
+# can be shown (the third, "por confirmar", is worked out, never stored:
+# it's a planned asado whose date has arrived, and it becomes that at
+# midnight without anybody saving anything).
+PLANIFICADO = "planificado"
+CONFIRMADO = "confirmado"
+POR_CONFIRMAR = "por_confirmar"
+ESTADO_LABELS = {
+    PLANIFICADO: "Planificado",
+    POR_CONFIRMAR: "Por confirmar",
+    CONFIRMADO: "Confirmado",
+}
+
+# WHOSE "today"? The group's, not the server's. PythonAnywhere's clock is
+# UTC, which in Chile is already "tomorrow" from 20:00/21:00 - an asado
+# could be confirmed hours before it starts. Every group is in Chile
+# today; if one elsewhere ever joins, this becomes a per-group setting.
+#
+# zoneinfo needs a time-zone database. Linux (PythonAnywhere) has one
+# built in; Windows only does if the `tzdata` package happens to be
+# installed. Rather than add a dependency for that, a machine without it
+# falls back to a FIXED UTC-4 (Chile's winter offset). In summer (UTC-3)
+# that makes "today" start one hour late - never early, so the fallback
+# can delay a confirmation by an hour but can't allow one too soon.
+try:
+    from zoneinfo import ZoneInfo
+    GROUP_TIMEZONE = ZoneInfo("America/Santiago")
+except Exception:  # ZoneInfoNotFoundError, or no zoneinfo module at all
+    GROUP_TIMEZONE = timezone(timedelta(hours=-4))
+
+
+def today():
+    """The group's current date (Chile), as a datetime.date. Every
+    "has this asado's date arrived?" question goes through here."""
+    return datetime.now(GROUP_TIMEZONE).date()
+
+
+def status_for(asado_date, on=None):
+    """
+    THE rule (GLOSSARY.md: Confirmar): what an asado becomes when it is
+    saved with this date. Saved on or after its date -> CONFIRMADO;
+    before it -> PLANIFICADO. `asado_date` is 'YYYY-MM-DD' text (as
+    stored); `on` defaults to today() and exists for tests.
+
+    One rule for create and update alike, which is what makes all of
+    these true without a special case each:
+      * a new asado dated today or earlier is confirmed at once (whoever
+        is saving it is saying it happened);
+      * a new asado dated in the future is planned;
+      * saving a planned asado once its date has arrived confirms it -
+        that save IS the confirmation;
+      * moving a confirmed asado to a future date makes it planned again.
+    'YYYY-MM-DD' strings compare correctly as plain text.
+    """
+    on = (on or today()).isoformat()
+    return CONFIRMADO if asado_date <= on else PLANIFICADO
+
+
+def estado(status, asado_date, on=None):
+    """What to SHOW for an asado: PLANIFICADO, POR_CONFIRMAR or
+    CONFIRMADO. Por confirmar = still planned, but its date has come,
+    so the next save will confirm it. Used by every template (via the
+    asado_estado() context processor in app.py) so the pages can't
+    disagree about which label an asado gets."""
+    if status == CONFIRMADO:
+        return CONFIRMADO
+    on = (on or today()).isoformat()
+    return POR_CONFIRMAR if asado_date <= on else PLANIFICADO
 
 
 class AsadoInvalid(Exception):
@@ -327,19 +404,24 @@ def maybe_save_location(db, user_id, name, address, latitude, longitude):
     )
 
 
-def _scalar_values(data, shared_weights):
+def _scalar_values(data, shared_weights, status):
     """The asados row's columns, in one fixed order shared by the
-    INSERT and the UPDATE below - one list, so the two can't drift."""
+    INSERT and the UPDATE below - one list, so the two can't drift.
+    `status` comes from status_for(data.date), worked out by create()/
+    update() on every save - never taken from the form, so no submission
+    can mark an asado confirmed before its date."""
     return (data.date, data.nombre, data.description, data.coccion,
             data.superficie, data.local, data.location, data.latitude, data.longitude,
             data.people, data.total_weight,
             shared_weights["carne"], shared_weights["coccion"],
-            shared_weights["superficie"], shared_weights["local"])
+            shared_weights["superficie"], shared_weights["local"],
+            status)
 
 
 _SCALAR_COLUMNS = ("date", "nombre", "description", "coccion", "superficie", "local",
                    "location", "latitude", "longitude", "people", "total_weight",
-                   "tipo_carne_weight", "coccion_weight", "superficie_weight", "local_weight")
+                   "tipo_carne_weight", "coccion_weight", "superficie_weight", "local_weight",
+                   "status")
 
 
 # ---------------------------------------------------------------------
@@ -357,7 +439,7 @@ def create(db, data, actor):
     placeholders = ", ".join("?" for _ in _SCALAR_COLUMNS)
     cursor = db.execute(
         f"INSERT INTO asados ({', '.join(_SCALAR_COLUMNS)}) VALUES ({placeholders})",
-        _scalar_values(data, shared_weights),
+        _scalar_values(data, shared_weights, status_for(data.date)),
     )
     asado_id = cursor.lastrowid
     _write_children(db, asado_id, data, participants, cortes)
@@ -375,6 +457,14 @@ def update(db, asado_id, data, actor):
     `data`, re-freezing every weight from the CURRENT config.py, logs
     exactly which fields changed, and commits.
     Raises AsadoNotFound or AsadoInvalid (nothing written either way).
+
+    Returns (old_status, new_status), so the route can tell a plain edit
+    from the save that CONFIRMED the asado (PLANIFICADO -> CONFIRMADO),
+    which gets its own message and an automatic backup. The status
+    change is also written into the activity log as an "Estado" change,
+    which is how /actividad shows "X confirmó el asado" (activity_log
+    .action only allows create/edit/delete, and adding a fourth value
+    would mean rebuilding that table - see schema.sql).
     """
     old_asado = db.execute("SELECT * FROM asados WHERE id = ?", (asado_id,)).fetchone()
     if old_asado is None:
@@ -393,9 +483,12 @@ def update(db, asado_id, data, actor):
            WHERE participations.asado_id = ? ORDER BY participations.id""", (asado_id,))]
 
     shared_weights = get_shared_weights(data.tipos_carne, data.coccion, data.superficie, data.local)
+    # Worked out ONCE, so the row and the log entry below can't disagree
+    # if a save happens to straddle midnight.
+    old_status, new_status = old_asado["status"], status_for(data.date)
     assignments = ", ".join(f"{col} = ?" for col in _SCALAR_COLUMNS)
     db.execute(f"UPDATE asados SET {assignments} WHERE id = ?",
-               _scalar_values(data, shared_weights) + (asado_id,))
+               _scalar_values(data, shared_weights, new_status) + (asado_id,))
     for table in CHILD_TABLES:  # wholesale replace, see the header
         db.execute(f"DELETE FROM {table} WHERE asado_id = ?", (asado_id,))
     _write_children(db, asado_id, data, participants, cortes)
@@ -409,10 +502,17 @@ def update(db, asado_id, data, actor):
         old_participants, [f"{name} ({rol})" for _uid, name, rol in participants],
         old_cortes, cortes,
     )
+    # The status change, in words a person reads ("Planificado" ->
+    # "Confirmado"). Added here rather than in activity_log.diff_asado(),
+    # because the labels live in this module and activity_log must not
+    # import it (this module imports activity_log - a circular import).
+    if old_status != new_status:
+        changes.append(("Estado", ESTADO_LABELS[old_status], ESTADO_LABELS[new_status]))
     log_edit(db, actor.user_id, actor.name, asado_id, data.nombre, data.date, changes)
     if data.save_location:
         maybe_save_location(db, actor.user_id, data.location_name, data.location, data.latitude, data.longitude)
     db.commit()
+    return old_status, new_status
 
 
 def delete(db, asado_id, actor):

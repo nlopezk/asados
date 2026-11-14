@@ -30,6 +30,13 @@
                     {% if entry.action == "create" %}
                         <span class="log-entry-icon">{{ icon("circle-plus") }}</span>
                         <strong>{{ entry.actor_name }}</strong> creó el asado
+                    {# A CONFIRMATION is stored as an edit whose changes include
+                       "Estado: ... -> Confirmado" (see asado_record.update(): the
+                       action column only allows create/edit/delete), and shown
+                       here as what it is. #}
+                    {% elif entry.action == "edit" and item.changes|selectattr("field_label", "equalto", "Estado")|selectattr("new_value", "equalto", "Confirmado")|list %}
+                        <span class="log-entry-icon">{{ icon("circle-check") }}</span>
+                        <strong>{{ entry.actor_name }}</strong> confirmó el asado
                     {% elif entry.action == "edit" %}
                         <span class="log-entry-icon">{{ icon("pencil") }}</span>
                         <strong>{{ entry.actor_name }}</strong> editó el asado
