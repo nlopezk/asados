@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_estado.html" import estado_badge with context %}
 <!--
     index.html = the HOME PAGE.
     It receives a variable called "asados" from app.py's index() function.
@@ -12,6 +13,23 @@
 {% endif %}
 {% if error %}
     <p class="error-message">{{ error }}</p>
+{% endif %}
+
+{# Planned asados whose date has come and that nobody has confirmed
+   (issue #17): they earn nothing until someone does, and nothing
+   confirms them automatically - so they're named right at the top,
+   above everything else, with a link to each. Independent of the
+   filters below, like the summary cards. #}
+{% if por_confirmar %}
+    <div class="estado-notice por-confirmar-notice">
+        {{ icon("circle-check") }}
+        <p>
+            {% if por_confirmar|length == 1 %}1 asado espera confirmación:{% else %}{{ por_confirmar|length }} asados esperan confirmación:{% endif %}
+            {% for a in por_confirmar %}
+                <a href="{{ url_for('view_asado', asado_id=a.id) }}">{{ a.nombre }}</a> ({{ a.date }}){{ "," if not loop.last }}
+            {% endfor %}
+        </p>
+    </div>
 {% endif %}
 
 <!-- "RESUMEN DEL GRUPO" — a compact, friendly strip of "who's playing"
@@ -272,14 +290,18 @@
 <div class="asado-list">
     <!-- Loop over every asado entry -->
     {% for item in asados %}
-        <div class="asado-card">
+        {# A planned / por confirmar asado gets a DASHED border plus its
+           label next to the date (never the border alone - see
+           _estado.html), and its points are marked as an estimate. #}
+        {% set estado = asado_estado(item.asado.status, item.asado.date) %}
+        <div class="asado-card{% if estado != 'confirmado' %} asado-card-planned{% endif %}">
             {# Card layout (UI refresh, 2.1.0): the name and its date on
                one line, then the details as separate icon + text items
                instead of one line glued together with "|" pipes and emoji.
                Each item wraps as a whole on a narrow screen. #}
             <div class="asado-card-head">
                 <h3><a href="{{ url_for('view_asado', asado_id=item.asado.id) }}">{{ item.asado.nombre }}</a></h3>
-                <span class="asado-date">{{ icon("calendar") }}{{ item.asado.date }}</span>
+                <span class="asado-date">{{ estado_badge(estado) }}{{ icon("calendar") }}{{ item.asado.date }}</span>
             </div>
             <p class="asado-meta">
                 <span class="meta-item">{{ icon("beef") }}{{ item.tipos_carne }}</span>
@@ -291,7 +313,11 @@
                 <p class="asado-description">{{ item.asado.description }}</p>
             {% endif %}
 
-            <p class="asado-participants-label">Participantes</p>
+            {# On a planned card the points are an estimate. Said ONCE, in
+               the label, rather than "est." after every number: the points
+               column is only 4.5rem wide, and "1.0 pts est." wrapped on
+               desktop and ran into the Rol column on a phone. #}
+            <p class="asado-participants-label">Participantes{% if estado != 'confirmado' %} · puntos estimados{% endif %}</p>
             <ul class="participant-list">
                 {% for p in item.participants %}
                     <li>
@@ -303,7 +329,12 @@
                             <span class="user-color-dot" style="background-color: {{ user_color(p.user_id) }}"></span>{{ p.name }}
                         </a>
                         <span class="participant-rol">{{ p.rol }}</span>
-                        <span class="participant-points">{{ p.points }} pts</span>
+                        {# Muted on a planned card: only what it WOULD be worth,
+                           recalculated when it's confirmed (see the label above). #}
+                        <span class="participant-points{% if estado != 'confirmado' %} points-estimated{% endif %}"
+                              {% if estado != 'confirmado' %}title="Puntos estimados: se calculan al confirmar"{% endif %}>
+                            {{- p.points }} pts
+                        </span>
                     </li>
                 {% endfor %}
             </ul>

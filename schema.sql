@@ -96,7 +96,22 @@ CREATE TABLE asados (
     tipo_carne_weight REAL,
     coccion_weight REAL,
     superficie_weight REAL,
-    local_weight REAL
+    local_weight REAL,
+
+    -- 'planificado' or 'confirmado' (see GLOSSARY.md and
+    -- docs/adr/0001-planned-asados-score-on-confirmation.md). Decided on
+    -- EVERY save by asado_record.status_for(): saved on or after the
+    -- asado's date -> 'confirmado', otherwise 'planificado'. Only
+    -- confirmed asados count toward any points total, standings, chart
+    -- or the CSV export. "Por confirmar" is NOT a third stored value:
+    -- it's a planned asado whose date has since arrived, worked out when
+    -- displayed (asado_record.estado()), because it changes at midnight
+    -- with nobody saving anything.
+    -- Last column because migrate_add_asado_status.py adds it to existing
+    -- databases with ALTER TABLE ADD COLUMN, which always appends; the
+    -- DEFAULT is what that migration gives every existing row (the
+    -- migration then marks future-dated ones 'planificado').
+    status TEXT NOT NULL DEFAULT 'confirmado' CHECK (status IN ('planificado', 'confirmado'))
 );
 
 -- ---------------------------------------------------------------------

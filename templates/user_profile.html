@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
+{% from "_estado.html" import estado_badge with context %}
 {% block title %}{{ profile_user.name }}{% endblock %}
 <!--
     user_profile.html — one person's own page: all-time stats, a
@@ -185,9 +186,13 @@
                 {% for row in history %}
                     <tr>
                         <td>{{ row.date }}</td>
-                        <td><a href="{{ url_for('view_asado', asado_id=row.asado_id) }}">{{ row.nombre }}</a></td>
+                        {# Planned asados are listed too (it's the person's whole
+                           history, plans included), labelled - but they're not in
+                           the tiles above, which count confirmed asados only. #}
+                        {% set estado = asado_estado(row.status, row.date) %}
+                        <td><a href="{{ url_for('view_asado', asado_id=row.asado_id) }}">{{ row.nombre }}</a> {{ estado_badge(estado) }}</td>
                         <td>{{ row.rol }}</td>
-                        <td>{{ row.points }}</td>
+                        <td>{{ row.points }}{% if estado != 'confirmado' %} <span class="points-estimated" title="Puntos estimados: se calculan al confirmar">est.</span>{% endif %}</td>
                     </tr>
                 {% endfor %}
             </tbody>

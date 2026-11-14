@@ -10,7 +10,13 @@
 
     Variables the including template must set before including this:
       form_action           - URL this form POSTs to
-      submit_label          - submit button text ("Añadir Asado" / "Guardar Cambios")
+      submit_labels         - {"past": ..., "future": ...}: the save button's text
+                               for a date that has arrived vs. one still ahead
+                               (see submit_labels() in app.py). The JS below
+                               swaps between them as the date changes, because
+                               saving a future-dated asado PLANS it and saving
+                               a planned one once its date has come CONFIRMS it
+                               (issue #17, GLOSSARY.md).
       asado                 - None (create) or the existing asado row (edit), for prefilling
       existing_participants - list of {user_id, rol} dicts to prefill participant rows
                                (empty list for create -> renders one blank row)
@@ -240,6 +246,15 @@
     <!-- This box is filled in live by JS: for every participant, it
          shows the actual formula with real numbers plugged in, plus
          the resulting points — updated on every relevant change. -->
+    <!-- Shown only while the Fecha is in the future (toggled by
+         updateDateDependentText() below): such an asado is saved as
+         PLANNED and earns nothing until a member confirms it on or after
+         its date, so the numbers below are only an estimate of what it
+         will be worth (issue #17). -->
+    <p id="points-estimate-note" class="points-estimate-note hidden">
+        Puntos estimados (se calculan al confirmar): con fecha futura el asado queda
+        planificado y no suma puntos hasta que alguien lo confirme, el día del asado o después.
+    </p>
     <div id="points-summary" class="points-summary"></div>
 
     <hr>
@@ -309,7 +324,14 @@
 
     <hr>
 
-    <button type="submit" class="primary-button" id="asado-submit">{{ submit_label }}</button>
+    {# The label the page starts with is worked out here too (not only
+       in JS), so the button is right even before the script runs: a new
+       asado has no date yet, so it starts as "past" (Añadir Asado). #}
+    {% set date_has_come = (not asado) or asado.date <= today_iso %}
+    <button type="submit" class="primary-button" id="asado-submit"
+            data-label-past="{{ submit_labels.past }}" data-label-future="{{ submit_labels.future }}">
+        {{- submit_labels.past if date_has_come else submit_labels.future -}}
+    </button>
 </form>
 
 <script>
@@ -662,6 +684,35 @@
         // reach for a second tap in the first place.
         button.textContent = "Guardando…";  // "…": one proper ellipsis character
     });
+
+    // -----------------------------------------------------------------
+    // PLANNED vs CONFIRMED (issue #17): what saving with THIS date does
+    // -----------------------------------------------------------------
+    // A save dated in the future PLANS the asado; a save on or after its
+    // date confirms it. The server decides that for real (asado_record
+    // .status_for()); this only keeps the page honest while you type:
+    // the button says what saving will do, and a note marks the points
+    // preview as an estimate. TODAY is the group's date (Chile) from the
+    // server, not the browser's clock, so phone and server can't
+    // disagree about which day it is. 'YYYY-MM-DD' strings compare
+    // correctly as plain text, same as in Python.
+    const TODAY = {{ today_iso|tojson }};
+
+    function updateDateDependentText() {
+        const dateValue = document.getElementById("date").value;
+        const isFuture = dateValue !== "" && dateValue > TODAY;
+        document.getElementById("points-estimate-note").classList.toggle("hidden", !isFuture);
+        const button = document.getElementById("asado-submit");
+        if (!button.disabled) {  // never relabel the "Guardando…" state
+            button.textContent = isFuture ? button.dataset.labelFuture : button.dataset.labelPast;
+        }
+    }
+
+    // "input" fires on every change; "change" as well, for browsers whose
+    // date picker only reports once a full date is chosen.
+    document.getElementById("date").addEventListener("input", updateDateDependentText);
+    document.getElementById("date").addEventListener("change", updateDateDependentText);
+    updateDateDependentText();
 
     // -----------------------------------------------------------------
     // LIVE POINTS PREVIEW

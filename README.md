@@ -67,6 +67,7 @@ add their own members from the app's **Configuración** page.
    python migrate_fix_schema_drift.py
    python migrate_to_groups.py
    python migrate_locations_unique_name.py
+   python migrate_add_asado_status.py
    ```
 6. *(Optional)* **Fill a test group with random data**, so you have
    something to click around and filter. ⚠️ It writes into the group
@@ -141,6 +142,7 @@ As_app/
 ├── migrate_fix_schema_drift.py <- Adds 3 missing FK indexes + the locations NOT NULL constraints
 ├── migrate_to_groups.py    <- v2.0: converts the old single asados.db into the groups layout
 ├── migrate_locations_unique_name.py <- v2.0.1: locations.name UNIQUE for groups created since 2.0
+├── migrate_add_asado_status.py <- asados.status: planned asados only count once confirmed (#17)
 ├── vaca_svg.svg            <- SOURCE artwork for the cow diagram (edit this in Inkscape)
 ├── build_cow_partial.py    <- Turns vaca_svg.svg into templates/_cow_svg.html
 ├── check_cow_svg.py        <- Validates the drawing against config.py's cut list
@@ -200,6 +202,11 @@ As_app/
 - **Points** — calculated per participant from the formula in `config.py`
   (the same rules for every group, for now), then **frozen**: changing a
   weight later never rewrites history.
+- **Planned asados** — an asado can be added ahead of time. Dated in the
+  future it's *Planificado* and earns no points; once its date has come,
+  the next save by any member (the "Confirmar asado" button) confirms it
+  and its points count. Overdue plans are listed at the top of the home
+  page. See `GLOSSARY.md` and `docs/adr/0001-planned-asados-score-on-confirmation.md`.
 - **Resumen** (`/resumen`) — the standings table, one row per member, with
   filters (year, semester) and sortable columns.
 - **Base de Asados** (`/base-asados`) — flat spreadsheet view (one row per
@@ -219,8 +226,8 @@ As_app/
   quick-fill the asado form, so a recurring spot doesn't need retyping.
 - **Registro de Actividad** (`/actividad`) — who created, edited, or deleted
   each asado, with a field-by-field diff of every edit.
-- **Automatic backups** — every new asado triggers a safe SQLite snapshot
-  of that group into `backups/<group-slug>/`.
+- **Automatic backups** — every new (or newly confirmed) asado triggers a
+  safe SQLite snapshot of that group into `backups/<group-slug>/`.
 - **Mobile-friendly** — responsive layout; the navbar collapses to a ☰ menu
   on narrow screens.
 
@@ -262,6 +269,7 @@ python3 migrate_add_cortes.py
 python3 migrate_fix_schema_drift.py
 python3 migrate_to_groups.py
 python3 migrate_locations_unique_name.py
+python3 migrate_add_asado_status.py
 ```
 
 **4. Click "Reload" on the Web tab.** The new code goes live here, and

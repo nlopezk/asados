@@ -361,6 +361,7 @@ python3 migrate_add_cortes.py              # 3. EVERY migration, every time, in 
 python3 migrate_fix_schema_drift.py
 python3 migrate_to_groups.py
 python3 migrate_locations_unique_name.py
+python3 migrate_add_asado_status.py
 ```
 (If Claude's printed list has more migrations than this, use Claude's
 list: it's read from README, which is always current.)

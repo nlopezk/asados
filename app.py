@@ -111,6 +111,17 @@ SEMESTRES = [
 # the database — anything else falls back to the default. Never replace
 # this with the raw ?sort= value, and keep any new column going through
 # this same dict.
+# "Only asados that count": every query that ADDS UP points or counts
+# asados (Resumen's table and chart, the home summary cards, a profile's
+# tiles, ranking and monthly chart, the CSV export) must include this.
+# A planned asado earns nothing until a member confirms it - see
+# GLOSSARY.md and docs/adr/0001-planned-asados-score-on-confirmation.md.
+# Pages that LIST asados (home list, an asado's page, Base de Asados, a
+# profile's history) show planned ones too, with their label, and so
+# deliberately don't use it. A hard-coded literal, never built from
+# anything submitted, so it's safe to paste into SQL.
+ONLY_CONFIRMED = "asados.status = 'confirmado'"
+
 RESUMEN_SORT_COLUMNS = {
     "usuario": "users.name",
     "participaciones": "COUNT(participations.id)",
@@ -236,14 +247,18 @@ def build_resumen_chart_data(db):
     visual way to compare it to someone who's been around since day
     one. This is honest, not misleading — their real cumulative total
     on a date before their first asado genuinely was zero.
+
+    CONFIRMED asados only (issue #17): a planned asado has earned
+    nothing yet, so it adds no step to anyone's line.
     """
     rows = db.execute(
-        """
+        f"""
         SELECT users.id AS user_id, users.name AS name, asados.date AS date,
                SUM(participations.points) AS day_points
         FROM participations
         JOIN asados ON asados.id = participations.asado_id
         JOIN users ON users.id = participations.user_id
+        WHERE {ONLY_CONFIRMED}
         GROUP BY users.id, asados.date
         ORDER BY users.id, asados.date
         """
@@ -344,11 +359,12 @@ def parse_page_number(value):
 # arbitrary — GROUP_CONCAT has no ORDER BY of its own in the SQLite
 # version this app targets, so a pre-sorted subquery is the accepted way
 # to get consistent ordering out of it.
-BASE_ASADOS_QUERY = """
+_BASE_ASADOS_SELECT = """
     SELECT
         participations.id AS participation_id,
         participations.asado_id AS asado_id,
         asados.date AS date,
+        asados.status AS status,
         asados.nombre AS nombre,
         tipos_carne.tipo_carne_list AS tipo_carne,
         asados.tipo_carne_weight AS tipo_carne_weight,
@@ -376,8 +392,20 @@ BASE_ASADOS_QUERY = """
         FROM (SELECT asado_id, tipo_carne FROM asado_tipo_carne ORDER BY id)
         GROUP BY asado_id
     ) AS tipos_carne ON tipos_carne.asado_id = asados.id
-    ORDER BY asados.date DESC, participations.id
 """
+_BASE_ASADOS_ORDER = " ORDER BY asados.date DESC, participations.id"
+
+# Two variants of ONE query (so they can't drift apart):
+#   * BASE_ASADOS_QUERY - every participation, planned asados included,
+#     for the on-screen Base de Asados, which shows each row's Estado.
+#   * BASE_ASADOS_CSV_QUERY - CONFIRMED asados only, for both CSV
+#     downloads. The CSV feeds Google Sheets and Looker Studio, which
+#     read columns by POSITION, so instead of adding an Estado column
+#     there (shifting every column after it), rows that don't count yet
+#     are simply left out (issue #17). `status` is selected in both, but
+#     the CSV writer names its columns explicitly and never prints it.
+BASE_ASADOS_QUERY = _BASE_ASADOS_SELECT + _BASE_ASADOS_ORDER
+BASE_ASADOS_CSV_QUERY = _BASE_ASADOS_SELECT + f" WHERE {ONLY_CONFIRMED}" + _BASE_ASADOS_ORDER
 
 app = Flask(__name__)  # __name__ tells Flask where this file lives, for finding templates/static
 
@@ -769,6 +797,24 @@ def inject_user_color():
     swatch without app.py needing to pre-compute a "color" key into
     every query result those two (and any future) routes build."""
     return {"user_color": get_user_color}
+
+
+@app.context_processor
+def inject_asado_estado():
+    """Planned / Por confirmar / Confirmado for templates (issue #17):
+      asado_estado(status, date) -> "planificado" | "por_confirmar" | "confirmado"
+      estado_labels[...]         -> the Spanish label for each
+      today_iso                  -> the group's date, 'YYYY-MM-DD', which
+                                    the asado form's JavaScript compares
+                                    the typed date against
+    The logic lives in asado_record.estado(), so every page labels an
+    asado the same way. Same "inject once, use everywhere" pattern as
+    user_color() above."""
+    return {
+        "asado_estado": asado_record.estado,
+        "estado_labels": asado_record.ESTADO_LABELS,
+        "today_iso": asado_record.today().isoformat(),
+    }
 
 
 @app.before_request
@@ -1273,21 +1319,27 @@ def build_group_summary(db):
     narrows the asado list below it would be a worse "who's in this
     group" snapshot, not a better one. Sorted by total points
     descending, same default as Resumen's own table.
+
+    CONFIRMED asados only (issue #17): a planned asado earns nothing yet.
     """
     participants = db.execute(
-        """
+        f"""
         SELECT users.id AS user_id, users.name AS name,
                COUNT(participations.id) AS participations_count,
                SUM(participations.points) AS total_points
         FROM participations
         JOIN users ON users.id = participations.user_id
+        JOIN asados ON asados.id = participations.asado_id
+        WHERE {ONLY_CONFIRMED}
         GROUP BY users.id, users.name
         ORDER BY total_points DESC
         """
     ).fetchall()
 
-    total_asados = db.execute("SELECT COUNT(*) FROM asados").fetchone()[0]
-    earliest_date = db.execute("SELECT MIN(date) FROM asados").fetchone()[0]
+    # Confirmed only, like everything else in this summary: "N asados
+    # since YYYY" means asados that actually happened.
+    total_asados = db.execute(f"SELECT COUNT(*) FROM asados WHERE {ONLY_CONFIRMED}").fetchone()[0]
+    earliest_date = db.execute(f"SELECT MIN(date) FROM asados WHERE {ONLY_CONFIRMED}").fetchone()[0]
 
     return {
         "participants": participants,
@@ -1447,6 +1499,15 @@ def index():
     # For the "Usuario" filter dropdown.
     registered_users = db.execute("SELECT id, username, name FROM users ORDER BY name").fetchall()
 
+    # Planned asados whose date has arrived and that nobody has confirmed
+    # yet (issue #17). Listed at the top of the page, independent of the
+    # filters, so an asado can't sit at zero points forever unnoticed -
+    # nothing confirms or deletes one automatically.
+    por_confirmar = db.execute(
+        "SELECT id, nombre, date FROM asados WHERE status = ? AND date <= ? ORDER BY date",
+        (asado_record.PLANIFICADO, asado_record.today().isoformat()),
+    ).fetchall()
+
     # For the "Año" filter dropdown — only years that actually have at
     # least one asado, newest first, rather than hardcoding a range.
     available_years = [
@@ -1464,6 +1525,7 @@ def index():
         # ALWAYS the full, unfiltered history — independent of every
         # filter below it, deliberately.
         group_summary=build_group_summary(db),
+        por_confirmar=por_confirmar,
         meses=MESES,
         selected_date_from=date_from_filter,
         selected_date_to=date_to_filter,
@@ -1538,6 +1600,51 @@ def cortes_alfabeticos():
     return sorted(CORTES_VACUNO, key=sort_key)
 
 
+def backup_current_group():
+    """
+    Automatic backup of the CURRENT group's database - after a new asado
+    is added, and after one is confirmed (the moment its points enter
+    the standings, issue #17). See backup_db.py for why this is a safe
+    SQLite-level backup and not just a file copy.
+
+    Called AFTER the commit, and never raises: if the backup itself
+    fails (disk full, permissions, etc.), the user's asado is still
+    saved and the page still loads normally - a failed backup must never
+    look like a failed save. The current group's file goes into that
+    group's own folder (backups/<slug>/), so each group's 14-day
+    retention only counts and prunes its own snapshots, and test runs
+    that point GROUPS_DIR at throwaway files back those up, not the
+    real ones.
+    """
+    try:
+        slug = current_group()["slug"]
+        backup_database(
+            database=group_db_path(slug, GROUPS_DIR),
+            backup_dir=os.path.join(BACKUP_ROOT, slug),
+        )
+    except Exception as e:
+        print(f"Warning: automatic backup failed: {e}")
+
+
+def submit_labels(status=None):
+    """
+    The asado form's save-button text, for a date that's already here
+    ("past") and for one still ahead ("future"). The form's JavaScript
+    switches between the two as the date is typed, so the button always
+    says what saving will actually DO (issue #17):
+      * creating (status None): "Añadir Asado" / "Planificar Asado";
+      * editing a PLANNED asado: once its date has come, saving confirms
+        it, so "Confirmar Asado"; before that it's an ordinary save;
+      * editing a CONFIRMED asado: always "Guardar Cambios" (a future
+        date makes it planned again - the form says so in a note).
+    """
+    if status is None:
+        return {"past": "Añadir Asado", "future": "Planificar Asado"}
+    if status == asado_record.PLANIFICADO:
+        return {"past": "Confirmar Asado", "future": "Guardar Cambios"}
+    return {"past": "Guardar Cambios", "future": "Guardar Cambios"}
+
+
 def current_actor():
     """Who is making this change, in the shape asado_record wants for
     the activity log: the logged-in MEMBER id and display name (see
@@ -1602,32 +1709,25 @@ def new_asado():
         # the activity log, "Guardar esta ubicación", the commit — is
         # asado_record.create(). If it raises AsadoInvalid, nothing was
         # written; the message is meant for the user.
+        data = asado_record.read_form(request.form)
         try:
-            asado_record.create(db, asado_record.read_form(request.form), current_actor())
+            asado_record.create(db, data, current_actor())
         except asado_record.AsadoInvalid as e:
             return redirect(url_for("new_asado", error=str(e)))
 
-        # Automatic backup, every time a new asado is added — see
-        # backup_db.py for why this is a safe SQLite-level backup and
-        # not just a file copy. AFTER the commit, and wrapped in
-        # try/except so that if the backup itself ever fails (disk full,
-        # permissions, etc.), the user's asado is still saved and the
-        # page still loads normally — a failed backup should never look
-        # like a failed save. The CURRENT GROUP's file is passed
-        # explicitly (not backup_db's own default), into that group's
-        # own folder (backups/<slug>/) — so each group's 14-day
-        # retention only counts and prunes its own snapshots, and test
-        # runs that point GROUPS_DIR at throwaway files back those up,
-        # not the real ones.
-        try:
-            slug = current_group()["slug"]
-            backup_database(
-                database=group_db_path(slug, GROUPS_DIR),
-                backup_dir=os.path.join(BACKUP_ROOT, slug),
-            )
-        except Exception as e:
-            print(f"Warning: automatic backup failed: {e}")
+        # Automatic backup, every time a new asado is added (AFTER the
+        # commit, never fatal - see backup_current_group()).
+        backup_current_group()
 
+        # A future-dated asado was saved as PLANNED (issue #17): say so,
+        # otherwise "where are my points?" is the first thing someone
+        # asks. A confirmed one needs no message - it's in the list.
+        if asado_record.status_for(data.date) == asado_record.PLANIFICADO:
+            return redirect(url_for(
+                "index",
+                success=f"Asado planificado para el {data.date}. Va a sumar puntos cuando "
+                        "alguien lo confirme, el día del asado o después.",
+            ))
         return redirect(url_for("index"))  # redirect back to the home page
 
     # GET request: just show the blank form — same shared partial
@@ -1641,7 +1741,7 @@ def new_asado():
         existing_tipos_carne=[],
         existing_cortes=[],
         form_action=url_for("new_asado"),
-        submit_label="Añadir Asado",
+        submit_labels=submit_labels(),
         # Only ever populated when redirected here after a failed
         # validation (see the duplicate-participant check above) —
         # same lightweight ?error= pattern every other route uses.
@@ -1719,7 +1819,7 @@ def view_asado(asado_id):
         existing_cortes=existing_cortes,
         cortes_display="; ".join(existing_cortes),
         form_action=url_for("edit_asado", asado_id=asado_id),
-        submit_label="Guardar Cambios",
+        submit_labels=submit_labels(asado["status"]),
         success=request.args.get("success"),
         error=request.args.get("error"),
         **asado_form_context(db),
@@ -1742,12 +1842,25 @@ def edit_asado(asado_id):
     """
     db = get_db()
     try:
-        asado_record.update(db, asado_id, asado_record.read_form(request.form), current_actor())
+        old_status, new_status = asado_record.update(
+            db, asado_id, asado_record.read_form(request.form), current_actor())
     except asado_record.AsadoNotFound:
         return "Asado no encontrado.", 404
     except asado_record.AsadoInvalid as e:
         return redirect(url_for("view_asado", asado_id=asado_id, error=str(e)))
-    return redirect(url_for("view_asado", asado_id=asado_id, success="Asado actualizado."))
+
+    # Saving a planned asado on or after its date CONFIRMS it (issue
+    # #17): its points enter the standings right now, so it gets a
+    # backup like a brand-new asado does, and a message saying so.
+    if (old_status, new_status) == (asado_record.PLANIFICADO, asado_record.CONFIRMADO):
+        backup_current_group()
+        message = "Asado confirmado: ya suma puntos."
+    elif (old_status, new_status) == (asado_record.CONFIRMADO, asado_record.PLANIFICADO):
+        message = ("Asado actualizado. Como su fecha es futura, quedó planificado "
+                   "y no suma puntos hasta que se confirme.")
+    else:
+        message = "Asado actualizado."
+    return redirect(url_for("view_asado", asado_id=asado_id, success=message))
 
 
 @app.route("/cortes")
@@ -1873,7 +1986,8 @@ def build_base_asados_csv_response():
     mistake).
     """
     db = get_db()
-    rows = db.execute(BASE_ASADOS_QUERY).fetchall()
+    # Confirmed asados only - see BASE_ASADOS_CSV_QUERY for why.
+    rows = db.execute(BASE_ASADOS_CSV_QUERY).fetchall()
 
     # csv.writer wants a file-like object to write into; io.StringIO
     # gives us an in-memory "file" so we never touch the disk for this.
@@ -2105,7 +2219,11 @@ def resumen_page():
     elif semester_filter == "2":
         conditions.append("strftime('%m', asados.date) >= '07'")
 
-    where_clause = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+    # Always on: a planned asado earns nothing until it's confirmed
+    # (issue #17), so it has no place in the standings.
+    conditions.append(ONLY_CONFIRMED)
+
+    where_clause = " WHERE " + " AND ".join(conditions)
 
     # A plain JOIN (not the LEFT JOIN that BASE_ASADOS_QUERY uses): this
     # query filters and aggregates ON asados columns, so a participation
@@ -2135,10 +2253,11 @@ def resumen_page():
     ).fetchall()
 
     # Same "only years that actually have an asado" approach as index(),
-    # rather than hardcoding a range of years.
+    # rather than hardcoding a range of years - CONFIRMED asados only, so
+    # a planned asado next year doesn't add a year with nothing in it.
     available_years = [
         row["year"] for row in db.execute(
-            "SELECT DISTINCT strftime('%Y', date) AS year FROM asados ORDER BY year DESC"
+            f"SELECT DISTINCT strftime('%Y', date) AS year FROM asados WHERE {ONLY_CONFIRMED} ORDER BY year DESC"
         ).fetchall()
     ]
 
@@ -2202,11 +2321,11 @@ def build_user_monthly_chart_data(db, user_id):
     would look identical to "still active, chart just not updated").
     """
     rows = db.execute(
-        """
+        f"""
         SELECT strftime('%Y-%m', asados.date) AS month, COUNT(*) AS asado_count
         FROM participations
         JOIN asados ON asados.id = participations.asado_id
-        WHERE participations.user_id = ?
+        WHERE participations.user_id = ? AND {ONLY_CONFIRMED}
         GROUP BY month
         ORDER BY month
         """,
@@ -2265,13 +2384,19 @@ def user_profile(user_id):
     # brand-new account with no participations yet should show "0" /
     # "still no participations" rather than crashing the template on
     # None. COUNT() already returns 0 naturally, no COALESCE needed.
+    #
+    # Confirmed asados only, here and in the ranking below (issue #17):
+    # the tiles say what someone has EARNED, and a planned asado hasn't
+    # earned anything yet. The history table further down lists planned
+    # ones too, labelled.
     stats = db.execute(
-        """
+        f"""
         SELECT COUNT(participations.id) AS participations_count,
                COALESCE(SUM(participations.points), 0) AS total_points,
                AVG(participations.points) AS avg_points
         FROM participations
-        WHERE participations.user_id = ?
+        JOIN asados ON asados.id = participations.asado_id
+        WHERE participations.user_id = ? AND {ONLY_CONFIRMED}
         """,
         (user_id,),
     ).fetchone()
@@ -2282,9 +2407,11 @@ def user_profile(user_id):
     # table already follows), so a brand-new account doesn't show a
     # nonsensical "position" among people who've never attended anything.
     standings = db.execute(
-        """
+        f"""
         SELECT participations.user_id AS user_id
         FROM participations
+        JOIN asados ON asados.id = participations.asado_id
+        WHERE {ONLY_CONFIRMED}
         GROUP BY participations.user_id
         ORDER BY SUM(participations.points) DESC
         """
@@ -2298,6 +2425,7 @@ def user_profile(user_id):
     history = db.execute(
         """
         SELECT asados.id AS asado_id, asados.date AS date, asados.nombre AS nombre,
+               asados.status AS status,
                participations.rol AS rol, participations.points AS points
         FROM participations
         JOIN asados ON asados.id = participations.asado_id
