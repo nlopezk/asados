@@ -1388,7 +1388,12 @@ def build_calendar(db, mes):
     as a flat list for the phone layout.
 
     Each day: {"date": "2026-11-14", "day": 14, "in_month": True/False,
-    "is_today": bool, "asados": [{"id", "nombre", "estado"}]}.
+    "is_today": bool, "asados": [{"id", "nombre", "estado",
+    "participants": [{"user_id", "name"}]}]}.
+
+    `participants` feeds the small colour dots under each asado (one
+    per person, in their user_color()), so a glance at the month shows
+    who has been to what, and how long since someone's last asado.
 
     The grid starts on the Monday on or before the 1st and ends on the
     Sunday on or after the last day, so it has 4-6 rows and the days
@@ -1409,15 +1414,34 @@ def build_calendar(db, mes):
     weeks_of_dates = pycalendar.Calendar(firstweekday=0).monthdatescalendar(year, month)
     first_shown, last_shown = weeks_of_dates[0][0], weeks_of_dates[-1][-1]
 
-    by_date = collections.defaultdict(list)
-    for row in db.execute(
+    rows = db.execute(
         "SELECT id, nombre, date, status FROM asados WHERE date BETWEEN ? AND ? ORDER BY date, id",
         (first_shown.isoformat(), last_shown.isoformat()),
-    ):
+    ).fetchall()
+
+    # Everyone at each of those asados, in ONE more query (not one per
+    # asado) - same batching as index(). The IN (...) placeholders are
+    # built from how many ids the query above returned, never from
+    # anything submitted.
+    participants = collections.defaultdict(list)
+    asado_ids = [r["id"] for r in rows]
+    if asado_ids:
+        for p in db.execute(
+            f"""SELECT participations.asado_id AS asado_id, users.id AS user_id, users.name AS name
+                FROM participations JOIN users ON users.id = participations.user_id
+                WHERE participations.asado_id IN ({",".join("?" * len(asado_ids))})
+                ORDER BY participations.id""",
+            asado_ids,
+        ):
+            participants[p["asado_id"]].append({"user_id": p["user_id"], "name": p["name"]})
+
+    by_date = collections.defaultdict(list)
+    for row in rows:
         by_date[row["date"]].append({
             "id": row["id"],
             "nombre": row["nombre"],
             "estado": asado_record.estado(row["status"], row["date"]),
+            "participants": participants[row["id"]],
         })
 
     today = asado_record.today()
@@ -1449,9 +1473,19 @@ def build_calendar(db, mes):
     return {
         "mes": f"{year:04d}-{month:02d}",
         "title": f"{MESES_NOMBRES[month - 1]} {year}",
+        # Month and year shown (and browsed) SEPARATELY - the user asked
+        # for a year control of its own, so going back a year is one
+        # click instead of twelve.
+        "month_name": MESES_NOMBRES[month - 1],
+        "year": year,
         "is_current_month": (year, month) == (today.year, today.month),
         "prev_mes": f"{prev_year:04d}-{prev_month:02d}",
         "next_mes": f"{next_year:04d}-{next_month:02d}",
+        # The same month, a year earlier / later. (From year 1900 or 9998
+        # these point outside what parse_mes() accepts, which then just
+        # shows the current month - harmless at the edges of time.)
+        "prev_year_mes": f"{year - 1:04d}-{month:02d}",
+        "next_year_mes": f"{year + 1:04d}-{month:02d}",
         "dias_semana": DIAS_SEMANA,
         "weeks": weeks,
         "agenda": agenda,

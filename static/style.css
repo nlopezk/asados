@@ -2732,18 +2732,117 @@ body > main {
     margin-bottom: 28px;
 }
 
-.calendar-nav {
+/* --- Folding it away: <details open> + <summary> ---
+   The summary is the heading row; clicking it (or Enter/Space on it)
+   folds the calendar so the cards come up sooner. The browser's own
+   triangle marker is replaced by a chevron at the right that points
+   down when open and right when folded. */
+.calendar-summary {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    list-style: none;             /* hides the default marker (Firefox, Chrome) */
 }
 
-/* The month name keeps a steady width, so the arrows don't jump
-   sideways when going from "Mayo" to "Septiembre". */
-.calendar-month {
-    min-width: 9.5em;
+.calendar-summary::-webkit-details-marker {
+    display: none;                /* ...and in Safari */
+}
+
+.calendar-summary h2 {
+    margin: 0;
+}
+
+.calendar-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-pill);
+    color: var(--color-text-muted);
+    font-size: var(--text-s);
+}
+
+.calendar-summary:hover .calendar-toggle,
+.calendar-summary:focus-visible .calendar-toggle {
+    color: var(--color-text);
+    background: var(--color-surface-alt);
+}
+
+.calendar-toggle-icon {
+    display: inline-flex;
+    transition: transform 0.15s ease;
+}
+
+.calendar:not([open]) .calendar-toggle-icon {
+    transform: rotate(-90deg);
+}
+
+/* One word per state: "Ocultar" while open, "Mostrar" while folded. */
+.calendar[open] .calendar-toggle-closed,
+.calendar:not([open]) .calendar-toggle-open {
+    display: none;
+}
+
+.calendar:not([open]) {
+    margin-bottom: 18px;
+}
+
+/* --- Month and year: two separate steppers --- */
+.calendar-nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 18px;
+    margin-bottom: 10px;
+}
+
+.calendar-stepper {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Steady widths, so the arrows don't jump sideways when going from
+   "Mayo" to "Septiembre". */
+.calendar-month,
+.calendar-year {
     text-align: center;
     font-weight: 600;
+}
+
+.calendar-month {
+    min-width: 6.5em;
+}
+
+.calendar-year {
+    min-width: 3em;
+}
+
+/* --- Participant dots under each asado (user_color(), as everywhere) ---
+   Small and packed, wrapping if an asado had many people. */
+.calendar-dots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-top: 3px;
+}
+
+.calendar-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    /* The same thin ring as .user-color-dot, so a dark colour still
+       reads against the brown chip behind it. */
+    box-shadow: 0 0 0 1px var(--color-surface);
+}
+
+.calendar-agenda .calendar-dots {
+    margin-top: 0;
+    align-self: center;
 }
 
 .calendar-nav .secondary-button {
@@ -2932,7 +3031,7 @@ body > main {
     }
 
     .calendar-month {
-        min-width: 0;
+        min-width: 5.5em;
     }
 }
 

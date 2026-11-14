@@ -21,6 +21,17 @@ Resumen's server-side sorting.
 
 Planned / Por confirmar asados (issue #17) are drawn DASHED and always
 carry their word, never the border alone (see _estado.html).
+
+COLLAPSIBLE, OPEN ON EVERY LOAD: a native <details open> element, so it
+folds away (to get to the cards faster) with no JavaScript, works from
+the keyboard, and screen readers announce it as expandable. The user
+asked for it to START open, so nothing remembers a collapsed state.
+
+PARTICIPANT DOTS: each asado shows one small dot per participant in
+their user_color() - the same colours as everywhere else, with the
+"Resumen del Grupo" cards right above serving as the key. A dot never
+stands for a name on its own: the names are in the asado's tooltip and
+in text a screen reader reads (same rule as every colour dot here).
 #}
 {% from "_icons.html" import icon %}
 {% from "_estado.html" import estado_badge with context %}
@@ -34,21 +45,55 @@ carry their word, never the border alone (see _estado.html).
            page=page if page > 1 else none) }}#calendario
 {%- endmacro %}
 
-<section class="calendar" id="calendario" aria-labelledby="calendar-title">
-    <div class="section-header calendar-header">
+{# One dot per participant, in their colour. The dots themselves are
+   hidden from screen readers; the names follow as visually-hidden text. #}
+{% macro participant_dots(people) -%}
+{%- if people -%}
+<span class="calendar-dots">
+    {%- for p in people %}<span class="calendar-dot" style="background-color: {{ user_color(p.user_id) }}" aria-hidden="true"></span>{% endfor -%}
+    <span class="visually-hidden">Participantes: {{ people|map(attribute="name")|join(", ") }}</span>
+</span>
+{%- endif -%}
+{%- endmacro %}
+
+<details class="calendar" id="calendario" data-mes="{{ calendar.mes }}" open>
+    {# The summary row IS the heading: clicking it folds the calendar.
+       Only the title lives in it - links inside a <summary> would also
+       toggle it when clicked, so the month/year controls sit below. #}
+    <summary class="calendar-summary">
         <h2 id="calendar-title">Calendario</h2>
-        <nav class="calendar-nav" aria-label="Cambiar de mes">
+        {# A WORD, not just a chevron: a faint arrow alone didn't say "you
+           can fold this" (seen in a screenshot). CSS shows whichever of the
+           two words fits the current state; aria-hidden because a screen
+           reader already announces the summary as expanded/collapsed. #}
+        <span class="calendar-toggle" aria-hidden="true">
+            <span class="calendar-toggle-open">Ocultar</span>
+            <span class="calendar-toggle-closed">Mostrar</span>
+            <span class="calendar-toggle-icon">{{ icon("chevron-down") }}</span>
+        </span>
+    </summary>
+
+    <nav class="calendar-nav" aria-label="Cambiar de mes o de año">
+        {# Two separate steppers (the user asked for a year control of its
+           own): the month arrows walk month by month (and roll over the
+           year at December/January); the year arrows jump to the SAME
+           month a year away. aria-live on each: a screen reader announces
+           the new month or year after the page reloads onto #calendario. #}
+        <span class="calendar-stepper">
             <a href="{{ cal_url(calendar.prev_mes) }}" class="secondary-button calendar-arrow">{{ icon("chevron-left", label="Mes anterior") }}</a>
-            {# aria-live: a screen reader announces the new month after an
-               arrow is used (the page reloads onto #calendario). #}
-            <span class="calendar-month" aria-live="polite">{{ calendar.title }}</span>
+            <span class="calendar-month" aria-live="polite">{{ calendar.month_name }}</span>
             <a href="{{ cal_url(calendar.next_mes) }}" class="secondary-button calendar-arrow">{{ icon("chevron-right", label="Mes siguiente") }}</a>
-            {# "Hoy" only when you've moved away - on this month it would do nothing. #}
-            {% if not calendar.is_current_month %}
-                <a href="{{ cal_url(none) }}" class="secondary-button calendar-today-link">Hoy</a>
-            {% endif %}
-        </nav>
-    </div>
+        </span>
+        <span class="calendar-stepper">
+            <a href="{{ cal_url(calendar.prev_year_mes) }}" class="secondary-button calendar-arrow">{{ icon("chevron-left", label="Año anterior") }}</a>
+            <span class="calendar-year" aria-live="polite">{{ calendar.year }}</span>
+            <a href="{{ cal_url(calendar.next_year_mes) }}" class="secondary-button calendar-arrow">{{ icon("chevron-right", label="Año siguiente") }}</a>
+        </span>
+        {# "Hoy" only when you've moved away - on this month it would do nothing. #}
+        {% if not calendar.is_current_month %}
+            <a href="{{ cal_url(none) }}" class="secondary-button calendar-today-link">Hoy</a>
+        {% endif %}
+    </nav>
 
     {# ---- DESKTOP: the month grid ----
        A real <table>: rows are weeks and columns are weekdays, which is
@@ -83,11 +128,12 @@ carry their word, never the border alone (see _estado.html).
                                                off with "..." in a narrow day. #}
                                             <a href="{{ url_for('view_asado', asado_id=a.id) }}"
                                                class="calendar-asado{% if a.estado != 'confirmado' %} calendar-asado-planned{% endif %}"
-                                               title="{{ a.nombre }}{% if a.estado != 'confirmado' %} ({{ estado_labels[a.estado] }}){% endif %}">
+                                               title="{{ a.nombre }}{% if a.estado != 'confirmado' %} ({{ estado_labels[a.estado] }}){% endif %}{% if a.participants %} — {{ a.participants|map(attribute='name')|join(', ') }}{% endif %}">
                                                 <span class="calendar-asado-name">{{ a.nombre }}</span>
                                                 {% if a.estado != 'confirmado' %}
                                                     <span class="calendar-asado-estado">{{ estado_labels[a.estado] }}</span>
                                                 {% endif %}
+                                                {{ participant_dots(a.participants) }}
                                             </a>
                                         </li>
                                     {% endfor %}
@@ -109,6 +155,7 @@ carry their word, never the border alone (see _estado.html).
                         <span class="calendar-agenda-date">{{ a.label }}</span>
                         <a href="{{ url_for('view_asado', asado_id=a.id) }}">{{ a.nombre }}</a>
                         {{ estado_badge(a.estado) }}
+                        {{ participant_dots(a.participants) }}
                     </li>
                 {% endfor %}
             </ul>
@@ -116,4 +163,4 @@ carry their word, never the border alone (see _estado.html).
             <p class="empty-state">No hay asados en {{ calendar.title }}.</p>
         {% endif %}
     </div>
-</section>
+</details>
