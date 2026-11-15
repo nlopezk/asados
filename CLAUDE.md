@@ -15,6 +15,23 @@ beginner Python coder learning as they go — **please keep comments
 detailed and explanatory in any code you write or edit**, the same way
 the existing code is commented. Prefer explaining WHY, not just WHAT.
 
+## Brand: read docs/brand/BRAND.md before any visual change
+
+Any change to colors, fonts, the logo, icons, the favicon or the look of
+a page follows `docs/brand/BRAND.md` (the "Brasa" identity, approved by
+the committee in Nov 2026; decision in
+`docs/adr/0002-brasa-brand-is-the-target-visual-system.md`). Logo
+masters are in `docs/brand/logo/`: use those SVGs and never redraw the
+logo or type "BRASA" in a font. Two things to keep straight:
+- **The live app doesn't use the brand yet.** `static/style.css` is
+  still the 2.1.0 "old money" palette described under "Visual design"
+  below. Moving to Brasa is its own issue. Don't restyle pages
+  piecemeal inside an unrelated PR; in one, keep the current look and
+  just don't add anything that contradicts BRAND.md.
+- **New colors and sizes still go through `:root` variables.**
+  BRAND.md's contrast table decides which text may sit on which
+  background. Small text is never Naranjo Brasa; use Ladrillo instead.
+
 ## Commands
 
 There's no build step, package manifest beyond `requirements.txt`, or
